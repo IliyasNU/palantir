@@ -1,0 +1,17 @@
+# --- Web framework / server ---
+fastapi>=0.115.0,<1.0
+uvicorn[standard]>=0.30.0,<1.0
+python-multipart>=0.0.9          # needed for the OAuth2 form login (/auth/token)
+
+# --- Database ---
+SQLAlchemy>=2.0.30,<2.1
+alembic>=1.13.0,<2.0
+psycopg[binary]>=3.1.18,<4.0     # PostgreSQL driver (URL scheme: postgresql+psycopg://)
+
+# --- Validation / settings ---
+pydantic[email]>=2.7.0,<3.0
+pydantic-settings>=2.3.0,<3.0
+
+# --- Authentication ---
+PyJWT>=2.8.0,<3.0
+bcrypt>=4.1.0,<6.0
