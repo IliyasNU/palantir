@@ -1,18 +1,41 @@
 import { ApiError, type Receipt, type ScanRequest } from './api.ts';
 
-export type ScanResult = { receipt: Receipt; error?: never } | { error: ApiError; receipt?: never };
+export type ScanResult =
+  | { receipt: Receipt; error?: never }
+  | { error: ApiError; receipt?: never };
 
-// Camera callbacks can arrive before React updates the screen. Lock synchronously.
-export function createScanner(send: (request: ScanRequest) => Promise<Receipt>, newId: () => string) {
+export function createScanSession(send: (token: string, request: ScanRequest) => Promise<Receipt>, newId: () => string) {
+  let token = '';
+  return {
+    scanner: createScanner(request => send(token, request), newId),
+    setToken(value: string) { token = value; },
+  };
+}
+
+export function createScanner(
+  send: (request: ScanRequest) => Promise<Receipt>,
+  newId: () => string,
+) {
   let pending: ScanRequest | null = null;
   let busy = false;
+  let unresolved = false;
 
   async function submit(): Promise<ScanResult> {
     busy = true;
     try {
-      return { receipt: await send(pending!) };
-    } catch (error) {
-      return { error: error instanceof ApiError ? error : new ApiError('SERVER_ERROR', 'Check-in could not be confirmed.') };
+      const receipt = await send(pending!);
+      unresolved = false;
+      return { receipt };
+    } catch (problem) {
+      const error = problem instanceof ApiError
+        ? problem
+        : new ApiError('SERVER_ERROR', 'Check-in could not be confirmed.');
+      const uncertain = ['NETWORK_ERROR', 'SERVER_ERROR'].includes(error.code)
+        || (error.status !== undefined && error.status >= 500);
+      // После неизвестного результата даже 401/403 не доказывают,
+      // что предыдущая попытка не успела записаться в БД.
+      if (uncertain) unresolved = true;
+      return { error };
     } finally {
       busy = false;
     }
@@ -20,16 +43,20 @@ export function createScanner(send: (request: ScanRequest) => Promise<Receipt>, 
 
   return {
     scan(payload: string): Promise<ScanResult> | null {
-      if (pending || busy) return null;
+      if (!payload || pending || busy) return null;
       pending = { qr_payload: payload, request_id: newId() };
       return submit();
     },
     retry(): Promise<ScanResult> | null {
-      // If the first response was lost, retry the SAME request, not a new admission.
       return pending && !busy ? submit() : null;
     },
-    next() {
-      if (!busy) pending = null;
+    next(): boolean {
+      if (busy || unresolved) return false;
+      pending = null;
+      return true;
+    },
+    mustResolve(): boolean {
+      return busy || unresolved;
     },
   };
 }
