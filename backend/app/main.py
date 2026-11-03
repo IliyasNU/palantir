@@ -1,5 +1,9 @@
-from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
+import json
+
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import DataError
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -30,11 +34,18 @@ app.add_middleware(
 
 
 
+@app.exception_handler(RequestValidationError)
+def reject_invalid_request(request: Request, exc: RequestValidationError) -> Response:
+    """FastAPI's default 422 body, ASCII-escaped: echoed input may hold lone surrogates that UTF-8 cannot encode."""
+    body = json.dumps({"detail": jsonable_encoder(exc.errors())}, ensure_ascii=True)
+    return Response(body, status_code=422, media_type="application/json")
+
+
 @app.exception_handler(DataError)
 def reject_unstorable_input(request: Request, exc: DataError) -> JSONResponse:
     """PostgreSQL refused a value Pydantic let through (NUL characters, ids beyond its integer range)."""
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=422,
         content={"detail": {"code": "INVALID_INPUT", "message": "The request contains a value that cannot be stored"}},
     )
 

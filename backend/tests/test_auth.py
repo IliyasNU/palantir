@@ -226,3 +226,10 @@ def test_decode_token_enforces_token_type():
     assert decode_token(token, ACCESS_TOKEN_TYPE)["sub"] == "1"
     with pytest.raises(TokenError):
         decode_token(token, REFRESH_TOKEN_TYPE)
+
+
+def test_lone_surrogate_in_input_is_422_not_500(client):
+    raw = b'{"email": "s@example.com", "full_name": "bad\\ud800name", "password": "S3cret-Passw0rd"}'
+    response = client.post("/auth/register", content=raw, headers={"Content-Type": "application/json"})
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["body", "full_name"]

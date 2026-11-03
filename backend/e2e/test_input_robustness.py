@@ -36,3 +36,15 @@ def test_date_outside_the_utc_range_is_422(api, register):
     owner = register("organizer")
     event = {"title": "Edge event", "date": "0001-01-01T00:00:00+01:00", "location": "Hall", "capacity": 5}
     assert api.post("/events", json=event, headers=owner.headers).status_code == 422
+
+
+def test_lone_surrogate_in_qr_is_422_not_500(api, register, published_event):
+    owner = register("organizer")
+    event = published_event(owner)
+    raw = b'{"qr_payload": "bad\\ud800qr", "request_id": "%s"}' % str(uuid.uuid4()).encode()
+    response = api.post(
+        f"/events/{event['id']}/check-in",
+        content=raw,
+        headers={**owner.headers, "Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
