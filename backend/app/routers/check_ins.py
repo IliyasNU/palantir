@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies.auth import CurrentUser
 from app.dependencies.db import DbSession
-from app.dependencies.events import can_scan, get_event_or_404
+from app.dependencies.events import can_scan
 from app.errors import api_error
 from app.models import CheckIn, Event, EventStatus, Ticket, User
 from app.schemas.check_in import CheckInReceipt, CheckInRequest
@@ -53,7 +53,11 @@ def _ticket_taken(db: Session, request_id: uuid.UUID, event: Event, user: User, 
 
 @router.post("/events/{event_id}/check-in", response_model=CheckInReceipt)
 def check_in(event_id: int, payload: CheckInRequest, db: DbSession, current_user: CurrentUser):
-    event = get_event_or_404(db, event_id)
+    # FOR SHARE until commit: a concurrent cancel or publish (an UPDATE of this row) waits for this scan,
+    # so its status and access checks see one consistent state. Parallel scans do not block each other.
+    event = db.scalar(select(Event).where(Event.id == event_id).with_for_update(read=True))
+    if event is None:
+        raise api_error(status.HTTP_404_NOT_FOUND, "EVENT_NOT_FOUND", "Event not found")
     # Checked before the replay lookup so revoked staff cannot read receipts through retries.
     if not can_scan(db, event, current_user):
         raise api_error(status.HTTP_403_FORBIDDEN, "FORBIDDEN", "You are not staff for this event")
