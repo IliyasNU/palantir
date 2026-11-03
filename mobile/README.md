@@ -14,6 +14,12 @@ The repository had no mobile source in `main` or `recovery/backend` at commit `0
 - Tokens stay in memory. Restarting the app or an expired token requires signing in again. No automatic refresh in this first version.
 - Physical-phone testing and the full web-ticket → mobile-check-in flow are still pending.
 
+### First follow-up: access errors
+
+The client distinguishes an expired session (`401 / UNAUTHORIZED`) from forbidden access (`403 / FORBIDDEN`). A 401 while loading staff events returns to sign-in. A 403 preserves the session; on the scanner, return to events and ask the organizer to check the assignment. All 5xx responses, including 501, remain unconfirmed server errors. API tests cover these cases, malformed event lists, and error responses containing receipt-shaped data.
+
+This is the first follow-up increment, not a completed integration. Protecting pending requests from Scan next / Back, recovering them through reauthentication, and testing real tickets on a physical phone remain separate work. In particular, resolve an uncertain check-in with the organizer before leaving the scanner; a later 403 does not establish whether an earlier lost response committed.
+
 Backend code, migrations, web pages and CI are outside this change.
 
 ## Run on a phone

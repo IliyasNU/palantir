@@ -56,7 +56,7 @@ Return the same receipt for an authorized retry of the same request ID, actor, e
 | 409 | `ALREADY_CHECKED_IN` | Ticket already used |
 | 404 | `INVALID_TICKET` | Unknown QR or wrong event |
 | 401 | Any / existing string detail | `UNAUTHORIZED`, sign in again |
-| 403 | Any / existing string detail | `UNAUTHORIZED`, no access |
+| 403 | Any / existing string detail | `FORBIDDEN`, no access; keep the session |
 | 409 | Other, e.g. `EVENT_CANCELLED` | Rejected, show message |
 | 5xx | Any | Unconfirmed server error; retry possible |
 | No response / timeout | — | `NETWORK_ERROR`; never successful |
@@ -68,5 +68,7 @@ Example error:
 ```
 
 An unknown route (`404` with `detail: "Not Found"`) is shown as unavailable, not as an invalid ticket. Successful status alone is insufficient: the mobile client also requires `CHECKED_IN`, the matching event/request ID, a ticket ID and a timestamp.
+
+For both staff events and check-in, HTTP status determines authentication handling: 401 requires signing in again; 403 keeps the token and asks the organizer to check access. A 403 from check-in offers a return to events rather than another scan. All 5xx responses, including 501, remain unconfirmed server errors; no error response can become a successful admission even if its JSON body resembles a receipt.
 
 The backend team owns atomic check-in, duplicate protection, event/staff permissions and database storage. Mobile-side frame blocking cannot replace those checks. Confirm the above contract before describing the full flow as integrated.
