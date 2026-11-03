@@ -1,3 +1,4 @@
+import json
 import time
 from datetime import timedelta
 
@@ -233,3 +234,26 @@ def test_lone_surrogate_in_input_is_422_not_500(client):
     response = client.post("/auth/register", content=raw, headers={"Content-Type": "application/json"})
     assert response.status_code == 422
     assert response.json()["detail"][0]["loc"] == ["body", "full_name"]
+
+
+
+def _strict_json(text):
+    def reject(constant):
+        raise ValueError(f"non-standard JSON constant {constant}")
+
+    return json.loads(text, parse_constant=reject)
+
+
+@pytest.mark.parametrize(
+    ("content", "content_type"),
+    [
+        (b"\xff", "application/octet-stream"),
+        (b'{"email": 1e400, "password": "x"}', "application/json"),
+        (b'{"email": "bad\\ud800@example.com", "password": "x"}', "application/json"),
+    ],
+)
+def test_malformed_input_gets_a_valid_json_422(client, content, content_type):
+    response = client.post("/auth/login", content=content, headers={"Content-Type": content_type})
+    assert response.status_code == 422
+    body = _strict_json(response.text)
+    assert all("input" not in error for error in body["detail"])

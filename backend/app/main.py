@@ -36,8 +36,13 @@ app.add_middleware(
 
 @app.exception_handler(RequestValidationError)
 def reject_invalid_request(request: Request, exc: RequestValidationError) -> Response:
-    """FastAPI's default 422 body, ASCII-escaped: echoed input may hold lone surrogates that UTF-8 cannot encode."""
-    body = json.dumps({"detail": jsonable_encoder(exc.errors())}, ensure_ascii=True)
+    """FastAPI's default 422 body without the echoed ``input``.
+
+    Raw input may be bytes, lone surrogates or 1e400 (Infinity), none of which encode to valid JSON.
+    Clients only use ``loc`` and ``msg``.
+    """
+    errors = [{key: value for key, value in error.items() if key != "input"} for error in exc.errors()]
+    body = json.dumps({"detail": jsonable_encoder(errors)}, ensure_ascii=True, allow_nan=False)
     return Response(body, status_code=422, media_type="application/json")
 
 
