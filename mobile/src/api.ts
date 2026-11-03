@@ -47,8 +47,11 @@ function object(value: unknown): value is Record<string, unknown> {
 function httpError(status: number, body: unknown) {
   const detail = object(body) ? body.detail : undefined;
   const code = object(detail) && typeof detail.code === 'string' ? detail.code : '';
-  if (status === 401 || status === 403) {
-    return new ApiError('UNAUTHORIZED', status === 401 ? 'Sign in again to continue.' : 'You do not have access to this event.', status);
+  if (status === 401) {
+    return new ApiError('UNAUTHORIZED', 'Sign in again to continue.', status);
+  }
+  if (status === 403) {
+    return new ApiError('FORBIDDEN', 'You do not have access to this event. Ask the organizer to check your assignment.', status);
   }
   if (status === 409 && code === 'ALREADY_CHECKED_IN') {
     return new ApiError(code, 'This ticket has already been used.', status);
@@ -56,7 +59,7 @@ function httpError(status: number, body: unknown) {
   if (status === 404 && code === 'INVALID_TICKET') {
     return new ApiError(code, 'This QR is not a valid ticket for this event.', status);
   }
-  if (status === 404 || status === 405 || status === 501) {
+  if (status === 404 || status === 405) {
     return new ApiError('NOT_AVAILABLE', 'This feature is not available on the backend yet.', status);
   }
   if (status >= 500) {
