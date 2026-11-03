@@ -3,9 +3,9 @@ import json
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import DataError
-from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.auth.router import router as auth_router
