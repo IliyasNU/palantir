@@ -47,12 +47,52 @@ test('HTTP errors distinguish duplicate, invalid ticket and access problems', as
     [409, 'ALREADY_CHECKED_IN', 'ALREADY_CHECKED_IN'],
     [404, 'INVALID_TICKET', 'INVALID_TICKET'],
     [401, '', 'UNAUTHORIZED'],
-    [403, '', 'UNAUTHORIZED'],
+    [403, '', 'FORBIDDEN'],
+    [501, '', 'SERVER_ERROR'],
     [503, '', 'SERVER_ERROR'],
   ] as const) {
     const api = createApi(base, reply({ detail: { code: serverCode } }, status));
     await assert.rejects(api.checkIn('access', 7, scan), code(expected));
   }
+});
+
+test('staff events distinguish expired authentication from forbidden access', async () => {
+  for (const detail of ['Access denied', { code: 'UNAUTHORIZED', message: 'Access denied' }]) {
+    for (const status of [401, 403]) {
+      const api = createApi(base, reply({ detail }, status));
+      await assert.rejects(api.events('access'), (error: unknown) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.status, status);
+        assert.equal(error.code, status === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN');
+        assert.match(error.message, status === 401 ? /Sign in again/ : /organizer/);
+        return true;
+      });
+    }
+  }
+});
+
+test('a forbidden check-in never returns an admission receipt', async () => {
+  const api = createApi(base, reply(receipt, 403));
+  await assert.rejects(api.checkIn('access', 7, scan), (error: unknown) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.status, 403);
+    assert.equal(error.code, 'FORBIDDEN');
+    return true;
+  });
+});
+
+test('all server failures stay unconfirmed even when the body claims success', async () => {
+  for (const status of [500, 501, 502, 503, 504]) {
+    await assert.rejects(createApi(base, reply(receipt, status)).checkIn('access', 7, scan), code('SERVER_ERROR'));
+  }
+});
+
+test('a malformed event list is an error instead of an empty assignment', async () => {
+  const event = { id: 7, title: 'Event', date: '2026-11-03T12:00:00Z', location: 'Hall' };
+  for (const body of [null, {}, { events: [] }, [null], [{ ...event, id: 0 }], [{ ...event, date: 'invalid' }]]) {
+    await assert.rejects(createApi(base, reply(body)).events('access'), code('SERVER_ERROR'));
+  }
+  assert.deepEqual(await createApi(base, reply([event])).events('access'), [event]);
 });
 
 test('a 2xx response with missing or mismatched receipt data is never success', async () => {
