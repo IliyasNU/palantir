@@ -160,7 +160,9 @@ erDiagram
   retries included, so revoked staff get `403`.
 * New endpoints report errors as `{"detail": {"code": "...", "message": "..."}}`. Codes: `EVENT_NOT_FOUND`,
   `EVENT_NOT_PUBLISHED`, `EVENT_CANCELLED`, `SOLD_OUT`, `CAPACITY_BELOW_ISSUED`, `TICKET_NOT_FOUND`,
-  `USER_NOT_FOUND`, `FORBIDDEN`, `INVALID_TICKET`, `ALREADY_CHECKED_IN`, `REQUEST_ID_CONFLICT`.
+  `USER_NOT_FOUND`, `STAFF_CHANGED`, `FORBIDDEN`, `INVALID_TICKET`, `ALREADY_CHECKED_IN`, `REQUEST_ID_CONFLICT`.
+* Values PostgreSQL refuses to store (NUL characters, ids beyond its integer range) return
+  `422 INVALID_INPUT` on every endpoint instead of a 500.
 
 ## Not built yet
 

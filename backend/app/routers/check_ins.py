@@ -68,7 +68,9 @@ def check_in(event_id: int, payload: CheckInRequest, db: DbSession, current_user
     if event.status == EventStatus.DRAFT.value:
         raise api_error(status.HTTP_409_CONFLICT, "EVENT_NOT_PUBLISHED", "Event is not published yet")
 
-    ticket = db.scalar(select(Ticket).where(Ticket.qr_payload == payload.qr_payload, Ticket.event_id == event.id))
+    ticket = None
+    if "\x00" not in payload.qr_payload:  # PostgreSQL text cannot hold NUL, so no ticket can match it
+        ticket = db.scalar(select(Ticket).where(Ticket.qr_payload == payload.qr_payload, Ticket.event_id == event.id))
     if ticket is None:
         raise api_error(status.HTTP_404_NOT_FOUND, "INVALID_TICKET", "Unknown ticket or ticket for another event")
     if ticket.check_in is not None:

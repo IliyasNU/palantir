@@ -249,3 +249,10 @@ def test_database_allows_one_check_in_per_ticket(client, db, setup):
     with pytest.raises(IntegrityError):
         db.commit()
     db.rollback()
+
+
+def test_qr_with_a_nul_character_is_an_invalid_ticket(client, db, setup):
+    response = scan(client, setup["event"]["id"], "bad\x00qr", setup["staff"])
+    assert response.status_code == 404
+    assert detail_code(response) == "INVALID_TICKET"
+    assert check_in_count(db) == 0

@@ -1,5 +1,10 @@
 """Per-event staff assignment and the scanner's event list."""
 import pytest
+from sqlalchemy import delete
+from sqlalchemy import event as sa_event
+from sqlalchemy.orm import Session
+
+from app.models import EventStaff
 
 from tests.helpers import future_iso
 
@@ -65,6 +70,8 @@ def test_only_owner_or_admin_manages_staff(client, login_as, owner, new_event):
 
     for headers, expected in ((staff, 403), (other, 403), ({}, 401)):
         assert client.get(base, headers=headers).status_code == expected
+        if expected == 403:
+            assert detail_code(client.get(base, headers=headers)) == "FORBIDDEN"
         assert assign(client, event["id"], "staff@example.com", headers).status_code == expected
         assert client.delete(f"{base}/{staff_user.id}", headers=headers).status_code == expected
 
@@ -126,3 +133,29 @@ def test_owner_sees_own_events_and_admin_sees_all(client, login_as, owner, new_e
 
 def test_staff_events_needs_login(client):
     assert client.get("/staff/events").status_code == 401
+
+
+def test_assignment_answers_even_if_revoked_right_after_commit(client, login_as, owner, new_event, session_factory):
+    """Race found in review: a revoke landing between the assignment commit and its response."""
+    staff_user, _ = login_as("staff@example.com")
+    event = new_event(owner)
+
+    fired = []
+
+    def revoke_once(session):
+        if fired:
+            return
+        fired.append(True)
+        with session_factory() as other:
+            other.execute(delete(EventStaff).where(EventStaff.user_id == staff_user.id))
+            other.commit()
+
+    sa_event.listen(Session, "after_commit", revoke_once)
+    try:
+        response = assign(client, event["id"], "staff@example.com", owner)
+    finally:
+        sa_event.remove(Session, "after_commit", revoke_once)
+    assert fired
+    assert response.status_code == 201, response.text
+    assert response.json()["user_id"] == staff_user.id
+    assert client.get(f"/events/{event['id']}/staff", headers=owner).json() == []

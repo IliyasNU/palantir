@@ -9,7 +9,10 @@ def to_utc(value: datetime) -> datetime:
     """Naive datetimes are assumed to be UTC; aware ones are converted to UTC."""
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+    try:
+        return value.astimezone(timezone.utc)
+    except OverflowError as exc:
+        raise ValueError("date is out of the supported range") from exc
 
 
 def blank_to_none(value: Any) -> Any:

@@ -1,4 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DataError
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
@@ -25,6 +27,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+
+@app.exception_handler(DataError)
+def reject_unstorable_input(request: Request, exc: DataError) -> JSONResponse:
+    """PostgreSQL refused a value Pydantic let through (NUL characters, ids beyond its integer range)."""
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": {"code": "INVALID_INPUT", "message": "The request contains a value that cannot be stored"}},
+    )
+
 
 app.include_router(health.router)
 app.include_router(auth_router)

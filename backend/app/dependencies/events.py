@@ -1,7 +1,7 @@
 """Loading events and deciding who may manage or scan them."""
 from typing import Optional
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -24,7 +24,7 @@ def can_manage(event: Event, user: User) -> bool:
 
 def ensure_can_manage(event: Event, user: User) -> None:
     if not can_manage(event, user):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only manage your own events")
+        raise api_error(status.HTTP_403_FORBIDDEN, "FORBIDDEN", "You can only manage your own events")
 
 
 def can_scan(db: Session, event: Event, user: User) -> bool:

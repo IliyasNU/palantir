@@ -165,3 +165,22 @@ def test_capacity_cannot_drop_below_issued_tickets(client, login_as, new_event, 
     response = client.patch(f"/events/{event['id']}", json={"capacity": 2}, headers=owner)
     assert response.status_code == 200
     assert response.json()["capacity"] == 2
+
+
+def test_date_outside_the_utc_range_is_422_not_500(client, login_as):
+    _, headers = login_as("org@example.com", "organizer")
+    payload = {"title": "Edge event", "date": "0001-01-01T00:00:00+01:00", "location": "Hall", "capacity": 5}
+    assert client.post("/events", json=payload, headers=headers).status_code == 422
+
+
+def test_management_403_carries_a_code(client, login_as, new_event):
+    _, owner = login_as("owner@example.com", "organizer")
+    _, attendee = login_as("att@example.com")
+    event = new_event(owner)
+    for response in (
+        client.post(f"/events/{event['id']}/publish", headers=attendee),
+        client.post(f"/events/{event['id']}/cancel", headers=attendee),
+        client.patch(f"/events/{event['id']}", json={"title": "Other title"}, headers=attendee),
+    ):
+        assert response.status_code == 403
+        assert response.json() == {"detail": {"code": "FORBIDDEN", "message": "You can only manage your own events"}}

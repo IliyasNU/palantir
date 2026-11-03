@@ -43,16 +43,22 @@ def assign_staff(event_id: int, payload: StaffAssign, db: DbSession, current_use
     if user is None:
         raise api_error(status.HTTP_404_NOT_FOUND, "USER_NOT_FOUND", "No user with this email")
 
-    if _find_assignment(db, event.id, user.id) is not None:
+    assignment = _find_assignment(db, event.id, user.id)
+    if assignment is not None:
         response.status_code = status.HTTP_200_OK
-    else:
-        db.add(EventStaff(event_id=event.id, user_id=user.id))
-        try:
-            db.commit()
-        except IntegrityError:  # assigned concurrently
-            db.rollback()
-            response.status_code = status.HTTP_200_OK
-    return StaffRead.from_assignment(_find_assignment(db, event.id, user.id))
+        return StaffRead.from_assignment(assignment)
+
+    assignment = EventStaff(event_id=event.id, user=user)
+    db.add(assignment)
+    try:
+        db.commit()
+    except IntegrityError:  # assigned concurrently
+        db.rollback()
+        assignment = _find_assignment(db, event.id, user.id)
+        if assignment is None:  # ...and already revoked again
+            raise api_error(status.HTTP_409_CONFLICT, "STAFF_CHANGED", "Staff changed concurrently, please retry")
+        response.status_code = status.HTTP_200_OK
+    return StaffRead.from_assignment(assignment)
 
 
 @router.delete("/events/{event_id}/staff/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

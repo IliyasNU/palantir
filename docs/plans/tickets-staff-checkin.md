@@ -20,6 +20,11 @@ Results (2026-11-03): 151 SQLite tests and 16 PostgreSQL end-to-end tests pass; 
 A deliberately broken seat guard (read-then-write) was caught by the e2e suite: 20 tickets sold for 5 seats.
 The e2e suite also found a real race, now fixed with a regression test: a parallel retry of the same scan could get `ALREADY_CHECKED_IN` instead of its receipt.
 
+Independent Codex review (2026-11-04) reproduced four defects, all fixed with regression tests:
+a staff assignment answering 500 when revoked right after its commit, NUL characters and out-of-range ids
+reaching PostgreSQL as 500s, dates whose UTC conversion overflows as 500, and management 403s without a code.
+After the fixes: 155 SQLite tests and 20 PostgreSQL end-to-end tests pass.
+
 ## Open with the team
 
 - `mobile/API.md` still marks `/staff/events` and check-in as proposed; Iliyas can mark them implemented.
