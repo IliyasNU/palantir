@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Button, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { randomUUID } from 'expo-crypto';
-import { Redirect, useIsFocused, useLocalSearchParams } from 'expo-router';
+import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { api } from '../api';
 import { createScanner, type ScanResult } from '../scanner';
 import { useSession } from '../session';
@@ -68,7 +68,9 @@ export default function ScanScreen() {
           {retryable && <Button title="Retry this check-in" onPress={() => show(scanner.retry())} />}
           {result.error?.code === 'UNAUTHORIZED'
             ? <Button title="Sign in again" onPress={() => setToken(null)} />
-            : <Button title="Scan next ticket" onPress={() => { scanner.next(); setResult(null); }} />}
+            : result.error?.code === 'FORBIDDEN'
+              ? <Button title="Back to events" onPress={() => router.replace('/events')} />
+              : <Button title="Scan next ticket" onPress={() => { scanner.next(); setResult(null); }} />}
         </View>
       )}
     </ScrollView>

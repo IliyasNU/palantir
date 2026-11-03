@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Button, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { api, type StaffEvent } from '../api';
+import { api, ApiError, type StaffEvent } from '../api';
 import { useSession } from '../session';
 
 export default function EventsScreen() {
@@ -16,10 +16,18 @@ export default function EventsScreen() {
     if (!token) return;
     let active = true;
     api.events(token).then(items => { if (active) setEvents(items); })
-      .catch(problem => { if (active) setError(problem instanceof Error ? problem.message : 'Could not load events.'); })
+      .catch(problem => {
+        if (!active) return;
+        setEvents([]);
+        if (problem instanceof ApiError && problem.status === 401) {
+          setToken(null);
+          return;
+        }
+        setError(problem instanceof Error ? problem.message : 'Could not load events.');
+      })
       .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
-  }, [token, reload]);
+  }, [token, reload, setToken]);
 
   if (!token) return <Redirect href="/" />;
   return (
