@@ -20,11 +20,15 @@ Results (2026-11-03): 151 SQLite tests and 16 PostgreSQL end-to-end tests pass; 
 A deliberately broken seat guard (read-then-write) was caught by the e2e suite: 20 tickets sold for 5 seats.
 The e2e suite also found a real race, now fixed with a regression test: a parallel retry of the same scan could get `ALREADY_CHECKED_IN` instead of its receipt.
 
-Independent Codex review, three rounds (2026-11-04); every reproduced defect is fixed with a regression test.
+Independent Codex review, six rounds (2026-11-04); every reproduced defect is fixed with a regression test.
 Round 1: staff assignment 500 on a concurrent revoke, NUL characters and out-of-range ids reaching PostgreSQL, UTC overflow dates, management 403s without a code.
 Round 2: lone Unicode surrogates made the 422 response itself fail with 500.
 Round 3: binary bodies (500) and `1e400` (`Infinity`, invalid JSON) in 422 bodies; the 422 body no longer echoes `input`.
-Final state: 159 SQLite tests, 21 PostgreSQL end-to-end tests and `scripts/smoke_check.py` pass.
+Round 4: no new defect.
+Round 5: check-in combined an old event status with a newer staff assignment (cancel, then assign, mid-scan); check-in now holds the event row `FOR SHARE` until commit.
+Round 6: no new defect; ten forced PostgreSQL interleavings around the lock behaved as documented.
+Guarantee: cancel and publish wait for in-flight scans; staff revocation applies to later requests and does not drain scans already authorized.
+Final state: 159 SQLite tests, 22 PostgreSQL end-to-end tests and `scripts/smoke_check.py` pass.
 Not covered by review: device/browser runs, endurance load, database-outage injection.
 
 ## Open with the team

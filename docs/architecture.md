@@ -158,6 +158,8 @@ erDiagram
   (same staff, event and QR) returns it, any other reuse is `409 REQUEST_ID_CONFLICT`. The unique `ticket_id`
   makes a second admission impossible even when two phones scan at once. Access is checked on every request,
   retries included, so revoked staff get `403`.
+* Check-in holds the event row `FOR SHARE` until it commits, so a cancel or publish waits for scans in flight and a scan
+  never mixes an old event status with newer staff access. Parallel scans do not block each other.
 * New endpoints report errors as `{"detail": {"code": "...", "message": "..."}}`. Codes: `EVENT_NOT_FOUND`,
   `EVENT_NOT_PUBLISHED`, `EVENT_CANCELLED`, `SOLD_OUT`, `CAPACITY_BELOW_ISSUED`, `TICKET_NOT_FOUND`,
   `USER_NOT_FOUND`, `STAFF_CHANGED`, `FORBIDDEN`, `INVALID_TICKET`, `ALREADY_CHECKED_IN`, `REQUEST_ID_CONFLICT`.
