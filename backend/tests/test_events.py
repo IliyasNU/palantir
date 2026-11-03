@@ -106,11 +106,13 @@ def test_owner_can_read_event(client, create_user, auth_header):
     assert response.json()["id"] == event_id
 
 
-def test_other_organizer_cannot_read_event(client, create_user, auth_header):
+def test_other_organizer_cannot_see_a_draft(client, create_user, auth_header):
     _, owner_headers = make_organizer(create_user, auth_header, "owner@example.com")
     _, other_headers = make_organizer(create_user, auth_header, "other@example.com")
     event_id = create_event(client, owner_headers)["id"]
-    assert client.get(f"/events/{event_id}", headers=other_headers).status_code == 403
+    response = client.get(f"/events/{event_id}", headers=other_headers)
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "EVENT_NOT_FOUND"
 
 
 def test_admin_can_read_any_event(client, create_user, auth_header):

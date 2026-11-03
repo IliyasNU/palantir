@@ -55,5 +55,19 @@ class EventRead(BaseModel):
     date: UTCDateTime
     location: str
     capacity: int
+    status: str
+    tickets_issued: int
     created_at: UTCDateTime
     updated_at: UTCDateTime
+
+
+class EventSummary(BaseModel):
+    """The event fields a ticket or a scanner needs."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    date: UTCDateTime
+    location: str
+    status: str

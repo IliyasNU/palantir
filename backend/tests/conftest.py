@@ -23,7 +23,7 @@ from app.db.seed import seed_roles  # noqa: E402
 from app.db.session import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Role, User  # noqa: E402
-from tests.helpers import DEFAULT_PASSWORD  # noqa: E402
+from tests.helpers import DEFAULT_PASSWORD, event_payload  # noqa: E402
 
 
 @pytest.fixture()
@@ -105,3 +105,31 @@ def auth_header(client):
         return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
     return _header
+
+
+@pytest.fixture()
+def login_as(create_user, auth_header):
+    """Create a user with ``role`` and return ``(user, Authorization header)``."""
+
+    def _login(email, role="attendee"):
+        user = create_user(email, role=role)
+        return user, auth_header(email)
+
+    return _login
+
+
+@pytest.fixture()
+def new_event(client):
+    """Create an event through the API; published unless ``publish=False``."""
+
+    def _new(headers, publish=True, **overrides):
+        response = client.post("/events", json=event_payload(**overrides), headers=headers)
+        assert response.status_code == 201, response.text
+        event = response.json()
+        if publish:
+            response = client.post(f"/events/{event['id']}/publish", headers=headers)
+            assert response.status_code == 200, response.text
+            event = response.json()
+        return event
+
+    return _new

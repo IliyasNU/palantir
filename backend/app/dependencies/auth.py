@@ -1,5 +1,5 @@
 """Resolve the logged-in user from the ``Authorization: Bearer <access token>`` header."""
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -10,6 +10,7 @@ from app.models import User
 
 # `tokenUrl` makes the "Authorize" button in /docs log in through POST /auth/token.
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
+optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
 
 
 def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: DbSession) -> User:
@@ -27,4 +28,12 @@ def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: DbSessio
     return user
 
 
+def get_optional_user(
+    token: Annotated[Optional[str], Depends(optional_oauth2_scheme)], db: DbSession
+) -> Optional[User]:
+    """For public endpoints: anonymous callers get None, but a bad token is still a 401."""
+    return None if token is None else get_current_user(token, db)
+
+
 CurrentUser = Annotated[User, Depends(get_current_user)]
+OptionalUser = Annotated[Optional[User], Depends(get_optional_user)]

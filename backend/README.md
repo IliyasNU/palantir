@@ -3,7 +3,8 @@
 FastAPI + PostgreSQL (SQLAlchemy, Alembic). Architecture and data model: [`../docs/architecture.md`](../docs/architecture.md).
 
 **Implemented:** authentication (register / login / refresh, JWT + bcrypt), role-based access control
-(`admin`, `organizer`, `attendee`), organizer profiles (create / view / update), event creation and editing.
+(`admin`, `organizer`, `attendee`), organizer profiles (create / view / update), events (create, edit, publish,
+cancel, public listing), free tickets with QR payloads, per-event staff, and idempotent ticket check-in.
 
 ## Run everything with Docker (recommended)
 
@@ -38,6 +39,21 @@ pytest                               # all tests
 pytest tests/test_auth.py -v         # one file
 pytest --cov=app --cov-report=term-missing
 ```
+
+## End-to-end tests against PostgreSQL
+
+`tests/` runs in-process on SQLite. `e2e/` drives the running API over HTTP and checks rows in PostgreSQL:
+the mobile MVP run (login, staff access, ticket, scan, retries, lost response) and real concurrency
+(last seat, two phones on one ticket, parallel retries).
+
+```bash
+# from the repository root, with `docker compose up --build -d` running
+docker compose exec -e E2E_BASE_URL=http://localhost:8000 \
+  -e E2E_DATABASE_URL=postgresql+psycopg://palantir:palantir@db:5432/palantir \
+  backend pytest e2e
+```
+
+The suite registers users with random e-mails, so it can run repeatedly on the same database.
 
 ## Run the API locally against your own PostgreSQL
 

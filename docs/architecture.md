@@ -27,11 +27,12 @@ flowchart LR
 main.py              FastAPI app, CORS, router registration
 core/config.py       settings from environment variables
 db/                  engine + session (session.py), declarative base (base.py), role seeding (seed.py)
-models/              SQLAlchemy models: role, user, organizer_profile, event
+models/              SQLAlchemy models: role, user, organizer_profile, event, ticket, event_staff, check_in
 schemas/             Pydantic request/response models (validation lives here)
 auth/                security.py (bcrypt + JWT), service.py (logic), router.py (/auth/*)
-dependencies/        auth.py (current user), roles.py (RBAC), db.py (session)
-routers/             organizer_profiles.py, events.py, health.py
+dependencies/        auth.py (current user), roles.py (RBAC), events.py (event access), db.py (session)
+errors.py            api_error(): {"detail": {"code", "message"}} for clients that branch on codes
+routers/             organizer_profiles.py, events.py, tickets.py, staff.py, check_ins.py, health.py
 ```
 
 Request flow: **router → dependencies (token → user → role check) → model/DB**. Routers contain no
@@ -44,6 +45,11 @@ erDiagram
     ROLES ||--o{ USERS : "assigned to"
     USERS ||--o| ORGANIZER_PROFILES : "has (organizers)"
     USERS ||--o{ EVENTS : "organizes"
+    EVENTS ||--o{ TICKETS : "issues"
+    USERS ||--o{ TICKETS : "holds"
+    EVENTS ||--o{ EVENT_STAFF : "staffed by"
+    USERS ||--o{ EVENT_STAFF : "scans at"
+    TICKETS ||--o| CHECK_INS : "admitted once"
 
     ROLES {
         int id PK
@@ -78,10 +84,34 @@ erDiagram
         datetime date "start, UTC"
         string location
         int capacity "> 0"
+        string status "draft | published | cancelled"
+        int tickets_issued "0..capacity"
         datetime created_at
         datetime updated_at
     }
+    TICKETS {
+        int id PK
+        int event_id FK
+        int attendee_id FK
+        string qr_payload UK "biletflow:ticket:v1:<random>"
+        datetime created_at
+    }
+    EVENT_STAFF {
+        int event_id PK
+        int user_id PK
+        datetime created_at
+    }
+    CHECK_INS {
+        int id PK
+        int ticket_id FK,UK "one admission per ticket"
+        int event_id FK
+        int staff_id FK
+        uuid request_id UK "idempotency key"
+        datetime checked_in_at
+    }
 ```
+
+`tickets` is also unique on (`event_id`, `attendee_id`): one free ticket per person per event.
 
 ## Authentication and roles
 
@@ -97,9 +127,16 @@ erDiagram
 | Endpoint | Who |
 |---|---|
 | `GET /health`, `POST /auth/register`, `POST /auth/login`, `POST /auth/token`, `POST /auth/refresh` | anyone |
+| `GET /events`, `GET /events/{id}` (published or cancelled) | anyone |
+| `GET /events/{id}` (draft) | the event's organizer, or an admin |
 | `GET /auth/me`, `GET /organizer-profiles/{id}` | any logged-in user |
-| `POST /organizer-profiles`, `GET /organizer-profiles/me`, `PUT\|PATCH /organizer-profiles/me`, `POST /events` | organizer |
-| `GET /events/{id}`, `PUT\|PATCH /events/{id}` | the event's organizer, or an admin |
+| `POST /events/{id}/tickets`, `GET /tickets/me`, `GET /tickets/{id}` (own) | any logged-in user |
+| `GET /staff/events` | any logged-in user (lists what they may scan; may be `[]`) |
+| `POST /organizer-profiles`, `GET /organizer-profiles/me`, `PUT\|PATCH /organizer-profiles/me` | organizer |
+| `POST /events`, `GET /events/mine` | organizer |
+| `PUT\|PATCH /events/{id}`, `POST /events/{id}/publish`, `POST /events/{id}/cancel` | the event's organizer, or an admin |
+| `GET\|POST /events/{id}/staff`, `DELETE /events/{id}/staff/{user_id}` | the event's organizer, or an admin |
+| `POST /events/{id}/check-in` | the event's assigned staff, its organizer, or an admin |
 
 ## Design decisions
 
@@ -111,7 +148,20 @@ erDiagram
 * **Tests use in-memory SQLite**, the app targets PostgreSQL. Models avoid PostgreSQL-only types so both work;
   `tests/test_migrations.py` checks that the Alembic migration applies and rolls back cleanly.
 
-## Not built yet (planned for the next iterations)
+## Tickets and check-in
 
-Event listing/search and publishing, ticket creation and QR codes, mobile check-in endpoints, a shared
-staging deployment.
+* Events start as `draft`, become `published` (ticketing and check-in open) and can be `cancelled` (final).
+  Publishing is a conditional update, so it can never overwrite a concurrent cancel.
+* Claiming a ticket takes a seat with one atomic `UPDATE events SET tickets_issued = tickets_issued + 1
+  WHERE ... AND tickets_issued < capacity`; the check constraint backs it up. No explicit locks.
+* Check-in follows `mobile/API.md`. The `check_ins` row is the receipt: resending the same `request_id`
+  (same staff, event and QR) returns it, any other reuse is `409 REQUEST_ID_CONFLICT`. The unique `ticket_id`
+  makes a second admission impossible even when two phones scan at once. Access is checked on every request,
+  retries included, so revoked staff get `403`.
+* New endpoints report errors as `{"detail": {"code": "...", "message": "..."}}`. Codes: `EVENT_NOT_FOUND`,
+  `EVENT_NOT_PUBLISHED`, `EVENT_CANCELLED`, `SOLD_OUT`, `CAPACITY_BELOW_ISSUED`, `TICKET_NOT_FOUND`,
+  `USER_NOT_FOUND`, `FORBIDDEN`, `INVALID_TICKET`, `ALREADY_CHECKED_IN`, `REQUEST_ID_CONFLICT`.
+
+## Not built yet
+
+Paid tickets, offline check-in, pagination and search for event lists, a shared staging deployment.
