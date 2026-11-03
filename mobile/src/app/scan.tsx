@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Button, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, BackHandler, Button, Linking, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { randomUUID } from 'expo-crypto';
-import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
-import { api } from '../api';
-import { createScanner, type ScanResult } from '../scanner';
+import { Redirect, Stack, router, useIsFocused, useLocalSearchParams } from 'expo-router';
+import { api, ApiError } from '../api';
+import { createScanSession, type ScanResult } from '../scanner';
 import { useSession } from '../session';
 
 export default function ScanScreen() {
@@ -18,13 +18,33 @@ export default function ScanScreen() {
   const [active, setActive] = useState(AppState.currentState === 'active');
   const focused = useIsFocused();
   const mounted = useRef(true);
-  const scanner = useMemo(() => createScanner(body => api.checkIn(token || '', eventId, body), randomUUID), [token, eventId]);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
+  const loginLock = useRef(false);
+  const scanSession = useMemo(() => createScanSession(
+    (currentToken, body) => api.checkIn(currentToken, eventId, body), randomUUID,
+  ), [eventId]);
+  const scanner = scanSession.scanner;
+
+  useEffect(() => { scanSession.setToken(token || ''); }, [scanSession, token]);
 
   useEffect(() => {
     mounted.current = true;
     const subscription = AppState.addEventListener('change', state => setActive(state === 'active'));
     return () => { mounted.current = false; subscription.remove(); };
   }, []);
+
+  useEffect(() => {
+    if (!focused) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!scanner.mustResolve() && !loginLock.current) return false;
+      Alert.alert('Check-in is unconfirmed', 'Resolve this request before leaving. Do not admit the attendee yet.');
+      return true;
+    });
+    return () => subscription.remove();
+  }, [focused, scanner]);
 
   function show(promise: Promise<ScanResult> | null) {
     if (!promise) return;
@@ -35,13 +55,36 @@ export default function ScanScreen() {
     });
   }
 
+  async function reauthenticate() {
+    if (loginLock.current || !loginEmail.trim() || !loginPassword) return;
+    loginLock.current = true;
+    setLoggingIn(true);
+    setLoginError('');
+    try {
+      const freshToken = await api.login(loginEmail, loginPassword);
+      if (!mounted.current) return;
+      scanSession.setToken(freshToken);
+      setToken(freshToken);
+      setLoginPassword('');
+      show(scanner.retry());
+    } catch (problem) {
+      if (mounted.current) setLoginError(problem instanceof ApiError && problem.status === 401
+        ? 'Incorrect email or password.' : 'Could not sign in. Try again.');
+    } finally {
+      loginLock.current = false;
+      if (mounted.current) setLoggingIn(false);
+    }
+  }
+
   if (!token) return <Redirect href="/" />;
   if (!Number.isInteger(eventId) || eventId < 1) return <Redirect href="/events" />;
-  const canScan = permission?.granted && focused && active && !busy && !result && !cameraError;
-  const retryable = result?.error && ['NETWORK_ERROR', 'SERVER_ERROR'].includes(result.error.code);
+  const canScan = permission?.granted && focused && active && !busy && !loggingIn && !result && !cameraError;
+  const mustStay = busy || scanner.mustResolve() || loggingIn;
+  const retryable = result?.error && scanner.mustResolve() && result.error.status !== 401 && result.error.status !== 403;
 
   return (
     <ScrollView contentContainerStyle={styles.page}>
+      <Stack.Screen options={{ headerBackVisible: !mustStay, gestureEnabled: !mustStay }} />
       <Text style={styles.title}>{title || 'Selected event'}</Text>
       <Text style={styles.hint}>Point the camera at the attendee’s ticket QR.</Text>
       {!permission && <Text>Checking camera permission…</Text>}
@@ -64,13 +107,26 @@ export default function ScanScreen() {
           <Text style={styles.resultTitle}>{result.receipt ? 'CHECKED_IN' : result.error.code}</Text>
           <Text>{result.receipt ? 'Check-in confirmed. The attendee can enter.' : result.error.message}</Text>
           {retryable && <Text>Check-in is unconfirmed. Retry before admitting the attendee.</Text>}
+          {result.error && scanner.mustResolve() && !retryable && <Text>The earlier check-in is still unconfirmed. Do not admit the attendee.</Text>}
           {result.receipt && <Text>Ticket #{result.receipt.ticket_id} · {new Date(result.receipt.checked_in_at).toLocaleTimeString()}</Text>}
           {retryable && <Button title="Retry this check-in" onPress={() => show(scanner.retry())} />}
-          {result.error?.code === 'UNAUTHORIZED'
-            ? <Button title="Sign in again" onPress={() => setToken(null)} />
-            : result.error?.code === 'FORBIDDEN'
-              ? <Button title="Back to events" onPress={() => router.replace('/events')} />
-              : <Button title="Scan next ticket" onPress={() => { scanner.next(); setResult(null); }} />}
+          {result.error?.status === 401 && <View style={styles.box}>
+            <Text>Sign in again with the same staff account to retry this request.</Text>
+            <TextInput accessibilityLabel="Staff email" value={loginEmail} onChangeText={setLoginEmail}
+              autoCapitalize="none" autoCorrect={false} keyboardType="email-address" editable={!loggingIn} />
+            <TextInput accessibilityLabel="Staff password" value={loginPassword} onChangeText={setLoginPassword}
+              secureTextEntry autoCapitalize="none" editable={!loggingIn} />
+            {!!loginError && <Text accessibilityRole="alert">{loginError}</Text>}
+            <Button title={loggingIn ? 'Signing in…' : 'Sign in and retry'} disabled={loggingIn || !loginEmail.trim() || !loginPassword}
+              onPress={() => { void reauthenticate(); }} />
+          </View>}
+          {result.error?.status === 403 && <View style={styles.box}>
+            <Text>Ask the organizer to check your access and this ticket. Your session is kept.</Text>
+            {scanner.mustResolve() ? <Button title="Retry after access is restored" onPress={() => show(scanner.retry())} />
+              : <Button title="Back to events" onPress={() => router.replace('/events')} />}
+          </View>}
+          {!scanner.mustResolve() && result.error?.status !== 401 && result.error?.status !== 403 &&
+            <Button title="Scan next ticket" onPress={() => { if (scanner.next()) setResult(null); }} />}
         </View>
       )}
     </ScrollView>
