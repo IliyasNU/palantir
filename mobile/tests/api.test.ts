@@ -8,15 +8,28 @@ const receipt = { status: 'CHECKED_IN', event_id: 7, ticket_id: 21, request_id: 
 const reply = (body: unknown, status = 200): typeof fetch => async () => Response.json(body, { status });
 const code = (expected: string) => (error: unknown) => error instanceof ApiError && error.code === expected;
 
-test('login uses the existing JSON endpoint and does not send an auth header', async () => {
+test('login confirms account identity with the issued token', async () => {
   const api = createApi(base, async (url, options) => {
+    if (url === base + '/auth/me') {
+      assert.equal(options?.method, 'GET');
+      assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer access');
+      return Response.json({ id: 42 });
+    }
     assert.equal(url, base + '/auth/login');
     assert.equal(options?.method, 'POST');
     assert.equal(new Headers(options?.headers).get('Authorization'), null);
     assert.deepEqual(JSON.parse(String(options?.body)), { email: 'staff@example.com', password: 'test-password' });
     return Response.json({ access_token: 'access', refresh_token: 'refresh', token_type: 'bearer' });
   });
-  assert.equal(await api.login(' staff@example.com ', 'test-password'), 'access');
+  assert.deepEqual(await api.login(' staff@example.com ', 'test-password'), { token: 'access', userId: 42 });
+  assert.deepEqual(await api.login('staff@example.com', 'test-password', 42), { token: 'access', userId: 42 });
+});
+
+test('login does not expose a session for a different or unidentified account', async () => {
+  for (const [user, expected] of [[{ id: 43 }, 'ACCOUNT_MISMATCH'], [{ id: '42' }, 'SERVER_ERROR']] as const) {
+    const api = createApi(base, async url => Response.json(url === base + '/auth/me' ? user : { access_token: 'new' }));
+    await assert.rejects(api.login('staff@example.com', 'test-password', 42), code(expected));
+  }
 });
 
 test('event list sends the access token; an empty assignment is allowed', async () => {
@@ -46,6 +59,11 @@ test('HTTP errors distinguish duplicate, invalid ticket and access problems', as
   for (const [status, serverCode, expected] of [
     [409, 'ALREADY_CHECKED_IN', 'ALREADY_CHECKED_IN'],
     [404, 'INVALID_TICKET', 'INVALID_TICKET'],
+    [404, 'EVENT_NOT_FOUND', 'EVENT_NOT_FOUND'],
+    [409, 'EVENT_CANCELLED', 'EVENT_CANCELLED'],
+    [409, 'EVENT_NOT_PUBLISHED', 'EVENT_NOT_PUBLISHED'],
+    [409, 'REQUEST_ID_CONFLICT', 'REQUEST_ID_CONFLICT'],
+    [422, 'INVALID_INPUT', 'INVALID_INPUT'],
     [401, '', 'UNAUTHORIZED'],
     [403, '', 'FORBIDDEN'],
     [501, '', 'SERVER_ERROR'],
@@ -54,6 +72,16 @@ test('HTTP errors distinguish duplicate, invalid ticket and access problems', as
     const api = createApi(base, reply({ detail: { code: serverCode } }, status));
     await assert.rejects(api.checkIn('access', 7, scan), code(expected));
   }
+});
+
+test('validation errors are readable even when FastAPI returns a list of fields', async () => {
+  const api = createApi(base, reply({ detail: [{ loc: ['body', 'qr_payload'], msg: 'String too long' }] }, 422));
+  await assert.rejects(api.checkIn('access', 7, scan), (error: unknown) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.code, 'INVALID_INPUT');
+    assert.match(error.message, /request format/);
+    return true;
+  });
 });
 
 test('staff events distinguish expired authentication from forbidden access', async () => {

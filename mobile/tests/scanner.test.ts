@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ApiError, type Receipt, type ScanRequest } from '../src/api.ts';
+import { ApiError, createApi, type Receipt, type ScanRequest } from '../src/api.ts';
 import { createScanner, createScanSession } from '../src/scanner.ts';
 
 const receipt: Receipt = { status: 'CHECKED_IN', event_id: 7, ticket_id: 21, request_id: 'request-1', checked_in_at: '2026-10-28T12:00:00Z' };
@@ -97,19 +97,38 @@ test('first-request forbidden rejection permits leaving without admission', asyn
   assert.equal(scanner.next(), true);
 });
 
-test('reauthentication retries the same request with the updated token', async () => {
+test('only the original staff account can resume a pending scan after reauthentication', async () => {
   const sent: { token: string; request: ScanRequest }[] = [];
+  const api = createApi('https://biletflow.example', async (url, options) => {
+    if (String(url).endsWith('/auth/login')) {
+      const { email } = JSON.parse(String(options?.body));
+      return Response.json({ access_token: email === 'other@example.com' ? 'other-token' : 'new-token' });
+    }
+    assert.ok(String(url).endsWith('/auth/me'));
+    const auth = new Headers(options?.headers).get('Authorization');
+    return Response.json({ id: auth === 'Bearer other-token' ? 43 : 42 });
+  });
   const session = createScanSession(async (token, request) => {
     sent.push({ token, request: { ...request } });
-    if (sent.length === 1) throw new ApiError('UNAUTHORIZED', 'expired', 401);
+    if (sent.length === 1) throw new ApiError('NETWORK_ERROR', 'lost');
+    if (sent.length === 2) throw new ApiError('UNAUTHORIZED', 'expired', 401);
     return receipt;
   }, () => 'request-1');
+  async function resume(email: string) {
+    const freshSession = await api.login(email, 'password', 42);
+    session.setToken(freshSession.token);
+    return session.scanner.retry();
+  }
+
   session.setToken('old-token');
   await session.scanner.scan('ticket');
-  session.setToken('new-token');
-  assert.deepEqual(await session.scanner.retry(), { receipt });
-  assert.deepEqual(sent.map(item => item.token), ['old-token', 'new-token']);
-  assert.deepEqual(sent[0].request, sent[1].request);
+  assert.equal((await session.scanner.retry())?.error?.status, 401);
+  await assert.rejects(resume('other@example.com'), { code: 'ACCOUNT_MISMATCH' });
+  assert.equal(sent.length, 2);
+  assert.equal(session.scanner.mustResolve(), true);
+  assert.deepEqual(await resume('staff@example.com'), { receipt });
+  assert.deepEqual(sent.map(item => item.token), ['old-token', 'old-token', 'new-token']);
+  assert.deepEqual(sent[0].request, sent[2].request);
 });
 
 test('a duplicate response after a lost response does not establish the original outcome', async () => {
@@ -120,6 +139,21 @@ test('a duplicate response after a lost response does not establish the original
   }, () => 'request-1');
   await scanner.scan('ticket');
   await scanner.retry();
+  assert.equal(scanner.mustResolve(), true);
+  assert.equal(scanner.next(), false);
+});
+
+test('a request ID conflict after a lost response keeps the original scan blocked', async () => {
+  const sent: ScanRequest[] = [];
+  const scanner = createScanner(async request => {
+    sent.push(request);
+    if (sent.length === 1) throw new ApiError('NETWORK_ERROR', 'lost');
+    throw new ApiError('REQUEST_ID_CONFLICT', 'conflict', 409);
+  }, () => 'request-1');
+  await scanner.scan('ticket');
+  const result = await scanner.retry();
+  assert.equal(result?.error?.code, 'REQUEST_ID_CONFLICT');
+  assert.deepEqual(sent[0], sent[1]);
   assert.equal(scanner.mustResolve(), true);
   assert.equal(scanner.next(), false);
 });
