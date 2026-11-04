@@ -10,7 +10,8 @@ import { useSession } from '../session';
 export default function ScanScreen() {
   const { id, title } = useLocalSearchParams<{ id: string; title: string }>();
   const eventId = Number(id);
-  const { token, setToken } = useSession();
+  const { session, setSession } = useSession();
+  const token = session?.token;
   const [permission, requestPermission] = useCameraPermissions();
   const [result, setResult] = useState<ScanResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -56,23 +57,24 @@ export default function ScanScreen() {
   }
 
   async function reauthenticate() {
-    if (loginLock.current || !loginEmail.trim() || !loginPassword) return;
+    if (!session || loginLock.current || !loginEmail.trim() || !loginPassword) return;
     loginLock.current = true;
     setLoggingIn(true);
     setLoginError('');
     try {
-      const freshToken = await api.login(loginEmail, loginPassword);
+      const freshSession = await api.login(loginEmail, loginPassword, session.userId);
       if (!mounted.current) return;
-      scanSession.setToken(freshToken);
-      setToken(freshToken);
-      setLoginPassword('');
+      scanSession.setToken(freshSession.token);
+      setSession(freshSession);
       show(scanner.retry());
     } catch (problem) {
       if (mounted.current) setLoginError(problem instanceof ApiError && problem.status === 401
-        ? 'Incorrect email or password.' : 'Could not sign in. Try again.');
+        ? 'Incorrect email or password.'
+        : problem instanceof ApiError && problem.status === 403 ? 'This account cannot sign in. Contact the organizer.'
+        : problem instanceof Error ? problem.message : 'Could not sign in. Try again.');
     } finally {
       loginLock.current = false;
-      if (mounted.current) setLoggingIn(false);
+      if (mounted.current) { setLoginPassword(''); setLoggingIn(false); }
     }
   }
 
@@ -80,7 +82,11 @@ export default function ScanScreen() {
   if (!Number.isInteger(eventId) || eventId < 1) return <Redirect href="/events" />;
   const canScan = permission?.granted && focused && active && !busy && !loggingIn && !result && !cameraError;
   const mustStay = busy || scanner.mustResolve() || loggingIn;
-  const retryable = result?.error && scanner.mustResolve() && result.error.status !== 401 && result.error.status !== 403;
+  const error = result?.error;
+  const pending = scanner.mustResolve();
+  const retryable = pending && (error?.code === 'NETWORK_ERROR' || error?.code === 'SERVER_ERROR');
+  const eventUnavailable = ['EVENT_NOT_FOUND', 'EVENT_CANCELLED', 'EVENT_NOT_PUBLISHED'].some(code => code === error?.code);
+  const backToEvents = !pending && (eventUnavailable || error?.status === 403);
 
   return (
     <ScrollView contentContainerStyle={styles.page}>
@@ -107,7 +113,9 @@ export default function ScanScreen() {
           <Text style={styles.resultTitle}>{result.receipt ? 'CHECKED_IN' : result.error.code}</Text>
           <Text>{result.receipt ? 'Check-in confirmed. The attendee can enter.' : result.error.message}</Text>
           {retryable && <Text>Check-in is unconfirmed. Retry before admitting the attendee.</Text>}
-          {result.error && scanner.mustResolve() && !retryable && <Text>The earlier check-in is still unconfirmed. Do not admit the attendee.</Text>}
+          {error && pending && !retryable && <Text>The earlier check-in is still unconfirmed. Do not admit the attendee.</Text>}
+          {error && pending && !retryable && error.status !== 401 && error.status !== 403 &&
+            <Text>Ask the organizer to verify whether the earlier check-in was recorded.</Text>}
           {result.receipt && <Text>Ticket #{result.receipt.ticket_id} · {new Date(result.receipt.checked_in_at).toLocaleTimeString()}</Text>}
           {retryable && <Button title="Retry this check-in" onPress={() => show(scanner.retry())} />}
           {result.error?.status === 401 && <View style={styles.box}>
@@ -122,10 +130,10 @@ export default function ScanScreen() {
           </View>}
           {result.error?.status === 403 && <View style={styles.box}>
             <Text>Ask the organizer to check your access and this ticket. Your session is kept.</Text>
-            {scanner.mustResolve() ? <Button title="Retry after access is restored" onPress={() => show(scanner.retry())} />
-              : <Button title="Back to events" onPress={() => router.replace('/events')} />}
+            {pending && <Button title="Retry after access is restored" onPress={() => show(scanner.retry())} />}
           </View>}
-          {!scanner.mustResolve() && result.error?.status !== 401 && result.error?.status !== 403 &&
+          {backToEvents && <Button title="Back to events" onPress={() => router.dismissTo('/events')} />}
+          {!pending && !backToEvents && error?.status !== 401 &&
             <Button title="Scan next ticket" onPress={() => { if (scanner.next()) setResult(null); }} />}
         </View>
       )}

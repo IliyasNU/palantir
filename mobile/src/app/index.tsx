@@ -5,7 +5,7 @@ import { api, ApiError } from '../api';
 import { useSession } from '../session';
 
 export default function LoginScreen() {
-  const { token, setToken } = useSession();
+  const { session, setSession } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -18,18 +18,19 @@ export default function LoginScreen() {
     setBusy(true);
     setError('');
     try {
-      setToken(await api.login(email, password));
-      setPassword('');
+      setSession(await api.login(email, password));
     } catch (problem) {
       setError(problem instanceof ApiError && problem.status === 401 ? 'Incorrect email or password.'
+        : problem instanceof ApiError && problem.status === 403 ? 'This account cannot sign in. Contact the organizer.'
         : problem instanceof Error ? problem.message : 'Could not sign in.');
     } finally {
+      setPassword('');
       submitting.current = false;
       setBusy(false);
     }
   }
 
-  if (token) return <Redirect href="/events" />;
+  if (session) return <Redirect href="/events" />;
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
@@ -56,3 +57,4 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: '#94a3b8', borderRadius: 8, backgroundColor: 'white', padding: 12, fontSize: 16, marginBottom: 12 },
   error: { color: '#9f1c25', marginVertical: 16 },
 });
+

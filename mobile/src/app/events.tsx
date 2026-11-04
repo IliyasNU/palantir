@@ -1,33 +1,37 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Button, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Redirect, router } from 'expo-router';
+import { Redirect, router, useIsFocused } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api, ApiError, type StaffEvent } from '../api';
 import { useSession } from '../session';
 
 export default function EventsScreen() {
-  const { token, setToken } = useSession();
+  const { session, setSession } = useSession();
+  const token = session?.token;
+  const focused = useIsFocused();
   const [events, setEvents] = useState<StaffEvent[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(true);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || !focused) return;
     let active = true;
-    api.events(token).then(items => { if (active) setEvents(items); })
+    api.events(token).then(items => {
+      if (active) { setEvents(items); setError(''); }
+    })
       .catch(problem => {
         if (!active) return;
         setEvents([]);
         if (problem instanceof ApiError && problem.status === 401) {
-          setToken(null);
+          setSession(null);
           return;
         }
         setError(problem instanceof Error ? problem.message : 'Could not load events.');
       })
       .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
-  }, [token, reload, setToken]);
+  }, [focused, token, reload, setSession]);
 
   if (!token) return <Redirect href="/" />;
   return (
@@ -37,7 +41,7 @@ export default function EventsScreen() {
         <Button title="Refresh" disabled={busy} onPress={() => {
           setBusy(true); setError(''); setEvents([]); setReload(value => value + 1);
         }} />
-        <Button title="Sign out" onPress={() => setToken(null)} />
+        <Button title="Sign out" onPress={() => setSession(null)} />
       </View>
       {busy && <ActivityIndicator accessibilityLabel="Loading events" />}
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
