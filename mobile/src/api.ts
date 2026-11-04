@@ -5,6 +5,8 @@ export type StaffEvent = {
   location: string;
 };
 
+export type StaffSession = { token: string; userId: number };
+
 export type ScanRequest = { qr_payload: string; request_id: string };
 export type Receipt = {
   status: 'CHECKED_IN';
@@ -59,8 +61,23 @@ function httpError(status: number, body: unknown) {
   if (status === 404 && code === 'INVALID_TICKET') {
     return new ApiError(code, 'This QR is not a valid ticket for this event.', status);
   }
+  if (status === 404 && code === 'EVENT_NOT_FOUND') {
+    return new ApiError(code, 'This event could not be found. Return to the event list to refresh it.', status);
+  }
+  if (status === 409 && code === 'EVENT_CANCELLED') {
+    return new ApiError(code, 'This event has been cancelled. Return to the event list to refresh it.', status);
+  }
+  if (status === 409 && code === 'EVENT_NOT_PUBLISHED') {
+    return new ApiError(code, 'This event is not published. Return to the event list to refresh it.', status);
+  }
+  if (status === 409 && code === 'REQUEST_ID_CONFLICT') {
+    return new ApiError(code, 'This scan conflicts with an earlier request. Ask the organizer to verify the ticket.', status);
+  }
   if (status === 404 || status === 405) {
-    return new ApiError('NOT_AVAILABLE', 'This feature is not available on the backend yet.', status);
+    return new ApiError('NOT_AVAILABLE', 'This API route is unavailable on the configured server.', status);
+  }
+  if (status === 422) {
+    return new ApiError('INVALID_INPUT', 'The server rejected the request format. Check the entered details or the ticket QR.', status);
   }
   if (status >= 500) {
     return new ApiError('SERVER_ERROR', 'The server could not complete the request. Please retry.', status);
@@ -98,12 +115,20 @@ export function createApi(baseUrl: string, fetcher: typeof fetch = fetch, timeou
   }
 
   return {
-    async login(email: string, password: string): Promise<string> {
+    async login(email: string, password: string, expectedUserId?: number): Promise<StaffSession> {
       const data = await request('/auth/login', undefined, { email: email.trim(), password });
       if (!object(data) || typeof data.access_token !== 'string' || !data.access_token) {
         throw new ApiError('SERVER_ERROR', 'The server returned an invalid login response.');
       }
-      return data.access_token;
+      const token = data.access_token;
+      const user = await request('/auth/me', token);
+      if (!object(user) || typeof user.id !== 'number' || !Number.isSafeInteger(user.id) || user.id < 1) {
+        throw new ApiError('SERVER_ERROR', 'The server did not identify the signed-in account.');
+      }
+      if (expectedUserId !== undefined && user.id !== expectedUserId) {
+        throw new ApiError('ACCOUNT_MISMATCH', 'Use the same staff account to retry this check-in.');
+      }
+      return { token, userId: user.id };
     },
     async events(token: string): Promise<StaffEvent[]> {
       const data = await request('/staff/events', token);
