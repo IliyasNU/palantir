@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
+import { eventDetails } from './event-fixture.mjs';
 
 async function loginForm(page, email, password) {
   await page.getByLabel('Email', { exact: true }).fill(email);
@@ -14,8 +15,9 @@ async function registrationForm(page, email, password, name = 'FE01 Browser Visi
 }
 
 test('public event routes and login/register links preserve the selected event', async ({ page }) => {
+  await page.route('http://localhost:8000/events/42', (route) => route.fulfill({ json: eventDetails }));
   await page.goto('/events/42');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Подробнее о событии');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(eventDetails.title);
   await page.getByRole('link', { name: 'Войти и вернуться к этому событию' }).click();
   await expect(page).toHaveURL(/\/login\?returnTo=%2Fevents%2F42$/);
   await page.getByRole('link', { name: 'Зарегистрироваться', exact: true }).click();
