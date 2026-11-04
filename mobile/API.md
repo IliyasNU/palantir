@@ -1,8 +1,8 @@
-# Mobile API contract — proposed, needs backend agreement
+# Mobile API contract
 
-Only login exists in the inspected backend (`recovery/backend`, `09881b7`). The event-list and check-in examples below are the shapes this client expects, not evidence that those endpoints are live. If the backend team chooses another shape, update `src/api.ts` and its tests together.
+The backend implements this contract in [`feature/temirlan-tickets-checkin`](https://github.com/IliyasNU/palantir/tree/26d0dbd58aaea5fc44d63144155d14fdeb8ad67a/backend). Use that backend revision or an integration branch that includes it. The older `recovery/backend` branch only supports login and account lookup from this flow.
 
-## Login — existing
+## Login and account identity
 
 `POST /auth/login`, JSON:
 
@@ -10,21 +10,21 @@ Only login exists in the inspected backend (`recovery/backend`, `09881b7`). The 
 { "email": "staff@example.com", "password": "the-user-password" }
 ```
 
-Successful response includes `access_token`, `refresh_token`, `token_type`. This client keeps only `access_token` in memory and sends `Authorization: Bearer <access_token>` on the remaining endpoints. It does not infer staff access from the global role.
+Successful login returns `access_token`, `refresh_token`, and `token_type`. The client calls `GET /auth/me` with the access token and holds the token and returned user ID in memory. Authenticated requests send `Authorization: Bearer <access_token>`. Before a retry after reauthentication, the client checks that `/auth/me` returns the original user ID. Staff access is scoped to each event.
 
-## Accessible events — proposed
+## Accessible events
 
 `GET /staff/events` returns a JSON array, or `[]` when no events are assigned:
 
 ```json
 [
-  { "id": 7, "title": "NU Club Fair", "date": "2026-10-28T12:00:00Z", "location": "Orange Hall" }
+  { "id": 7, "title": "NU Club Fair", "date": "2026-10-28T12:00:00Z", "location": "Orange Hall", "status": "published" }
 ]
 ```
 
-For this small MVP, return the full list of published, non-cancelled events the user is allowed to check in: staff assignments, owned events, or the admin's permitted events. Backend enforces that access again during check-in; the list is not an authorization check. If pagination becomes necessary, agree on its shape before changing the endpoint.
+The list includes published events the account is assigned to or owns, and all published events for admins. The backend checks authorization again at check-in. The app reloads the list when it regains focus.
 
-## Check-in — proposed
+## Check-in
 
 `POST /events/{id}/check-in`, JSON:
 
@@ -35,7 +35,7 @@ For this small MVP, return the full list of published, non-cancelled events the 
 }
 ```
 
-The mobile app passes the scanned payload unchanged. It does not decode an attendee ID, open a QR URL or decide if a ticket is valid.
+The mobile app passes the scanned payload unchanged. The backend accepts a payload of 1–512 characters and a canonical lower-case UUID as `request_id`.
 
 `200` after successful check-in:
 
@@ -55,9 +55,12 @@ Return the same receipt for an authorized retry of the same request ID, actor, e
 | --- | --- | --- |
 | 409 | `ALREADY_CHECKED_IN` | Ticket already used |
 | 404 | `INVALID_TICKET` | Unknown QR or wrong event |
+| 404 | `EVENT_NOT_FOUND` | Event missing |
+| 409 | `EVENT_CANCELLED` / `EVENT_NOT_PUBLISHED` | Event unavailable for new check-ins |
+| 409 | `REQUEST_ID_CONFLICT` | Ask the organizer to verify the ticket |
 | 401 | Any / existing string detail | `UNAUTHORIZED`, sign in again |
 | 403 | Any / existing string detail | `FORBIDDEN`, no access; keep the session |
-| 409 | Other, e.g. `EVENT_CANCELLED` | Rejected, show message |
+| 422 | `INVALID_INPUT` or validation details | Invalid request format |
 | 5xx | Any | Unconfirmed server error; retry possible |
 | No response / timeout | — | `NETWORK_ERROR`; never successful |
 
@@ -69,6 +72,6 @@ Example error:
 
 An unknown route (`404` with `detail: "Not Found"`) is shown as unavailable, not as an invalid ticket. Successful status alone is insufficient: the mobile client also requires `CHECKED_IN`, the matching event/request ID, a ticket ID and a timestamp.
 
-For both staff events and check-in, HTTP status determines authentication handling: 401 requires signing in again; 403 keeps the token and asks the organizer to check access. A 403 from check-in offers a return to events rather than another scan. All 5xx responses, including 501, remain unconfirmed server errors; no error response can become a successful admission even if its JSON body resembles a receipt.
+If a scan fails with an event error or 403 and there is no pending uncertain attempt, the app offers a return to the event list. A rejection received after a timeout or server error leaves the earlier attempt unconfirmed. The app retains the original request. For a conflict or another terminal rejection after an uncertain result, the organizer needs to verify the existing record.
 
-The backend team owns atomic check-in, duplicate protection, event/staff permissions and database storage. Mobile-side frame blocking cannot replace those checks. Confirm the above contract before describing the full flow as integrated.
+The backend handles atomic check-in, duplicate protection, event and staff permissions, and storage. A valid receipt is required for the mobile client to confirm admission.
