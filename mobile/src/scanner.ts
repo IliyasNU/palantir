@@ -58,5 +58,8 @@ export function createScanner(
     mustResolve(): boolean {
       return busy || unresolved;
     },
+    requestId(): string | null {
+      return pending?.request_id ?? null;
+    },
   };
 }

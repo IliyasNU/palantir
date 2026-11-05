@@ -115,6 +115,12 @@ export function createApi(baseUrl: string, fetcher: typeof fetch = fetch, timeou
   }
 
   return {
+    async health(): Promise<void> {
+      const data = await request('/health');
+      if (!object(data) || data.status !== 'ok' || data.database !== 'up') {
+        throw new ApiError('SERVER_ERROR', 'The API or database is not ready.');
+      }
+    },
     async login(email: string, password: string, expectedUserId?: number): Promise<StaffSession> {
       const data = await request('/auth/login', undefined, { email: email.trim(), password });
       if (!object(data) || typeof data.access_token !== 'string' || !data.access_token) {
