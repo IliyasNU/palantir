@@ -2,6 +2,10 @@
 
 The backend implements this contract in [`feature/temirlan-tickets-checkin`](https://github.com/IliyasNU/palantir/tree/26d0dbd58aaea5fc44d63144155d14fdeb8ad67a/backend). Use that backend revision or an integration branch that includes it. The older `recovery/backend` branch only supports login and account lookup from this flow.
 
+## Connection check
+
+`GET /health` is called without credentials from the sign-in screen. Only a successful HTTP response with both `"status": "ok"` and `"database": "up"` confirms connection readiness. A database-down response, malformed response, timeout or failed request is shown as an error. This check does not verify staff assignment or replace authorization on later requests.
+
 ## Login and account identity
 
 `POST /auth/login`, JSON:
@@ -75,3 +79,7 @@ An unknown route (`404` with `detail: "Not Found"`) is shown as unavailable, not
 If a scan fails with an event error or 403 and there is no pending uncertain attempt, the app offers a return to the event list. A rejection received after a timeout or server error leaves the earlier attempt unconfirmed. The app retains the original request. For a conflict or another terminal rejection after an uncertain result, the organizer needs to verify the existing record.
 
 The backend handles atomic check-in, duplicate protection, event and staff permissions, and storage. A valid receipt is required for the mobile client to confirm admission.
+
+Screen messages are mapped locally to Russian or Kazakh by error code. Unknown server messages are not presented as admission instructions. An unresolved result displays the original request ID for the organizer; the raw QR payload is not displayed. Language changes do not create a new scanner session.
+
+Manual attendee search/check-in, undo and event attendance totals from the SRS need agreed backend routes and response formats before mobile integration. Those routes are absent from the referenced backend revision.
