@@ -4,13 +4,16 @@ import { Redirect, router, useIsFocused } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api, ApiError, type StaffEvent } from '../api';
 import { useSession } from '../session';
+import { useLanguage } from '../language';
+import { errorMessage } from '../messages';
 
 export default function EventsScreen() {
   const { session, setSession } = useSession();
+  const { copy, locale } = useLanguage();
   const token = session?.token;
   const focused = useIsFocused();
   const [events, setEvents] = useState<StaffEvent[]>([]);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(true);
   const [reload, setReload] = useState(0);
 
@@ -18,7 +21,7 @@ export default function EventsScreen() {
     if (!token || !focused) return;
     let active = true;
     api.events(token).then(items => {
-      if (active) { setEvents(items); setError(''); }
+      if (active) { setEvents(items); setError(null); }
     })
       .catch(problem => {
         if (!active) return;
@@ -27,7 +30,7 @@ export default function EventsScreen() {
           setSession(null);
           return;
         }
-        setError(problem instanceof Error ? problem.message : 'Could not load events.');
+        setError(problem);
       })
       .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
@@ -36,24 +39,24 @@ export default function EventsScreen() {
   if (!token) return <Redirect href="/" />;
   return (
     <SafeAreaView edges={['bottom']} style={styles.page}>
-      <Text style={styles.hint}>Only events you can check in should appear here.</Text>
+      <Text style={styles.hint}>{copy.eventsHint}</Text>
       <View style={styles.actions}>
-        <Button title="Refresh" disabled={busy} onPress={() => {
-          setBusy(true); setError(''); setEvents([]); setReload(value => value + 1);
+        <Button title={copy.refresh} disabled={busy} onPress={() => {
+          setBusy(true); setError(null); setEvents([]); setReload(value => value + 1);
         }} />
-        <Button title="Sign out" onPress={() => setSession(null)} />
+        <Button title={copy.signOut} onPress={() => setSession(null)} />
       </View>
-      {busy && <ActivityIndicator accessibilityLabel="Loading events" />}
-      {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+      {busy && <ActivityIndicator accessibilityLabel={copy.loadingEvents} />}
+      {error !== null && <Text accessibilityRole="alert" style={styles.error}>{errorMessage(error, locale)}</Text>}
       <FlatList data={events} keyExtractor={item => String(item.id)}
-        ListEmptyComponent={!busy && !error ? <Text>No events assigned yet. Ask the organizer to add your account.</Text> : null}
+        ListEmptyComponent={!busy && error === null ? <Text>{copy.noEvents}</Text> : null}
         renderItem={({ item }) => (
-          <Pressable accessibilityRole="button" accessibilityLabel={`Scan tickets for ${item.title}`} style={styles.event}
+          <Pressable accessibilityRole="button" accessibilityLabel={`${copy.scanTickets}: ${item.title}`} style={styles.event}
             onPress={() => router.push({ pathname: '/scan', params: { id: String(item.id), title: item.title } })}>
             <Text style={styles.title}>{item.title}</Text>
-            <Text>{new Date(item.date).toLocaleString()}</Text>
+            <Text>{new Date(item.date).toLocaleString(locale === 'kk' ? 'kk-KZ' : 'ru-RU')}</Text>
             <Text>{item.location}</Text>
-            <Text style={styles.link}>Scan tickets →</Text>
+            <Text style={styles.link}>{copy.scanTickets} →</Text>
           </Pressable>
         )} />
     </SafeAreaView>
