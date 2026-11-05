@@ -8,6 +8,22 @@ const receipt = { status: 'CHECKED_IN', event_id: 7, ticket_id: 21, request_id: 
 const reply = (body: unknown, status = 200): typeof fetch => async () => Response.json(body, { status });
 const code = (expected: string) => (error: unknown) => error instanceof ApiError && error.code === expected;
 
+test('connection check requires both the real API and database to be healthy', async () => {
+  const api = createApi(base, async (url, options) => {
+    assert.equal(url, base + '/health');
+    assert.equal(options?.method, 'GET');
+    assert.equal(options?.body, undefined);
+    assert.equal(new Headers(options?.headers).get('Authorization'), null);
+    return Response.json({ status: 'ok', database: 'up' });
+  });
+  await api.health();
+  for (const body of [null, {}, { status: 'ok' }, { status: 'degraded', database: 'down' }, { status: 'ok', database: 'down' }]) {
+    await assert.rejects(createApi(base, reply(body)).health(), code('SERVER_ERROR'));
+  }
+  await assert.rejects(createApi(base, reply({ status: 'ok', database: 'up' }, 503)).health(), code('SERVER_ERROR'));
+  await assert.rejects(createApi(base, async () => { throw new TypeError('offline'); }).health(), code('NETWORK_ERROR'));
+});
+
 test('login confirms account identity with the issued token', async () => {
   const api = createApi(base, async (url, options) => {
     if (url === base + '/auth/me') {

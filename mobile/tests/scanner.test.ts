@@ -31,10 +31,15 @@ test('retry after a lost response keeps the same QR and request ID', async () =>
     if (requests.length === 1) throw new ApiError('NETWORK_ERROR', 'response lost');
     return receipt;
   }, () => `request-${++ids}`);
+  assert.equal(scanner.requestId(), null);
   assert.equal((await scanner.scan('ticket'))?.error?.code, 'NETWORK_ERROR');
+  assert.equal(scanner.requestId(), 'request-1');
   assert.deepEqual(await scanner.retry(), { receipt });
+  assert.equal(scanner.requestId(), 'request-1');
   assert.deepEqual(requests[1], requests[0]);
   assert.equal(ids, 1);
+  assert.equal(scanner.next(), true);
+  assert.equal(scanner.requestId(), null);
 });
 
 test('an intentional rescan starts a new request and displays the backend duplicate error', async () => {
