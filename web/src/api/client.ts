@@ -92,18 +92,22 @@ function httpError(status: number, payload: unknown): ApiError {
 }
 
 function requestUrl(baseUrl: string | undefined, path: string): string {
+  if (!baseUrl?.trim()) {
+    throw new ApiError('Не задан VITE_API_URL. Укажите адрес работающего API в web/.env.local и перезапустите Vite. Для опубликованного сайта задайте адрес перед сборкой и опубликуйте её заново.', {
+      kind: 'configuration',
+    });
+  }
+  if (!path.startsWith('/') || path.startsWith('//')) {
+    throw new ApiError('Некорректный путь запроса API.', { kind: 'configuration' });
+  }
   try {
-    if (!baseUrl?.trim()) throw new Error('VITE_API_URL is missing');
     const url = new URL(baseUrl.trim());
     if (!['http:', 'https:'].includes(url.protocol) || url.search || url.hash || url.username || url.password) {
       throw new Error('VITE_API_URL must be an HTTP(S) base URL');
     }
-    if (!path.startsWith('/') || path.startsWith('//')) {
-      throw new Error('API paths must start with a single slash');
-    }
     return url.toString().replace(/\/+$/, '') + path;
   } catch (cause) {
-    throw new ApiError('Не удалось подключиться к сервису: проверьте настройку адреса API.', {
+    throw new ApiError('Некорректный VITE_API_URL. Нужен полный адрес HTTP(S) без логина, пароля, query и hash. Исправьте настройку и перезапустите Vite или пересоберите опубликованный сайт.', {
       kind: 'configuration',
       cause,
     });
