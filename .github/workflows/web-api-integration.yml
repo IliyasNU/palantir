@@ -1,0 +1,105 @@
+name: Web API integration
+
+on:
+  push:
+    branches: [fix/web-api-connection, feature/frontend]
+    paths: ['web/**', '.github/workflows/web-api-integration.yml']
+  pull_request:
+    branches: [feature/frontend]
+    paths: ['web/**', '.github/workflows/web-api-integration.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: biletflow_test
+          POSTGRES_DB: biletflow_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U biletflow_test -d biletflow_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      CI: 'true'
+      DATABASE_URL: postgresql+psycopg://biletflow_test@127.0.0.1:5432/biletflow_test
+      ENVIRONMENT: test
+      CORS_ORIGINS: http://localhost:5173
+      BCRYPT_ROUNDS: '4'
+      VITE_API_URL: http://localhost:8000
+      PLAYWRIGHT_CHANNEL: chromium
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # Separate pinned checkout: never merge backend into the frontend branch.
+      - uses: actions/checkout@v4
+        with:
+          ref: 26d0dbd58aaea5fc44d63144155d14fdeb8ad67a
+          path: backend-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare isolated backend
+        working-directory: backend-source/backend
+        run: |
+          python -c "import os,secrets; open(os.environ['GITHUB_ENV'],'a').write('JWT_SECRET_KEY='+secrets.token_hex(32)+'\n')"
+          pip install -r requirements-dev.txt
+      - name: Apply and inspect PostgreSQL migrations
+        working-directory: backend-source/backend
+        run: |
+          alembic upgrade head
+          alembic current
+      - name: Existing backend unit tests
+        working-directory: backend-source/backend
+        run: pytest -q tests
+      - name: Start real API and check database health
+        working-directory: backend-source/backend
+        run: |
+          uvicorn app.main:app --host 127.0.0.1 --port 8000 > "$RUNNER_TEMP/biletflow-api.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/biletflow-api.pid"
+          curl --fail --silent --show-error --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8000/health > "$RUNNER_TEMP/biletflow-health.json"
+          python -c "import json,os; h=json.load(open(os.environ['RUNNER_TEMP']+'/biletflow-health.json')); assert h == {'status':'ok','database':'up'}, h; print(h)"
+          curl --fail --silent --show-error -X OPTIONS http://localhost:8000/auth/register -H 'Origin: http://localhost:5173' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: content-type' -D - -o /dev/null
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci
+      - name: TypeScript
+        working-directory: web
+        run: npm run typecheck
+      - name: Existing unit tests and API configuration regressions
+        working-directory: web
+        run: npm test
+      - name: Production build
+        working-directory: web
+        run: npm run build
+      - name: Real HTTP auth contract
+        working-directory: web
+        run: npm run check:auth
+      - name: Install test browser
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Existing browser tests including real API auth
+        working-directory: web
+        env:
+          RUN_LIVE_AUTH: '1'
+        run: npm run test:browser
+      - name: Stop isolated API
+        if: always()
+        run: |
+          if test -f "$RUNNER_TEMP/biletflow-api.pid"; then
+            kill "$(cat "$RUNNER_TEMP/biletflow-api.pid")" 2>/dev/null || true
+          fi
