@@ -8,17 +8,25 @@ import { useLanguage } from '../language';
 import { errorMessage } from '../messages';
 
 export default function EventsScreen() {
-  const { session, setSession } = useSession();
-  const { copy, locale } = useLanguage();
-  const token = session?.token;
+  const { session } = useSession();
   const focused = useIsFocused();
+
+  if (!session?.token) return <Redirect href="/" />;
+  if (!focused) return null;
+
+  // Returning to this screen or changing accounts starts with a fresh list.
+  return <EventsList key={session.token} token={session.token} />;
+}
+
+function EventsList({ token }: { token: string }) {
+  const { setSession } = useSession();
+  const { copy, locale } = useLanguage();
   const [events, setEvents] = useState<StaffEvent[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(true);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    if (!token || !focused) return;
     let active = true;
     api.events(token).then(items => {
       if (active) { setEvents(items); setError(null); }
@@ -34,9 +42,8 @@ export default function EventsScreen() {
       })
       .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
-  }, [focused, token, reload, setSession]);
+  }, [token, reload, setSession]);
 
-  if (!token) return <Redirect href="/" />;
   return (
     <SafeAreaView edges={['bottom']} style={styles.page}>
       <Text style={styles.hint}>{copy.eventsHint}</Text>
@@ -52,7 +59,10 @@ export default function EventsScreen() {
         ListEmptyComponent={!busy && error === null ? <Text>{copy.noEvents}</Text> : null}
         renderItem={({ item }) => (
           <Pressable accessibilityRole="button" accessibilityLabel={`${copy.scanTickets}: ${item.title}`} style={styles.event}
-            onPress={() => router.push({ pathname: '/scan', params: { id: String(item.id), title: item.title } })}>
+            disabled={busy} accessibilityState={{ disabled: busy }}
+            onPress={() => {
+              if (!busy) router.push({ pathname: '/scan', params: { id: String(item.id), title: item.title } });
+            }}>
             <Text style={styles.title}>{item.title}</Text>
             <Text>{new Date(item.date).toLocaleString(locale === 'kk' ? 'kk-KZ' : 'ru-RU')}</Text>
             <Text>{item.location}</Text>
