@@ -1,4 +1,5 @@
 """Authentication business logic (kept free of FastAPI so it is easy to test)."""
+from pydantic import EmailStr, TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -15,6 +16,8 @@ from app.auth.security import (
 )
 from app.models import Role, User
 from app.schemas.auth import TokenPair, UserCreate
+
+_email_adapter = TypeAdapter(EmailStr)
 
 
 class EmailAlreadyRegisteredError(Exception):
@@ -58,7 +61,12 @@ def register_user(db: Session, data: UserCreate) -> User:
 
 
 def authenticate_user(db: Session, email: str, password: str) -> User:
-    user = get_user_by_email(db, email.strip().lower())
+    # JSON login and the OAuth2 form must query the same canonical email as registration.
+    try:
+        email = _email_adapter.validate_python(email).strip().lower()
+    except ValidationError as exc:
+        raise InvalidCredentialsError() from exc
+    user = get_user_by_email(db, email)
     if user is None or not verify_password(password, user.hashed_password):
         raise InvalidCredentialsError()
     if not user.is_active:

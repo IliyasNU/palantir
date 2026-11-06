@@ -7,6 +7,7 @@ import bcrypt
 import jwt
 
 from app.core.config import get_settings
+from app.schemas.auth import MAX_PASSWORD_BYTES
 
 ACCESS_TOKEN_TYPE = "access"
 REFRESH_TOKEN_TYPE = "refresh"
@@ -24,7 +25,11 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
-        return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+        password_bytes = plain_password.encode("utf-8")
+        # bcrypt 4 truncates longer input, while bcrypt 5 raises. Reject it consistently.
+        if len(password_bytes) > MAX_PASSWORD_BYTES:
+            return False
+        return bcrypt.checkpw(password_bytes, hashed_password.encode("utf-8"))
     except ValueError:  # malformed hash, or password longer than bcrypt's 72-byte limit
         return False
 
@@ -61,7 +66,13 @@ def decode_token(token: str, expected_type: str) -> dict[str, Any]:
             token,
             settings.jwt_secret_key,
             algorithms=[settings.jwt_algorithm],
-            options={"require": ["exp", "iat", "sub", "type"]},
+            options={
+                "require": ["exp", "iat", "sub", "type"],
+                "verify_signature": True,
+                "verify_exp": True,
+                "verify_iat": True,
+                "verify_nbf": True,
+            },
         )
     except jwt.ExpiredSignatureError as exc:
         raise TokenError("Token has expired") from exc

@@ -118,6 +118,38 @@ def test_oauth2_form_login_used_by_swagger_authorize(client, create_user):
     assert response.json()["access_token"]
 
 
+@pytest.mark.parametrize("email", ["person@xn--bcher-kva.de", "person@bücher.de"])
+def test_json_and_form_login_share_registration_email_normalization(client, email):
+    registered = client.post("/auth/register", json=register_payload(email="person@xn--bcher-kva.de"))
+    assert registered.status_code == 201, registered.text
+    for response in (
+        client.post("/auth/login", json={"email": email, "password": DEFAULT_PASSWORD}),
+        client.post("/auth/token", data={"username": email, "password": DEFAULT_PASSWORD}),
+    ):
+        assert response.status_code == 200, response.text
+        me = client.get("/auth/me", headers=bearer(response.json()["access_token"]))
+        assert me.status_code == 200, me.text
+        assert me.json()["id"] == registered.json()["id"]
+
+
+@pytest.mark.parametrize("password", ["a" * 72, "я" * 36])
+def test_login_rejects_password_suffix_beyond_bcrypt_limit(client, password):
+    assert client.post("/auth/register", json=register_payload(password=password)).status_code == 201
+    assert client.post(
+        "/auth/login", json={"email": "student@example.com", "password": password}
+    ).status_code == 200
+    for response in (
+        client.post("/auth/login", json={"email": "student@example.com", "password": password + "x"}),
+        client.post("/auth/token", data={"username": "student@example.com", "password": password + "x"}),
+    ):
+        assert response.status_code == 401, response.text
+
+
+def test_form_login_with_invalid_email_is_unauthorized(client):
+    response = client.post("/auth/token", data={"username": "not-an-email", "password": DEFAULT_PASSWORD})
+    assert response.status_code == 401
+
+
 # ------------------------------------------------------------------ /auth/me and token validation
 def test_me_returns_current_user(client, create_user, auth_header):
     create_user("me@example.com", role="organizer", full_name="Me Myself")

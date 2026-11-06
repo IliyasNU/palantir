@@ -1,23 +1,31 @@
 """Application settings, read from environment variables (or a local ``.env`` file)."""
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_DEV_SECRET = "dev-only-secret-change-me-0123456789abcdef"
+MIN_JWT_SECRET_BYTES = {"HS256": 32, "HS384": 48, "HS512": 64}
+PUBLIC_PLACEHOLDER_SECRETS = {
+    DEFAULT_DEV_SECRET,
+    "test-secret-key-for-pytest-only-0123456789",
+}
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore", hide_input_in_errors=True
+    )
 
     app_name: str = "Palantir API"
-    environment: str = "development"  # development | test | production
+    environment: Literal["development", "test", "production"] = "development"
 
     # Docker Compose overrides this with the `db` hostname.
     database_url: str = "postgresql+psycopg://palantir:palantir@localhost:5432/palantir"
 
     jwt_secret_key: str = DEFAULT_DEV_SECRET
-    jwt_algorithm: str = "HS256"
+    jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = Field(default=30, gt=0)
     refresh_token_expire_days: int = Field(default=7, gt=0)
 
@@ -32,9 +40,24 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
     @model_validator(mode="after")
-    def _reject_default_secret_in_production(self) -> "Settings":
-        if self.environment.lower() == "production" and self.jwt_secret_key == DEFAULT_DEV_SECRET:
-            raise ValueError("JWT_SECRET_KEY must be changed when ENVIRONMENT=production")
+    def _require_production_secret(self) -> "Settings":
+        secret = self.jwt_secret_key
+        if not secret.strip():
+            raise ValueError("JWT_SECRET_KEY must not be empty or whitespace")
+        if self.environment != "production":
+            return self
+
+        placeholder = "-".join(secret.casefold().replace("_", "-").split())
+        if (
+            secret.strip() in PUBLIC_PLACEHOLDER_SECRETS
+            or "change-me" in placeholder
+            or "changeme" in placeholder
+        ):
+            raise ValueError("JWT_SECRET_KEY must be a new random secret when ENVIRONMENT=production")
+
+        minimum = MIN_JWT_SECRET_BYTES[self.jwt_algorithm]
+        if len(secret.encode("utf-8")) < minimum:
+            raise ValueError(f"JWT_SECRET_KEY must contain at least {minimum} bytes for {self.jwt_algorithm}")
         return self
 
 
