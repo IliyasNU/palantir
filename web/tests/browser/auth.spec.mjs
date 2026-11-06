@@ -88,13 +88,14 @@ test('live local API: register, duplicate guard, wrong password, login/me, logou
   let registerRequests = 0;
   await page.route('http://localhost:8000/auth/register', async (route) => {
     registerRequests += 1;
+    expect(route.request().method()).toBe('POST');
+    expect(Object.keys(route.request().postDataJSON()).sort()).toEqual(['email', 'full_name', 'password', 'role']);
     expect(route.request().postDataJSON().role).toBe('attendee');
     await gate;
     await route.continue();
   });
-  await page.goto('/events/42');
-  await page.getByRole('link', { name: 'Войти и вернуться к этому событию' }).click();
-  await page.getByRole('link', { name: 'Зарегистрироваться', exact: true }).click();
+  // A fresh test database need not contain event 42.
+  await page.goto('/register?returnTo=%2Fevents%2F42');
   await registrationForm(page, email, password);
   await page.getByRole('button', { name: 'Создать аккаунт' }).click();
   await expect(page.getByRole('button', { name: 'Создаём аккаунт…' })).toBeDisabled();
@@ -126,4 +127,10 @@ test('live local API: register, duplicate guard, wrong password, login/me, logou
   await registrationForm(page, email, password);
   await page.getByRole('button', { name: 'Создать аккаунт' }).click();
   await expect(page.getByRole('alert')).toContainText('email уже зарегистрирован');
+  expect(responses.some((r) => r.path === '/auth/register' && r.status === 201)).toBe(true);
+  expect(responses.some((r) => r.path === '/auth/register' && r.status === 409)).toBe(true);
+  expect(responses.some((r) => r.path === '/auth/login' && r.status === 401)).toBe(true);
+  expect(responses.some((r) => r.path === '/auth/login' && r.status === 200)).toBe(true);
+  console.log('Real API http://localhost:8000; registration fields: email, full_name, password, role');
+  console.log('Observed auth statuses:', JSON.stringify(responses.filter((r) => r.path.startsWith('/auth/'))));
 });
