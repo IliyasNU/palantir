@@ -161,3 +161,52 @@ test('unknown UI errors are never coerced into [object Object]', () => {
     assert.equal(getErrorMessage(error), 'Произошла ошибка. Попробуйте ещё раз.');
   }
 });
+
+test('missing API URL explains setup and never sends registration', async () => {
+  for (const url of [undefined, '', '   ']) {
+    let calls = 0;
+    const client = createApiClient(url, async () => { calls++; });
+    await assert.rejects(client.request('/auth/register', { method: 'POST', body: {} }), (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.kind, 'configuration');
+      assert.equal(error.status, undefined);
+      assert.match(error.message, /Не задан VITE_API_URL/);
+      assert.ok(error.message.includes('web/.env.local'));
+      assert.match(error.message, /перезапустите Vite/);
+      assert.match(error.message, /перед сборкой/);
+      return true;
+    });
+    assert.equal(calls, 0);
+  }
+});
+
+test('invalid API URL explains the format without revealing its value', async () => {
+  for (const url of ['localhost:8000', '/api', 'ftp://localhost', 'https://user:private-secret@example.test', 'https://example.test?key=private-secret', 'https://example.test#private-secret']) {
+    let calls = 0;
+    const client = createApiClient(url, async () => { calls++; });
+    await assert.rejects(client.request('/auth/register'), (error) => {
+      assert.equal(error.kind, 'configuration');
+      assert.equal(error.status, undefined);
+      assert.match(error.message, /Некорректный VITE_API_URL/);
+      assert.ok(error.message.includes('HTTP(S)'));
+      assert.doesNotMatch(error.message, /private-secret/);
+      return true;
+    });
+    assert.equal(calls, 0);
+  }
+});
+
+test('registration keeps the configured port and path prefix without a fallback', async () => {
+  for (const base of ['http://localhost:8001', 'http://localhost:8001/']) {
+    const client = createApiClient(base, async (url) => {
+      assert.equal(url, 'http://localhost:8001/auth/register');
+      return Response.json({ id: 1 }, { status: 201 });
+    });
+    await client.request('/auth/register', { method: 'POST', body: {} });
+  }
+  const client = createApiClient('https://api.example.test:8443/v1/', async (url) => {
+    assert.equal(url, 'https://api.example.test:8443/v1/auth/register');
+    return Response.json({ id: 1 }, { status: 201 });
+  });
+  await client.request('/auth/register', { method: 'POST', body: {} });
+});
