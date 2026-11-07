@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { PNG } from 'pngjs';
 import jsQR from 'jsqr';
+import { liveApiUrl, requireTestDatabase } from './live-api.mjs';
 
 test('real visitor claims, reopens and presents the exact backend ticket QR', async ({ page, request }) => {
   test.skip(process.env.RUN_LIVE_TICKETS !== '1', 'Only after verifying the isolated test database. Creates test users and one event.');
@@ -10,7 +11,8 @@ test('real visitor claims, reopens and presents the exact backend ticket QR', as
   expect(process.env.ENVIRONMENT).toBe('test');
   expect(['127.0.0.1', 'localhost']).toContain(database.hostname);
   expect(database.pathname).toBe('/biletflow_test');
-  const base = 'http://localhost:8000';
+  requireTestDatabase();
+  const base = liveApiUrl();
   const password = randomUUID();
   const organizerEmail = `ticket-owner-${randomUUID()}@example.com`;
   const visitorEmail = `ticket-visitor-${randomUUID()}@example.com`;
