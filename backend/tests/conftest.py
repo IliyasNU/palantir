@@ -10,6 +10,7 @@ os.environ["ENVIRONMENT"] = "test"
 os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-for-pytest-only-0123456789"
 os.environ["BCRYPT_ROUNDS"] = "4"  # fast hashing in tests
+os.environ["CORS_ORIGINS"] = "http://localhost:5173"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

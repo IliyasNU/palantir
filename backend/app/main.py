@@ -5,7 +5,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from sqlalchemy.exc import DataError
+from sqlalchemy.exc import DataError, OperationalError, TimeoutError as DatabaseTimeoutError
 
 from app import __version__
 from app.auth.router import router as auth_router
@@ -52,6 +52,16 @@ def reject_unstorable_input(request: Request, exc: DataError) -> JSONResponse:
     return JSONResponse(
         status_code=422,
         content={"detail": {"code": "INVALID_INPUT", "message": "The request contains a value that cannot be stored"}},
+    )
+
+
+@app.exception_handler(OperationalError)
+@app.exception_handler(DatabaseTimeoutError)
+def database_unavailable(request: Request, exc: OperationalError | DatabaseTimeoutError) -> JSONResponse:
+    """Return a CORS-enabled response without exposing database diagnostics."""
+    return JSONResponse(
+        status_code=503,
+        content={"detail": {"code": "DATABASE_UNAVAILABLE", "message": "The database is temporarily unavailable"}},
     )
 
 
