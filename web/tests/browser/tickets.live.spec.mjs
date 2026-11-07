@@ -65,7 +65,10 @@ test('real visitor claims, reopens and presents the exact backend ticket QR', as
   await post(`/events/${event.id}/cancel`, undefined, ownerHeaders);
   await page.getByRole('link', { name: 'Открыть событие', exact: true }).click();
   await page.getByRole('link', { name: 'Открыть мой билет' }).click();
-  await expect(page.getByRole('status')).toContainText('Событие отменено');
+  await expect.poll(() => new URL(page.url()).pathname).toBe(`/tickets/${ticket.id}`);
+  const status = page.getByRole('status');
+  await expect(status).toHaveCount(1);
+  await expect(status).toContainText('Событие отменено');
   await expect(qr).toHaveCount(0);
   await page.getByRole('button', { name: 'Выйти', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Войти и открыть билет' })).toBeVisible();
