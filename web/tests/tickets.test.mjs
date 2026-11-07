@@ -60,7 +60,9 @@ test('ticket failure codes have clear messages', () => {
 test('build and runtime share the same explicit API base validation', () => {
   assert.equal(apiBaseUrl('http://localhost:8001/'), 'http://localhost:8001');
   assert.equal(apiBaseUrl('https://api.example/v1/'), 'https://api.example/v1');
-  for (const value of [undefined, '', '/api', 'localhost:8000', 'ftp://api.example', 'https://u:p@api.example', 'https://api.example?key=secret']) {
+  assert.equal(apiBaseUrl('https://api.example/v1%3F%23/'), 'https://api.example/v1%3F%23');
+  for (const value of [undefined, '', '/api', 'localhost:8000', 'ftp://api.example', 'https://u:p@api.example',
+    'https://api.example?key=secret', 'https://api.example?', 'https://api.example#']) {
     assert.throws(() => apiBaseUrl(value));
   }
 });

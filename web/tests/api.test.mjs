@@ -215,7 +215,8 @@ test('missing API URL explains setup and never sends registration', async () => 
 });
 
 test('invalid API URL explains the format without revealing its value', async () => {
-  for (const url of ['localhost:8000', '/api', 'ftp://localhost', 'https://user:private-secret@example.test', 'https://example.test?key=private-secret', 'https://example.test#private-secret']) {
+  for (const url of ['localhost:8000', '/api', 'ftp://localhost', 'http://127.0.0.1:8000?', 'http://127.0.0.1:8000#',
+    'https://user:private-secret@example.test', 'https://example.test?key=private-secret', 'https://example.test#private-secret']) {
     let calls = 0;
     const client = createApiClient(url, async () => { calls++; });
     await assert.rejects(client.request('/auth/register'), (error) => {
