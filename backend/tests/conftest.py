@@ -13,7 +13,7 @@ os.environ["BCRYPT_ROUNDS"] = "4"  # fast hashing in tests
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine, select  # noqa: E402
+from sqlalchemy import create_engine, event, select  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
@@ -31,6 +31,12 @@ def engine():
     engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
+
+    @event.listens_for(engine, "connect")
+    def enable_foreign_keys(connection, _record):
+        # SQLite otherwise parses REFERENCES without enforcing it.
+        connection.execute("PRAGMA foreign_keys=ON")
+
     Base.metadata.create_all(engine)
     yield engine
     Base.metadata.drop_all(engine)

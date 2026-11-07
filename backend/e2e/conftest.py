@@ -5,6 +5,7 @@ real concurrency. Every test registers fresh users with random e-mails, so the s
 same database. See backend/README.md for the command.
 """
 import os
+import sys
 import threading
 import uuid
 from collections.abc import Callable
@@ -15,17 +16,33 @@ from typing import Any
 import httpx
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 
-BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8000").rstrip("/")
-DATABASE_URL = os.environ.get(
-    "E2E_DATABASE_URL", "postgresql+psycopg://palantir:palantir@localhost:5432/palantir"
-)
+from e2e.settings import read_e2e_settings
+
+try:
+    targets = read_e2e_settings(os.environ)
+except ValueError as exc:
+    raise pytest.UsageError(str(exc)) from None
+
+BASE_URL = targets.base_url
+DATABASE_URL = targets.database_url
+# The forced-interleaving regression imports the app in this process. It must use
+# the same database as the SQL assertions, not an unrelated DATABASE_URL default.
+existing_session = sys.modules.get("app.db.session")
+if existing_session is not None and existing_session.engine.url != make_url(DATABASE_URL):
+    raise pytest.UsageError("Run pytest tests and pytest e2e in separate processes; their databases must not be mixed.")
+os.environ["DATABASE_URL"] = DATABASE_URL
+existing_config = sys.modules.get("app.core.config")
+if existing_config is not None:
+    existing_config.get_settings.cache_clear()
 PASSWORD = "E2e-Test-Passw0rd"
 
 
 @pytest.fixture(scope="session", autouse=True)
 def api_is_up():
     response = httpx.get(f"{BASE_URL}/health", timeout=10)
+    assert response.status_code == 200, f"Test API at {BASE_URL} is not healthy"
     assert response.json() == {"status": "ok", "database": "up"}, f"API at {BASE_URL} is not healthy"
 
 
@@ -55,7 +72,7 @@ def api():
 
 
 @pytest.fixture()
-def register(api):
+def register(api, db_engine):
     """Register a throw-away user through the API and log them in."""
 
     def _register(role: str = "attendee") -> SimpleNamespace:
@@ -64,6 +81,9 @@ def register(api):
             "/auth/register", json={"email": email, "full_name": f"E2E {role}", "password": PASSWORD, "role": role}
         )
         assert response.status_code == 201, response.text
+        with db_engine.connect() as connection:
+            stored_id = connection.execute(text("SELECT id FROM users WHERE email = :email"), {"email": email}).scalar_one_or_none()
+        assert stored_id == response.json()["id"], "E2E_BASE_URL and E2E_DATABASE_URL must target the same test database"
         tokens = api.post("/auth/login", json={"email": email, "password": PASSWORD}).json()
         return SimpleNamespace(
             id=response.json()["id"], email=email, headers={"Authorization": f"Bearer {tokens['access_token']}"}
