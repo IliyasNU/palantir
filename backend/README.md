@@ -6,7 +6,9 @@ FastAPI + PostgreSQL (SQLAlchemy, Alembic). Architecture and data model: [`../do
 (`admin`, `organizer`, `attendee`), organizer profiles (create / view / update), events (create, edit, publish,
 cancel, public listing), free tickets with QR payloads, per-event staff, and idempotent ticket check-in.
 
-## Run everything with Docker (recommended)
+## Run the API and database with Docker
+
+Use the [root setup](../README.md#2-запустить-postgresql-и-api) to generate the required local credentials before starting Compose.
 
 ```bash
 # from the repository root
@@ -46,14 +48,18 @@ pytest --cov=app --cov-report=term-missing
 the mobile MVP run (login, staff access, ticket, scan, retries, lost response) and real concurrency
 (last seat, two phones on one ticket, parallel retries).
 
-```bash
-# from the repository root, with `docker compose up --build -d` running
-docker compose exec -e E2E_BASE_URL=http://localhost:8000 \
-  -e E2E_DATABASE_URL=postgresql+psycopg://palantir:palantir@db:5432/palantir \
-  backend pytest e2e
+Set `RUN_POSTGRES_E2E=1`, `ENVIRONMENT=test`, `E2E_BASE_URL` and `E2E_DATABASE_URL` explicitly. Use the same test JWT key and database as the running API. The database name must be `biletflow_test`, `biletflow_test_*`, `test_*` or `e2e_*`. The migration parity test needs permission to create and drop its own randomly named scratch database.
+
+```powershell
+# From backend/ with the isolated API running.
+$env:RUN_POSTGRES_E2E = '1'
+$env:ENVIRONMENT = 'test'
+$env:E2E_BASE_URL = 'http://127.0.0.1:8000'
+# Set E2E_DATABASE_URL and JWT_SECRET_KEY from your local test configuration.
+python -m pytest -q e2e
 ```
 
-The suite registers users with random e-mails, so it can run repeatedly on the same database.
+Run `tests` and `e2e` in separate pytest processes. E2E creates disposable users and events in the configured database.
 
 ## Run the API locally against your own PostgreSQL
 
@@ -89,7 +95,14 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `PUT` or `PATCH /organizer-profiles/me` | organizer | partial update: only sent fields change |
 | `GET /organizer-profiles/{id}` | logged in | |
 | `POST /events` | organizer | `{title, description?, date, location, capacity}` |
-| `GET /events/{id}` | owner or admin | |
+| `GET /events` | public | published events |
+| `GET /events/{id}` | public or owner/admin | draft details are restricted |
+| `POST /events/{id}/publish` or `/cancel` | owner or admin | state transitions |
+| `POST /events/{id}/tickets` | authenticated | `201` new ticket, `200` existing ticket |
+| `GET /tickets/me` or `/tickets/{id}` | authenticated | ownership enforced |
+| `POST /events/{id}/staff` | owner or admin | assign event staff |
+| `GET /staff/events` | authenticated | permitted published events |
+| `POST /events/{id}/check-in` | staff, owner or admin | exact QR payload plus UUID request ID |
 | `PUT` or `PATCH /events/{id}` | owner or admin | partial update |
 
 Send the access token as `Authorization: Bearer <token>`. Use paths exactly as written (no trailing slash).

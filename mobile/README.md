@@ -4,17 +4,17 @@ Iliyas's part of Team Palantir's project. Three screens: sign in, choose an even
 
 ## Current status
 
-- Use the backend from [`feature/temirlan-tickets-checkin`](https://github.com/IliyasNU/palantir/tree/26d0dbd58aaea5fc44d63144155d14fdeb8ad67a/backend) or an integration branch that includes it. It implements the staff event list, ticket issuance and idempotent check-in described in [API.md](API.md). The backend bundled in `recovery/backend` is too old for this flow.
+- Start the backend in the same integration checkout. Follow the [root setup](../README.md) and [API contract](API.md).
 - Sign-in confirms the staff account through `GET /auth/me`. The token and account ID stay in memory. After restarting the app, sign in again.
 - Only a matching `CHECKED_IN` receipt confirms admission. A lost response or a server error leaves the scan unconfirmed and keeps its QR and request ID in memory for a retry. A retry after a 401 requires the same staff account.
 - A 403 preserves the session. If the event is unavailable or access is denied on the first attempt, return to the event list to reload it. If an earlier attempt is still unconfirmed, ask the organizer to verify it before admitting the attendee.
 - The interface supports Russian and Kazakh through the header buttons. Russian is the default; the choice lasts for the current app session. Switching language leaves the scan and its retry ID intact.
 - Before signing in, use the connection button to check the real `/health` response, including database readiness. Camera permission is checked again when the app returns from Settings; a camera failure offers a retry.
-- Physical-phone testing and the full web ticket → mobile check-in flow are pending.
+- The browser ticket QR and PostgreSQL check-in API passed separate integration checks. The camera flow on a physical phone is pending.
 
 ## Integration still needed
 
-The frontend in [`feature/frontend` at `e41c821`](https://github.com/IliyasNU/palantir/tree/e41c821eaea181bf1648cdd88934c27a740186b7/web) now has a public event catalog and event details. Ticket issuance and the attendee QR page are still awaiting frontend integration. Until those are available, the backend team can issue a test ticket through the API and render its exact `qr_payload` as a QR. Use the same backend and database for the web and mobile demo.
+The visitor can claim a ticket and display its QR on the integrated web client. Use the same backend and database for the web and mobile demo.
 
 The current backend has no API for the SRS manual attendee search/check-in, undoing a check-in, or registered/checked-in totals. These features remain open integration work. This version does not display fabricated participant lists or counts.
 
@@ -32,7 +32,7 @@ npm start
 
 Set `EXPO_PUBLIC_API_URL` to the team's shared HTTPS backend address. For local development, use the computer's actual Wi-Fi address, for example `http://192.168.1.100:8000`. The example address is a placeholder, not a running server. The phone and computer need to be on the same network; the backend must listen on `0.0.0.0` and its port must be reachable. Do not use `localhost`: on the phone that refers to the phone itself. An Expo tunnel does not also expose the backend.
 
-Open the Expo QR with a compatible Expo Go app. Allow camera access. Restart Expo after changing `.env`. Ask the organizer to publish a test event and assign your account through `POST /events/{event_id}/staff`. Use a separate attendee account to claim a test ticket through `POST /events/{event_id}/tickets`. The QR must encode exactly the returned `qr_payload` string. Both clients must use the same API and database.
+Open the Expo QR with a compatible Expo Go app. Allow camera access. Restart Expo after changing `.env`. Ask the organizer to publish a test event and assign your account through `POST /events/{event_id}/staff`. Use a separate attendee account to claim a test ticket in the web interface. The QR must encode exactly the returned `qr_payload` string. Both clients must use the same API and database.
 
 Use HTTPS for the shared server. `EXPO_PUBLIC_*` values are included in the app, so put only the API address there, never passwords or tokens. The app does not save or log ticket QR payloads.
 
@@ -43,7 +43,8 @@ npm run typecheck
 npm run lint
 npm test
 npx expo install --check
-npx expo export --platform android --platform ios
+npx expo export --platform android --output-dir dist/android
+npx expo export --platform ios --output-dir dist/ios
 ```
 
 The tests cover API requests, health response validation, errors, invalid receipts, repeated camera callbacks, retry IDs, account matching and localized error handling. Export checks the Android and iOS JavaScript bundles; it does not produce an installable app. Use the checklist below for camera and device behavior.
