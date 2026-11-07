@@ -81,6 +81,7 @@ test('HTML, empty HTTP errors and server internals never become UI content', asy
   const responses = [
     new Response('<html>proxy error</html>', { status: 502 }),
     Response.json({ detail: 'private server internals' }, { status: 500 }),
+    Response.json({ detail: { code: 'SOLD_OUT', message: 'private server internals' } }, { status: 500 }),
     new Response(null, { status: 401 }),
   ];
   for (const response of responses) {
@@ -88,6 +89,7 @@ test('HTML, empty HTTP errors and server internals never become UI content', asy
     await assert.rejects(clientReturning(response).request('/health'), (error) => {
       assert.equal(error.kind, 'http');
       assert.equal(error.status, status);
+      assert.equal(error.code, undefined);
       assert.doesNotMatch(error.message, /<html>|private server internals|\[object Object\]/);
       assert.ok(error.message.length > 0);
       return true;
@@ -133,11 +135,43 @@ test('AbortSignal is passed to fetch and cancellation is preserved', async () =>
   const controller = new AbortController();
   const failure = new DOMException('Cancelled', 'AbortError');
   const client = createApiClient(baseUrl, async (_url, options) => {
-    assert.equal(options.signal, controller.signal);
+    assert.equal(options.signal.aborted, false);
     controller.abort(failure);
+    assert.equal(options.signal.aborted, true);
     throw failure;
   });
   await assert.rejects(client.request('/health', { signal: controller.signal }), (error) => error === failure);
+});
+
+test('a stalled request times out and the next attempt can succeed', async () => {
+  let calls = 0;
+  const client = createApiClient(baseUrl, async (_url, options) => {
+    if (++calls > 1) return Response.json({ recovered: true });
+    return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => {
+      reject(new DOMException('Aborted', 'AbortError'));
+    }, { once: true }));
+  }, 15);
+  await assert.rejects(client.request('/auth/login', { method: 'POST', body: {} }), (error) => {
+    assert.equal(error.kind, 'timeout');
+    assert.equal(error.status, undefined);
+    assert.match(error.message, /не ответил вовремя/);
+    return true;
+  });
+  assert.deepEqual(await client.request('/health'), { recovered: true });
+});
+
+test('the deadline also covers a stalled response body', async () => {
+  const client = createApiClient(baseUrl, async (_url, options) => ({
+    text: () => new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => {
+      reject(new DOMException('Aborted', 'AbortError'));
+    }, { once: true })),
+  }), 15);
+  await assert.rejects(client.request('/health'), (error) => error.kind === 'timeout');
+});
+
+test('structured API error codes remain available for ticket messages', async () => {
+  await assert.rejects(clientReturning(Response.json({ detail: { code: 'SOLD_OUT', message: 'No tickets left' } }, { status: 409 }))
+    .request('/events/1/tickets', { method: 'POST' }), (error) => error.code === 'SOLD_OUT' && error.status === 409);
 });
 
 test('missing or invalid configuration fails before making a request', async () => {

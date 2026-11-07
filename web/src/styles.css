@@ -92,6 +92,9 @@ button.nav-link { color: inherit; background: transparent; }
 .event-facts dd { margin: 5px 0 0; line-height: 1.6; overflow-wrap: anywhere; }
 .event-navigation { margin-top: 28px; }
 .event-details-error .button { margin-top: 18px; border: 0; }
+.ticket-actions { margin-top: 24px; }
+.ticket-qr { display: block; width: 320px; max-width: 100%; height: auto; margin-block: 20px; image-rendering: pixelated; }
+.ticket-details { max-width: 590px; }
 
 @media (max-width: 640px) {
   .container { width: calc(100% - 36px); }

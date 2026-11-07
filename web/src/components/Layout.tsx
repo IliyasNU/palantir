@@ -20,6 +20,7 @@ export function Layout() {
             <NavLink className="nav-link" to="/events">События</NavLink>
             {auth.user ? (
               <>
+                <NavLink className="nav-link" to="/tickets">Мои билеты</NavLink>
                 <span className="account-name">{auth.user.full_name}</span>
                 <button className="nav-link nav-link-accent" type="button" onClick={auth.logout}>Выйти</button>
               </>

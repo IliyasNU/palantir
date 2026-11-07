@@ -1,4 +1,6 @@
-export type ApiErrorKind = 'configuration' | 'network' | 'http' | 'validation' | 'response';
+import { apiBaseUrl } from './config.ts';
+
+export type ApiErrorKind = 'configuration' | 'network' | 'timeout' | 'http' | 'validation' | 'response';
 
 export interface ValidationIssue {
   field: string;
@@ -8,6 +10,7 @@ export interface ValidationIssue {
 interface ApiErrorOptions {
   kind: ApiErrorKind;
   status?: number;
+  code?: string;
   issues?: ValidationIssue[];
   cause?: unknown;
 }
@@ -15,6 +18,7 @@ interface ApiErrorOptions {
 export class ApiError extends Error {
   readonly kind: ApiErrorKind;
   readonly status: number | undefined;
+  readonly code: string | undefined;
   readonly issues: ValidationIssue[];
 
   constructor(message: string, options: ApiErrorOptions) {
@@ -22,6 +26,7 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.kind = options.kind;
     this.status = options.status;
+    this.code = options.code;
     this.issues = options.issues ?? [];
   }
 }
@@ -87,6 +92,7 @@ function httpError(status: number, payload: unknown): ApiError {
   return new ApiError(message || fallbackHttpMessage(status), {
     kind: status === 422 ? 'validation' : 'http',
     status,
+    code: status < 500 && isRecord(payload) && isRecord(payload.detail) ? nonemptyString(payload.detail.code) : undefined,
     issues,
   });
 }
@@ -101,11 +107,7 @@ function requestUrl(baseUrl: string | undefined, path: string): string {
     throw new ApiError('Некорректный путь запроса API.', { kind: 'configuration' });
   }
   try {
-    const url = new URL(baseUrl.trim());
-    if (!['http:', 'https:'].includes(url.protocol) || url.search || url.hash || url.username || url.password) {
-      throw new Error('VITE_API_URL must be an HTTP(S) base URL');
-    }
-    return url.toString().replace(/\/+$/, '') + path;
+    return apiBaseUrl(baseUrl) + path;
   } catch (cause) {
     throw new ApiError('Некорректный VITE_API_URL. Нужен полный адрес HTTP(S) без логина, пароля, query и hash. Исправьте настройку и перезапустите Vite или пересоберите опубликованный сайт.', {
       kind: 'configuration',
@@ -115,7 +117,7 @@ function requestUrl(baseUrl: string | undefined, path: string): string {
 }
 
 /** A JSON-only HTTP client. fetchImpl can be replaced in isolated tests. */
-export function createApiClient(baseUrl: string | undefined, fetchImpl: typeof fetch = fetch) {
+export function createApiClient(baseUrl: string | undefined, fetchImpl: typeof fetch = fetch, timeoutMs = 15000) {
   return {
     async request<T = unknown>(path: string, options: ApiRequestOptions = {}): Promise<T> {
       const url = requestUrl(baseUrl, path);
@@ -134,16 +136,28 @@ export function createApiClient(baseUrl: string | undefined, fetchImpl: typeof f
 
       let response: Response;
       let text: string;
+      const deadline = new AbortController();
+      const signal = init.signal ? AbortSignal.any([init.signal, deadline.signal]) : deadline.signal;
+      const timer = setTimeout(() => deadline.abort(), timeoutMs);
       try {
-        response = await fetchImpl(url, { ...init, headers, body: serializedBody });
+        response = await fetchImpl(url, { ...init, signal, headers, body: serializedBody });
         text = await response.text();
       } catch (cause) {
         // Cancellation belongs to the caller and must not look like a network failure.
-        if (init.signal?.aborted || (cause instanceof Error && cause.name === 'AbortError')) throw cause;
+        if (init.signal?.aborted) throw cause;
+        if (deadline.signal.aborted) {
+          throw new ApiError('Сервер не ответил вовремя. Попробуйте снова.'
+            + (path === '/auth/register' ? ' Аккаунт мог быть создан: попробуйте войти.' : ''), {
+            kind: 'timeout', cause,
+          });
+        }
+        if (cause instanceof Error && cause.name === 'AbortError') throw cause;
         throw new ApiError('Не удалось связаться с сервером. Проверьте подключение и попробуйте снова.', {
           kind: 'network',
           cause,
         });
+      } finally {
+        clearTimeout(timer);
       }
 
       let payload: unknown;
