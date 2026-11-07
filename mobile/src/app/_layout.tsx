@@ -16,7 +16,12 @@ function Navigation() {
   return (
     <>
       <StatusBar style="dark" />
-      <Stack screenOptions={{ headerTintColor: '#163d79', contentStyle: { backgroundColor: '#f6f8fc' }, headerRight: () => <LanguagePicker /> }}>
+      <Stack screenOptions={{
+        headerTransparent: false,
+        headerTintColor: '#163d79',
+        contentStyle: { backgroundColor: '#f6f8fc' },
+        headerRight: () => <LanguagePicker />,
+      }}>
         <Stack.Screen name="index" options={{ title: 'BiletFlow Staff' }} />
         <Stack.Screen name="events" options={{ title: copy.eventsTitle, headerBackVisible: false }} />
         <Stack.Screen name="scan" options={{ title: copy.scanTitle }} />

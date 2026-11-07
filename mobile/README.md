@@ -20,7 +20,7 @@ The current backend has no API for the SRS manual attendee search/check-in, undo
 
 ## Run on a phone
 
-Use Node.js 22.18+ or 24 LTS and npm. The project uses Expo SDK 57.
+Use Node.js 22.18+ or 24 LTS and npm. The project uses Expo SDK 58.
 
 ```bash
 cd mobile
@@ -73,4 +73,4 @@ The operating system can terminate the app, which discards a pending retry ID. D
 - `src/language.tsx` and `src/messages.ts`: language choice and Russian/Kazakh screen text.
 - `tests/`: small API and scanner tests.
 
-Built from the official blank TypeScript template. Camera and UUID APIs follow the [Expo Camera](https://docs.expo.dev/versions/v57.0.0/sdk/camera/) and [Expo Crypto](https://docs.expo.dev/versions/v57.0.0/sdk/crypto/) documentation. `LICENSE` covers the supplied Expo template.
+Built from the official blank TypeScript template. Camera and UUID APIs follow the [Expo Camera](https://docs.expo.dev/versions/v58.0.0/sdk/camera/) and [Expo Crypto](https://docs.expo.dev/versions/v58.0.0/sdk/crypto/) documentation. `LICENSE` covers the supplied Expo template.

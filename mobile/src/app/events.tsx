@@ -56,7 +56,7 @@ function EventsList({ token }: { token: string }) {
       {busy && <ActivityIndicator accessibilityLabel={copy.loadingEvents} />}
       {error !== null && <Text accessibilityRole="alert" style={styles.error}>{errorMessage(error, locale)}</Text>}
       <FlatList data={events} keyExtractor={item => String(item.id)}
-        ListEmptyComponent={!busy && error === null ? <Text>{copy.noEvents}</Text> : null}
+        ListEmptyComponent={!busy && error === null ? <Text>{copy.noEvents}</Text> : undefined}
         renderItem={({ item }) => (
           <Pressable accessibilityRole="button" accessibilityLabel={`${copy.scanTickets}: ${item.title}`} style={styles.event}
             disabled={busy} accessibilityState={{ disabled: busy }}
