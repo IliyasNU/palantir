@@ -10,7 +10,7 @@ Iliyas's part of Team Palantir's project. Three screens: sign in, choose an even
 - A 403 preserves the session. If the event is unavailable or access is denied on the first attempt, return to the event list to reload it. If an earlier attempt is still unconfirmed, ask the organizer to verify it before admitting the attendee.
 - The interface supports Russian and Kazakh through the header buttons. Russian is the default; the choice lasts for the current app session. Switching language leaves the scan and its retry ID intact.
 - Before signing in, use the connection button to check the real `/health` response, including database readiness. Camera permission is checked again when the app returns from Settings; a camera failure offers a retry.
-- The browser ticket QR and PostgreSQL check-in API passed separate integration checks. The camera flow on a physical phone is pending.
+- The browser ticket QR and PostgreSQL check-in API passed separate integration checks. On a physical iPhone with Expo Go SDK 58, a staff account signed in, selected its assigned event and scanned a QR generated from a real API ticket. A second scan was rejected and PostgreSQL held one check-in. The web-to-phone QR flow and extended device checks are in the [manual acceptance checklist](../docs/manual-acceptance.md).
 
 ## Integration still needed
 

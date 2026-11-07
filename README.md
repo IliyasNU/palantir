@@ -6,7 +6,7 @@
 - Backend. JWT, роли, публикация и отмена событий, выдача билетов, назначение сотрудников и идемпотентный check-in.
 - Mobile. Вход сотрудника, список доступных событий, сканирование QR и повтор запроса с тем же `request_id` после неопределённого ответа в открытой сессии.
 
-Результаты проверок и список оставшихся рисков находятся в [отчёте аудита](docs/integration-audit.md).
+Результаты проверок и список оставшихся рисков находятся в [отчёте аудита](docs/integration-audit.md). Сценарии для показа и ручной приёмки собраны в [чек-листе команды](docs/manual-acceptance.md).
 
 ## 1. Скачать единую версию
 
@@ -36,7 +36,7 @@ docker compose -p biletflow-test exec backend alembic current
 Invoke-RestMethod http://127.0.0.1:8000/health
 ```
 
-Ожидается `0002 (head)` и `{"status":"ok","database":"up"}`. Compose запускает PostgreSQL, ждёт `pg_isready` и применяет `alembic upgrade head` перед стартом API. При ошибке смотрите `docker compose -p biletflow-test logs backend db`. Для остановки используйте `docker compose -p biletflow-test stop`, чтобы сохранить данные.
+Ожидается `0002 (head)` и `{"status":"ok","database":"up"}`. Compose запускает PostgreSQL, ждёт `pg_isready` и применяет `alembic upgrade head` перед стартом API. Если контейнер backend ещё запускается, дождитесь окончания миграций и повторите `/health` перед открытием форм. При ошибке смотрите `docker compose -p biletflow-test logs backend db`. Для остановки используйте `docker compose -p biletflow-test stop`, чтобы сохранить данные.
 
 При прямом запуске создайте отдельную PostgreSQL `biletflow_test` с собственным пользователем и паролем. В `backend/.env` укажите реальный `DATABASE_URL` в формате `postgresql+psycopg://USER:PASSWORD@127.0.0.1:5432/biletflow_test`, созданный `JWT_SECRET_KEY` и `CORS_ORIGINS=http://localhost:5173`. Используйте фактический порт PostgreSQL. Спецсимволы в имени и пароле URI должны быть закодированы. pgAdmin управляет PostgreSQL через интерфейс.
 
@@ -80,7 +80,7 @@ npm ci
 npm start
 ```
 
-Используйте совместимый Expo Go или сборку для устройства. Подробные проверки камеры, двух сканов, доступа и восстановления после потери ответа описаны в [инструкции mobile](mobile/README.md). Переменные `VITE_*` и `EXPO_PUBLIC_*` входят в клиентские сборки и содержат только адрес API.
+Используйте Expo Go с поддержкой SDK 58 или сборку для устройства. На физическом iPhone войдите в Expo CLI и Expo Go одним аккаунтом. Для входа в CLI из Windows PowerShell используйте `npx.cmd expo login` в папке `mobile`. Подробные проверки камеры, двух сканов, доступа и восстановления после потери ответа описаны в [инструкции mobile](mobile/README.md). Переменные `VITE_*` и `EXPO_PUBLIC_*` входят в клиентские сборки и содержат только адрес API.
 
 ## Проверки
 
