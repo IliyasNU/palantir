@@ -66,7 +66,7 @@ for (const status of ['published', 'cancelled']) {
     await page.getByRole('link', { name: 'Открыть мой билет' }).click();
     await expect(page).toHaveURL('/tickets/21');
     if (status === 'cancelled') {
-      await expect(page.getByRole('status')).toContainText('Событие отменено');
+      await expect(page.locator('.ticket-details').getByRole('status')).toContainText('Событие отменено');
       await expect(page.getByRole('img')).toHaveCount(0);
     } else expect(await decodedQr(page)).toBe(ticket.qr_payload);
   });
