@@ -1,4 +1,4 @@
-import { liveApiUrl, requireTestDatabase } from './live-api.mjs';
+import { liveApiUrl, verifyLiveSession } from './live-api.mjs';
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { eventDetails } from './event-fixture.mjs';
@@ -75,9 +75,10 @@ test('registration validates UTF-8 password limit locally and fits a mobile view
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test('live local API: register, duplicate guard, wrong password, login/me, logout, reload and duplicate email', async ({ page }) => {
+test('live local API: register, duplicate guard, wrong password, login/me, logout, reload and duplicate email', async ({ page, request }, testInfo) => {
   test.skip(process.env.RUN_LIVE_AUTH !== '1', 'Opt in only after verifying the local Compose database.');
-  requireTestDatabase();
+  test.setTimeout(90000);
+  await verifyLiveSession(page, request, testInfo);
   const base = liveApiUrl();
   const email = `fe01-browser-${randomUUID()}@example.com`;
   const password = randomUUID();
@@ -95,7 +96,7 @@ test('live local API: register, duplicate guard, wrong password, login/me, logou
     expect(Object.keys(route.request().postDataJSON()).sort()).toEqual(['email', 'full_name', 'password', 'role']);
     expect(route.request().postDataJSON().role).toBe('attendee');
     await gate;
-    await route.continue();
+    await route.fallback();
   });
   // A fresh test database need not contain event 42.
   await page.goto('/register?returnTo=%2Fevents%2F42');

@@ -2,16 +2,12 @@ import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { PNG } from 'pngjs';
 import jsQR from 'jsqr';
-import { liveApiUrl, requireTestDatabase } from './live-api.mjs';
+import { liveApiUrl, verifyLiveSession } from './live-api.mjs';
 
-test('real visitor claims, reopens and presents the exact backend ticket QR', async ({ page, request }) => {
+test('real visitor claims, reopens and presents the exact backend ticket QR', async ({ page, request: unverifiedRequest }, testInfo) => {
   test.skip(process.env.RUN_LIVE_TICKETS !== '1', 'Only after verifying the isolated test database. Creates test users and one event.');
   test.setTimeout(90000);
-  const database = new URL(process.env.DATABASE_URL ?? '');
-  expect(process.env.ENVIRONMENT).toBe('test');
-  expect(['127.0.0.1', 'localhost']).toContain(database.hostname);
-  expect(database.pathname).toBe('/biletflow_test');
-  requireTestDatabase();
+  const { request } = await verifyLiveSession(page, unverifiedRequest, testInfo);
   const base = liveApiUrl();
   const password = randomUUID();
   const organizerEmail = `ticket-owner-${randomUUID()}@example.com`;
@@ -47,7 +43,8 @@ test('real visitor claims, reopens and presents the exact backend ticket QR', as
   const qr = page.getByRole('img', { name: 'QR-код билета для проверки на входе' });
   await expect(qr).toBeVisible();
   const png = PNG.sync.read(Buffer.from((await qr.getAttribute('src')).split(',')[1], 'base64'));
-  expect(jsQR(new Uint8ClampedArray(png.data), png.width, png.height)?.data).toBe(ticket.qr_payload);
+  expect(jsQR(new Uint8ClampedArray(png.data), png.width, png.height)?.data === ticket.qr_payload,
+    'Decoded QR must exactly match the server payload (values omitted from errors)').toBe(true);
 
   // Same-session page navigation, never a page.goto/reload that would intentionally log out.
   await page.getByRole('link', { name: 'Открыть событие', exact: true }).click();
@@ -68,7 +65,7 @@ test('real visitor claims, reopens and presents the exact backend ticket QR', as
   await page.getByRole('link', { name: 'Открыть событие', exact: true }).click();
   await page.getByRole('link', { name: 'Открыть мой билет' }).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe(`/tickets/${ticket.id}`);
-  const status = page.getByRole('status');
+  const status = page.locator('.ticket-details').getByRole('status');
   await expect(status).toHaveCount(1);
   await expect(status).toContainText('Событие отменено');
   await expect(qr).toHaveCount(0);

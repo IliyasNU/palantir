@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
-import { liveApiUrl, requireTestDatabase } from './live-api.mjs';
+import { liveApiUrl, verifyLiveSession, publicGet } from './live-api.mjs';
 
-test('667 live: public lifecycle, returnTo, own ticket, failures and production deep links at 375px', async ({ page, request }, testInfo) => {
+test('667 live: public lifecycle, returnTo, own ticket, failures and production deep links at 375px', async ({ page, request: unverifiedRequest }, testInfo) => {
   test.skip(process.env.RUN_LIVE_667 !== '1', 'Requires explicitly verified isolated API and database; retains created test records.');
   test.setTimeout(180000);
-  requireTestDatabase();
+  const { request, evidence: sessionEvidence, gate } = await verifyLiveSession(page, unverifiedRequest, testInfo);
   const base = liveApiUrl();
   const run = randomUUID();
   const password = randomUUID();
@@ -46,27 +46,28 @@ test('667 live: public lifecycle, returnTo, own ticket, failures and production 
   const eventLink = page.getByRole('link', { name: event.title, exact: true });
   expect(event.status).toBe('draft');
   expect((await call('GET', '/events')).some(item => item.id === event.id)).toBe(false);
-  await page.goto('/events');
+  const draftCatalog = await publicGet(page, base, '/events', () => page.goto('/events'));
   await expect(page.getByRole('status')).not.toContainText('Загружаем');
   await expect(eventLink).toHaveCount(0);
   await expect(page.getByRole('alert')).toHaveCount(0);
   await fits();
-  mark(1, { api: 'public GET /events excludes draft', ui: 'catalog has no draft link', eventId: event.id });
+  mark(1, { request: draftCatalog, api: 'public GET /events excludes draft', ui: 'catalog has no draft link', eventId: event.id });
 
   // Publication is API preparation, its visibility is verified in the browser.
   await call('POST', eventPath + '/publish', undefined, ownerHeaders);
   const serverEvent = await call('GET', eventPath);
-  await page.reload();
+  const publishedCatalog = await publicGet(page, base, '/events', () => page.reload());
   await expect(eventLink).toBeVisible();
   const catalogCard = page.getByRole('article').filter({ has: eventLink });
   await expect(catalogCard).toContainText(serverEvent.location);
   await expect(catalogCard.locator('time')).toHaveAttribute('datetime', serverEvent.date);
-  mark(2, { api: 'publish 200', ui: 'published link visible to guest' });
+  mark(2, { request: publishedCatalog, api: 'publish 200', ui: 'published link visible to guest' });
 
-  const publicRequests = [];
-  page.on('request', req => {
-    if (req.url().startsWith(base + '/events')) publicRequests.push({ url: req.url(), method: req.method(), auth: !!req.headers().authorization });
-  });
+  const searchRequests = [];
+  const observeSearch = req => {
+    if (['fetch', 'xhr'].includes(req.resourceType())) searchRequests.push({ origin: new URL(req.url()).origin, method: req.method() });
+  };
+  page.on('request', observeSearch);
   const search = page.getByLabel('Поиск по названию', { exact: true });
   await search.fill('  ' + run.slice(0, 12).toUpperCase() + '  ');
   await expect(eventLink).toBeVisible();
@@ -77,10 +78,11 @@ test('667 live: public lifecycle, returnTo, own ticket, failures and production 
   await fits();
   await page.getByRole('button', { name: 'Сбросить поиск' }).click();
   await expect(eventLink).toBeVisible();
-  expect(publicRequests).toHaveLength(0); // Search is local: no q or additional requests.
+  expect(searchRequests).toHaveLength(0); // Separate assertion; public navigation is verified by awaited requests.
+  page.off('request', observeSearch);
   mark(4, { ui: 'trimmed uppercase partial title matches; separate no-results state; no search HTTP requests' });
 
-  await eventLink.click();
+  const detailRequest = await publicGet(page, base, eventPath, () => eventLink.click());
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(serverEvent.title);
   const article = page.getByRole('article');
   await expect(article).toContainText(serverEvent.description);
@@ -90,17 +92,16 @@ test('667 live: public lifecycle, returnTo, own ticket, failures and production 
   await expect(article.locator('time')).toHaveAttribute('datetime', serverEvent.date);
   const localTime = await page.evaluate(date => new Intl.DateTimeFormat('ru-RU', { dateStyle: 'long', timeStyle: 'short' }).format(new Date(date)), serverEvent.date);
   await expect(article.locator('time')).toHaveText(localTime);
-  expect(publicRequests.every(req => req.method === 'GET' && !req.auth && !new URL(req.url).search)).toBe(true);
   await screenshot('published-details-375');
-  mark(3, { id: event.id, title: serverEvent.title, description: serverEvent.description, location: serverEvent.location, date: serverEvent.date, localTime, status: serverEvent.status, capacity: serverEvent.capacity, ticketsIssued: serverEvent.tickets_issued });
+  mark(3, { request: detailRequest, id: event.id, title: serverEvent.title, description: serverEvent.description, location: serverEvent.location, date: serverEvent.date, localTime, status: serverEvent.status, capacity: serverEvent.capacity, ticketsIssued: serverEvent.tickets_issued });
 
-  await page.goto(eventPath);
+  await publicGet(page, base, eventPath, () => page.goto(eventPath));
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(event.title);
-  await page.reload();
+  await publicGet(page, base, eventPath, () => page.reload());
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(event.title);
   await fits();
   mark(5, { ui: 'direct event URL and reload load the real event' });
-  await page.goto('/events/2147483647');
+  await publicGet(page, base, '/events/2147483647', () => page.goto('/events/2147483647'), 404);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Событие не найдено');
   await fits();
   const abort = route => route.abort('failed');
@@ -111,14 +112,14 @@ test('667 live: public lifecycle, returnTo, own ticket, failures and production 
   await search.fill(run.slice(0, 12));
   await expect(search).toHaveValue(run.slice(0, 12));
   await page.unroute(base + '/events', abort);
-  await page.getByRole('button', { name: 'Повторить', exact: true }).click();
+  await publicGet(page, base, '/events', () => page.getByRole('button', { name: 'Повторить', exact: true }).click());
   await expect(eventLink).toBeVisible();
   await expect(search).toHaveValue(run.slice(0, 12));
   await page.route(base + eventPath, abort);
   await eventLink.click();
   await expect(page.getByRole('alert')).toContainText('Не удалось загрузить событие');
   await page.unroute(base + eventPath, abort);
-  await page.getByRole('button', { name: 'Повторить', exact: true }).click();
+  await publicGet(page, base, eventPath, () => page.getByRole('button', { name: 'Повторить', exact: true }).click());
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(event.title);
   mark(6, { api: 'unknown ID 404', faultInjection: 'browser abort only for catalog/details; retry resumes real API; query retained' });
 
@@ -199,7 +200,7 @@ test('667 live: public lifecycle, returnTo, own ticket, failures and production 
   // SPA navigation refreshes event data and retains the in-memory session.
   await page.getByRole('link', { name: 'Открыть мой билет', exact: true }).click();
   await expect(page).toHaveURL(ticketPath);
-  await expect(page.getByRole('status')).toContainText('Событие отменено');
+  await expect(page.locator('.ticket-details').getByRole('status')).toContainText('Событие отменено');
   await expect(page.getByRole('img', { name: 'QR-код билета для проверки на входе' })).toHaveCount(0);
   await page.getByRole('link', { name: 'Открыть событие', exact: true }).click();
   await expect(article).toContainText('Событие отменено');
@@ -208,15 +209,15 @@ test('667 live: public lifecycle, returnTo, own ticket, failures and production 
   await screenshot('cancelled-owner-375');
   await page.getByRole('link', { name: 'Открыть мой билет', exact: true }).click();
   await expect(page).toHaveURL(ticketPath);
-  await expect(page.getByRole('status')).toContainText('Событие отменено');
+  await expect(page.locator('.ticket-details').getByRole('status')).toContainText('Событие отменено');
   mark(9, { ui: 'own ticket opens for full and cancelled event; cancellation is explicit and QR hidden' });
-  await page.getByRole('navigation').getByRole('link', { name: 'События', exact: true }).click();
+  await publicGet(page, base, '/events', () => page.getByRole('navigation').getByRole('link', { name: 'События', exact: true }).click());
   await expect(page.getByRole('status')).not.toContainText('Загружаем');
   await expect(eventLink).toHaveCount(0);
   expect((await call('GET', '/events')).some(item => item.id === event.id)).toBe(false);
   mark(10, { api: 'cancelled absent in public GET /events', ui: 'no cancelled link' });
 
-  await page.goto(eventPath); // Memory session is deliberately lost.
+  await publicGet(page, base, eventPath, () => page.goto(eventPath)); // Memory session is deliberately lost.
   await expect(article).toContainText('Событие отменено');
   await expect(page.getByRole('link', { name: 'Войти и проверить мои билеты', exact: true })).toBeVisible();
   await page.goto(ticketPath);
@@ -225,15 +226,13 @@ test('667 live: public lifecycle, returnTo, own ticket, failures and production 
   await page.getByRole('link', { name: 'Войти и открыть билет', exact: true }).click();
   await login();
   await expect(page).toHaveURL(ticketPath);
-  await expect(page.getByRole('status')).toContainText('Событие отменено');
+  await expect(page.locator('.ticket-details').getByRole('status')).toContainText('Событие отменено');
   await fits();
-  mark(12, { browser: 'Edge headless', viewport: '375x812', ui: 'catalog, details, login, registration, ticket and transitions; no horizontal overflow', phone: 'not tested' });
-  mark(13, { mode: process.env.BILETFLOW_PRODUCTION_PREVIEW === '1' ? 'production vite preview' : 'Vite dev', eventAndTicketDirectLinks: true, reload: true, hosting: 'external hosting / production SPA fallback not tested' });
+  mark(12, { browser: sessionEvidence.browser, ui: 'catalog, details, login, registration, ticket and transitions; no horizontal overflow', phone: 'not tested' });
+  mark(13, { mode: sessionEvidence.mode, eventAndTicketDirectLinks: true, reload: true, hosting: 'external hosting / production SPA fallback not tested' });
   const evidence = {
-    run, completedAt: new Date().toISOString(), api: base,
-    frontendBase: process.env.BILETFLOW_FRONTEND_SHA || 'record separately',
-    frontendState: 'uncommitted acceptance changes; see report fingerprint',
-    backendSha: process.env.BILETFLOW_BACKEND_SHA || 'record separately',
+    ...sessionEvidence, run, completedAt: new Date().toISOString(),
+    blockedWrites: gate.blocked,
     organizerId: organizer.id, eventId: event.id, ticketId: ticket.id,
     observations: observations.sort((a, b) => a.scenario - b.scenario),
   };

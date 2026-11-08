@@ -158,31 +158,27 @@ npm run check:auth
 npm run test:browser
 ```
 
-По умолчанию выполняются проверки с HTTP-фикстурами и сценарии без записи в базу. Live-тесты включайте только после проверки, что API использует **отдельную локальную тестовую БД**. Они создают записи и не удаляют их. Подробный отчёт, команды для выделенного окружения Алиби и границы проверки телефона/хостинга: [приёмка 667](667-acceptance.md).
+По умолчанию запускаются проверки с HTTP-фикстурами, без подготовки записей в БД. Для live используйте [новую инструкцию проверяемой изоляции](LIVE-TESTS.md): runner сверяет Docker-контейнеры, volume, фактическое подключение FastAPI к PostgreSQL и API origin браузера до первого POST. DATABASE_URL оболочки не служит доказательством.
 
-Для live-прогона задайте `ENVIRONMENT=test`, `DATABASE_URL` вашей PostgreSQL с именем `biletflow_test` на localhost/127.0.0.1 и `BILETFLOW_LIVE_API_URL` — подтверждённый адрес локального API. Пароль БД храните только в локальном окружении; не вставляйте секреты в README или Git. Конфигурация проверяет эти ограничения, но соответствие API именно этой БД нужно подтвердить по Docker mounts и настройкам сервера.
+Пример для выделенного локального проекта (подставьте свои проверенные API/project/SHA):
 
-```powershell
-# Сначала задайте ENVIRONMENT, DATABASE_URL и BILETFLOW_LIVE_API_URL
-# из проверенной конфигурации своего тестового окружения.
-$env:RUN_LIVE_AUTH = '1'
-$env:RUN_LIVE_TICKETS = '1'
-$env:RUN_LIVE_667 = '1'
-$env:BILETFLOW_PRODUCTION_PREVIEW = '0'
-npx.cmd playwright test --config playwright.live.config.mjs
-
-# Production preview использует адрес, встроенный при build.
-$env:VITE_API_URL = $env:BILETFLOW_LIVE_API_URL
-npm.cmd run build
-$env:BILETFLOW_PRODUCTION_PREVIEW = '1'
-npx.cmd playwright test --config playwright.live.config.mjs
+```sh
+node scripts/run-live.mjs --api http://localhost:8002 --project biletflow-667-live --backend-ref c5b83a851128c486b1b15cebea94c6df8166308d --mode dev --channel msedge
+node scripts/run-live.mjs --api http://localhost:8002 --project biletflow-667-live --backend-ref c5b83a851128c486b1b15cebea94c6df8166308d --mode production --channel msedge
 ```
 
-Live-конфигурация запускает свой frontend на localhost:5173, не переиспользует занятый порт, использует существующие auth/ticket тесты и проверку 667. Один полный прогон создаёт 5 тестовых аккаунтов, 2 события и 2 билета; данные остаются в тестовой БД. Публикация/отмена — подготовка через API, проверка видимости и билетных переходов — через UI. Сетевой отказ имитируется только в браузере; 401 получается с некорректным bearer, реальный 403 публикации воспроизводится в ticket lookup для проверки UI. Успешные ответы не подменяются.
+Production live всегда строит свежий dist с выбранным API. Порт 8002 приведён только как пример окружения Алиби, не как обязательная настройка команды. Один live-прогон создаёт 5 тестовых аккаунтов, 2 события и 2 билета; существующие данные не удаляются.
 
-Трассировка и видео отключены; JSON-доказательства не содержат паролей, токенов или QR. Только новый live-сценарий сохраняет снимки страниц события без QR/форм. Артефакты находятся в игнорируемых Git `test-results/live-dev` и `test-results/live-production`.
+Регрессия старого dist на двух локальных HTTP-origin без БД:
 
-После live-прогона отключите `RUN_LIVE_AUTH`, `RUN_LIVE_TICKETS`, `RUN_LIVE_667` (значение `0` или удаление переменных) перед обычной браузерной регрессией. Для сохранения live-артефактов используйте `npm run test:browser -- --output test-results/mock-regression`.
+```sh
+npx playwright test --config playwright.isolation.config.mjs
+```
+
+Результаты каждого live запуска сохраняются отдельно в игнорируемом Git `test-results/live/`. Для обычной регрессии без перезаписи live-артефактов: `npm run test:browser -- --output test-results/mock-regression`. Не включайте RUN_LIVE_* для неё.
+
+[Историческая приёмка 7 ноября](667-acceptance.md) и [результаты доработки 8 ноября](667-review-2026-11-08.md) разделены. В [LIVE-TESTS.md](LIVE-TESTS.md) указаны ограничения CI, телефона/хостинга, правила публикации безопасных evidence и стыковка с W1.
+
 
 ### Результат проверки FE01 — 28 октября 2026
 

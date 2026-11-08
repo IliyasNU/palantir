@@ -13,6 +13,7 @@ test('returnTo permits exactly the existing event/ticket route families', () => 
       assert.equal(target, route);
     }
   }
+  // W1: once /organizer exists in the shared App and whitelist, move it to the positive cases; keep /admin negative.
   for (const route of ['/organizer', '/admin', '/login', '/register', '/tickets/mine', '/events/0', '/tickets/-1', '/tickets/01',
     '/tickets/21/extra', '/tickets/../events', '/tickets/21?x=1', '/events/42#x', '//evil.example', 'https://evil.example',
     '/tickets/%32%31', '/events/42\n', ' /tickets/21', null, 42]) assert.equal(safeReturnTo(route), '/events');
