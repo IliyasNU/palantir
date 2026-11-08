@@ -103,6 +103,8 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `POST /events/{id}/staff` | owner or admin | assign event staff |
 | `GET /staff/events` | authenticated | permitted published events |
 | `POST /events/{id}/check-in` | staff, owner or admin | exact QR payload plus UUID request ID |
+| `GET /events/{id}/attendance` | staff, owner or admin | `{event_id, capacity, tickets_issued, checked_in}` |
+| `GET /events/{id}/attendees?q=` | staff, owner or admin | name/e-mail search, `q` ≥ 3 chars, ≤ 20 results, masked e-mail + `qr_payload` |
 | `PUT` or `PATCH /events/{id}` | owner or admin | partial update |
 
 Send the access token as `Authorization: Bearer <token>`. Use paths exactly as written (no trailing slash).
