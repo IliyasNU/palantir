@@ -10,7 +10,7 @@ from sqlalchemy.exc import DataError, OperationalError, TimeoutError as Database
 from app import __version__
 from app.auth.router import router as auth_router
 from app.core.config import get_settings
-from app.routers import check_ins, events, health, organizer_profiles, staff, tickets
+from app.routers import attendance, check_ins, events, health, organizer_profiles, staff, tickets
 
 settings = get_settings()
 
@@ -72,3 +72,4 @@ app.include_router(events.router)
 app.include_router(tickets.router)
 app.include_router(staff.router)
 app.include_router(check_ins.router)
+app.include_router(attendance.router)

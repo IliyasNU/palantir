@@ -82,4 +82,43 @@ The backend handles atomic check-in, duplicate protection, event and staff permi
 
 Screen messages are mapped locally to Russian or Kazakh by error code. Unknown server messages are not presented as admission instructions. An unresolved result displays the original request ID for the organizer; the raw QR payload is not displayed. Language changes do not create a new scanner session.
 
-Manual attendee search/check-in, undo and event attendance totals from the SRS need agreed backend routes and response formats before mobile integration. Those routes are absent from the referenced backend revision.
+## Attendance totals
+
+`GET /events/{id}/attendance` returns the event's counters:
+
+```json
+{ "event_id": 7, "capacity": 150, "tickets_issued": 42, "checked_in": 17 }
+```
+
+`checked_in` counts the event's check-in records, so it rises by exactly one per admitted ticket; replayed retries and `ALREADY_CHECKED_IN` scans do not change it.
+
+## Manual attendee search
+
+`GET /events/{id}/attendees?q=<text>` searches the event's ticket holders by full name or e-mail, case-insensitively. `q` is trimmed and must contain at least 3 characters. `%` and `_` match themselves. The response is a JSON array of at most 20 results, ordered by name:
+
+```json
+[
+  {
+    "ticket_id": 21,
+    "full_name": "Aigerim Sadykova",
+    "masked_email": "ai***@example.com",
+    "checked_in_at": null,
+    "qr_payload": "biletflow:ticket:v1:<opaque-ticket-token>"
+  }
+]
+```
+
+`masked_email` shows at most the first two characters of the local part, always hides at least one, and uses a fixed `***`: `alice@x.kz` → `al***@x.kz`, `ab@x.kz` → `a***@x.kz`, `a@x.kz` → `***@x.kz`. `checked_in_at` is `null` until the ticket is admitted.
+
+To admit a found attendee, send the returned `qr_payload` unchanged to `POST /events/{id}/check-in` with a new `request_id`, exactly as for a scanned QR. There is no separate manual check-in route, so retries, duplicates and receipts behave the same.
+
+Both routes allow the event's assigned staff, its organizer and admins. Access is checked before `q` is validated.
+
+| HTTP | `detail.code` | Meaning |
+| --- | --- | --- |
+| 401 | Any / existing string detail | Sign in again |
+| 403 | `FORBIDDEN` | Not staff for this event (including revoked staff and attendees) |
+| 404 | `EVENT_NOT_FOUND` | Event missing |
+| 422 | `QUERY_TOO_SHORT` | Search text shorter than 3 characters |
+
+Undoing a check-in is not implemented.

@@ -137,6 +137,7 @@ erDiagram
 | `PUT\|PATCH /events/{id}`, `POST /events/{id}/publish`, `POST /events/{id}/cancel` | the event's organizer, or an admin |
 | `GET\|POST /events/{id}/staff`, `DELETE /events/{id}/staff/{user_id}` | the event's organizer, or an admin |
 | `POST /events/{id}/check-in` | the event's assigned staff, its organizer, or an admin |
+| `GET /events/{id}/attendance`, `GET /events/{id}/attendees?q=` | the event's assigned staff, its organizer, or an admin |
 
 ## Design decisions
 
@@ -162,7 +163,15 @@ erDiagram
   never mixes an old event status with newer staff access. Parallel scans do not block each other.
 * New endpoints report errors as `{"detail": {"code": "...", "message": "..."}}`. Codes: `EVENT_NOT_FOUND`,
   `EVENT_NOT_PUBLISHED`, `EVENT_CANCELLED`, `SOLD_OUT`, `CAPACITY_BELOW_ISSUED`, `TICKET_NOT_FOUND`,
-  `USER_NOT_FOUND`, `STAFF_CHANGED`, `FORBIDDEN`, `INVALID_TICKET`, `ALREADY_CHECKED_IN`, `REQUEST_ID_CONFLICT`.
+  `USER_NOT_FOUND`, `STAFF_CHANGED`, `FORBIDDEN`, `INVALID_TICKET`, `ALREADY_CHECKED_IN`, `REQUEST_ID_CONFLICT`,
+  `QUERY_TOO_SHORT`.
+* `GET /events/{id}/attendance` returns `capacity` and `tickets_issued` from the event row and `checked_in` as a
+  `COUNT` of its `check_ins`, all read in one statement. `GET /events/{id}/attendees?q=` searches the event's ticket
+  holders by name or e-mail (case-insensitive substring, `q` at least 3 characters after trimming, `%`/`_` literal,
+  at most 20 results ordered by name). Each result carries the exact `qr_payload`, so manual admission goes through
+  the same check-in endpoint; there is no second write path. E-mails are masked to at most two leading characters,
+  always hiding at least one, plus a fixed `***` and the domain (`ab@x.kz` → `a***@x.kz`). Access is checked before
+  `q` is validated.
 * Values PostgreSQL refuses to store (NUL characters, ids beyond its integer range) return
   `422 INVALID_INPUT` on every endpoint instead of a 500.
 

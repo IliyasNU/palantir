@@ -16,7 +16,7 @@ Iliyas's part of Team Palantir's project. Three screens: sign in, choose an even
 
 The visitor can claim a ticket and display its QR on the integrated web client. Use the same backend and database for the web and mobile demo.
 
-The current backend has no API for the SRS manual attendee search/check-in, undoing a check-in, or registered/checked-in totals. These features remain open integration work. This version does not display fabricated participant lists or counts.
+The backend now provides attendance totals (`GET /events/{id}/attendance`) and manual attendee search (`GET /events/{id}/attendees?q=`); see [API.md](API.md). Manual admission sends the found `qr_payload` through the existing check-in request. The app does not use these routes yet; that screen work remains open. The backend has no API for undoing a check-in. This version does not display fabricated participant lists or counts.
 
 ## Run on a phone
 
