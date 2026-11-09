@@ -1,6 +1,6 @@
 # Mobile API contract
 
-The backend implements this contract in [`feature/temirlan-tickets-checkin`](https://github.com/IliyasNU/palantir/tree/26d0dbd58aaea5fc44d63144155d14fdeb8ad67a/backend). Use that backend revision or an integration branch that includes it. The older `recovery/backend` branch only supports login and account lookup from this flow.
+Use the current `integration/biletflow-e2e` backend, which includes tickets, staff check-in, and attendance (W2, merged in [PR #5](https://github.com/IliyasNU/palantir/pull/5)). [`feature/temirlan-tickets-checkin`](https://github.com/IliyasNU/palantir/tree/26d0dbd58aaea5fc44d63144155d14fdeb8ad67a/backend) introduced the base ticket and check-in endpoints. The attendance and attendee search routes below were added by W2.
 
 ## Connection check
 
@@ -90,7 +90,7 @@ Screen messages are mapped locally to Russian or Kazakh by error code. Unknown s
 { "event_id": 7, "capacity": 150, "tickets_issued": 42, "checked_in": 17 }
 ```
 
-`checked_in` counts the event's check-in records, so it rises by exactly one per admitted ticket; replayed retries and `ALREADY_CHECKED_IN` scans do not change it.
+`checked_in` counts the event's check-in records. A new admission increases it by one. Replayed retries and `ALREADY_CHECKED_IN` scans leave it unchanged. The scanner displays `checked_in` out of `tickets_issued` and shows `capacity` separately. It reloads these values on return to the screen, on foregrounding, and after a confirmed receipt.
 
 ## Manual attendee search
 
@@ -111,6 +111,8 @@ Screen messages are mapped locally to Russian or Kazakh by error code. Unknown s
 `masked_email` shows at most the first two characters of the local part, always hides at least one, and uses a fixed `***`: `alice@x.kz` → `al***@x.kz`, `ab@x.kz` → `a***@x.kz`, `a@x.kz` → `***@x.kz`. `checked_in_at` is `null` until the ticket is admitted.
 
 To admit a found attendee, send the returned `qr_payload` unchanged to `POST /events/{id}/check-in` with a new `request_id`, exactly as for a scanned QR. There is no separate manual check-in route, so retries, duplicates and receipts behave the same.
+
+The camera pauses during manual search. A result with `checked_in_at` shows the local check-in time. Only a result with `checked_in_at: null` offers the admission action. When the employee advances to the next ticket, the active search reloads from the API.
 
 Both routes allow the event's assigned staff, its organizer and admins. Access is checked before `q` is validated.
 

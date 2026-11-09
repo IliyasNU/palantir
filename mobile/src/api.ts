@@ -7,6 +7,21 @@ export type StaffEvent = {
 
 export type StaffSession = { token: string; userId: number };
 
+export type Attendance = {
+  event_id: number;
+  capacity: number;
+  tickets_issued: number;
+  checked_in: number;
+};
+
+export type Attendee = {
+  ticket_id: number;
+  full_name: string;
+  masked_email: string;
+  checked_in_at: string | null;
+  qr_payload: string;
+};
+
 export type ScanRequest = { qr_payload: string; request_id: string };
 export type Receipt = {
   status: 'CHECKED_IN';
@@ -46,6 +61,22 @@ function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function count(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+export function canSearchAttendees(query: string): boolean {
+  return Array.from(query.trim()).length >= 3;
+}
+
+function isAttendee(value: unknown): value is Attendee {
+  return object(value) && count(value.ticket_id) && value.ticket_id > 0
+    && typeof value.full_name === 'string' && typeof value.masked_email === 'string'
+    && (value.checked_in_at === null || (typeof value.checked_in_at === 'string'
+      && Number.isFinite(Date.parse(value.checked_in_at))))
+    && typeof value.qr_payload === 'string' && value.qr_payload.length > 0 && value.qr_payload.length <= 512;
+}
+
 function httpError(status: number, body: unknown) {
   const detail = object(body) ? body.detail : undefined;
   const code = object(detail) && typeof detail.code === 'string' ? detail.code : '';
@@ -77,6 +108,9 @@ function httpError(status: number, body: unknown) {
     return new ApiError('NOT_AVAILABLE', 'This API route is unavailable on the configured server.', status);
   }
   if (status === 422) {
+    if (code === 'QUERY_TOO_SHORT') {
+      return new ApiError(code, 'Enter at least three characters to search for an attendee.', status);
+    }
     return new ApiError('INVALID_INPUT', 'The server rejected the request format. Check the entered details or the ticket QR.', status);
   }
   if (status >= 500) {
@@ -144,6 +178,26 @@ export function createApi(baseUrl: string, fetcher: typeof fetch = fetch, timeou
         throw new ApiError('SERVER_ERROR', 'The server returned an invalid event list.');
       }
       return data as StaffEvent[];
+    },
+    async attendance(token: string, eventId: number): Promise<Attendance> {
+      const data = await request(`/events/${eventId}/attendance`, token);
+      if (!object(data) || data.event_id !== eventId || !count(data.capacity) || data.capacity === 0
+        || !count(data.tickets_issued) || !count(data.checked_in)
+        || data.checked_in > data.tickets_issued || data.tickets_issued > data.capacity) {
+        throw new ApiError('SERVER_ERROR', 'The server returned invalid attendance counts.');
+      }
+      return data as Attendance;
+    },
+    async attendees(token: string, eventId: number, query: string): Promise<Attendee[]> {
+      const term = query.trim();
+      if (!canSearchAttendees(term)) {
+        throw new ApiError('QUERY_TOO_SHORT', 'Enter at least three characters to search for an attendee.');
+      }
+      const data = await request(`/events/${eventId}/attendees?q=${encodeURIComponent(term)}`, token);
+      if (!Array.isArray(data) || data.length > 20 || !data.every(isAttendee)) {
+        throw new ApiError('SERVER_ERROR', 'The server returned an invalid attendee list.');
+      }
+      return data;
     },
     async checkIn(token: string, eventId: number, body: ScanRequest): Promise<Receipt> {
       const data = await request(`/events/${eventId}/check-in`, token, body);

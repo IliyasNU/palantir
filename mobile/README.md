@@ -12,11 +12,11 @@ Iliyas's part of Team Palantir's project. Three screens: sign in, choose an even
 - Before signing in, use the connection button to check the real `/health` response, including database readiness. Camera permission is checked again when the app returns from Settings; a camera failure offers a retry.
 - The browser ticket QR and PostgreSQL check-in API passed separate integration checks. On a physical iPhone with Expo Go SDK 58, a staff account signed in, selected its assigned event and scanned a QR generated from a real API ticket. A second scan was rejected and PostgreSQL held one check-in. The web-to-phone QR flow and extended device checks are in the [manual acceptance checklist](../docs/manual-acceptance.md).
 
-## Integration still needed
+## Attendance and manual admission
 
 The visitor can claim a ticket and display its QR on the integrated web client. Use the same backend and database for the web and mobile demo.
 
-The backend now provides attendance totals (`GET /events/{id}/attendance`) and manual attendee search (`GET /events/{id}/attendees?q=`); see [API.md](API.md). Manual admission sends the found `qr_payload` through the existing check-in request. The app does not use these routes yet; that screen work remains open. The backend has no API for undoing a check-in. This version does not display fabricated participant lists or counts.
+Use the integration backend with the attendance routes in [API.md](API.md) and the [W2 PostgreSQL locale setup](../backend/README.md#w2-postgresql-16-locale-and-acceptance). The scanner shows checked-in visitors out of issued tickets and displays capacity separately. It refreshes on return and after a confirmed check-in. Open “Найти вручную” to search by name or email using at least three characters. Each match shows a masked email. A fresh ticket can be marked through the same check-in and retry flow as a camera scan. An admitted ticket shows its check-in time. The new attendance and search screens still need the physical-phone checks below.
 
 ## Run on a phone
 
@@ -61,6 +61,8 @@ Run this with the backend team on a test database. Record the device, backend co
 6. Try another event's ticket and an unrelated QR: expect `INVALID_TICKET`. Revoke the staff assignment: check-in must be denied.
 7. Disable Wi-Fi/mobile data and scan. It must not show green. Switch RU/KZ and verify the message changes while the displayed request ID stays the same. Reconnect and retry. Also simulate a lost response after the backend committed, then retry and verify only one record exists.
 8. Expire the token during an unconfirmed scan. A different staff account must be rejected without sending a retry. The original account must be able to retry the same request. Check that the camera pauses when the app is backgrounded, and test Back and sign-out.
+9. Open “Найти вручную” while the camera sees a test QR. The preview pauses and only an intentional tap on “Отметить вход” admits a search result. Switch back and verify the camera resumes. Search by name and email, compare masked addresses and check-in times, and confirm an admitted result has no action. Repeat after denying camera access.
+10. Compare the attendance totals with the API before entry and after a confirmed manual or camera check-in. After “Следующий билет”, the same search should show the updated check-in time. A duplicate or a successful replay must not add an entry. Return to the scanner and confirm it fetches current totals.
 
 The operating system can terminate the app, which discards a pending retry ID. Do not admit the attendee after an unconfirmed result; ask the organizer to verify it on the server. There is no offline queue or recovery after restart in this version.
 
@@ -68,6 +70,7 @@ The operating system can terminate the app, which discards a pending retry ID. D
 
 - `src/app/`: the three screens and Expo Router layout.
 - `src/api.ts`: HTTP requests and response checks.
+- `src/attendance.tsx`: event totals and manual attendee search.
 - `src/scanner.ts`: scan lock and retry ID.
 - `src/session.tsx`: the current account and login token.
 - `src/language.tsx` and `src/messages.ts`: language choice and Russian/Kazakh screen text.

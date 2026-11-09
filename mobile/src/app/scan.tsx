@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, BackHandler, Button, Linking, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { randomUUID } from 'expo-crypto';
-import { Redirect, Stack, router, useIsFocused, useLocalSearchParams } from 'expo-router';
+import { Redirect, Stack, router, useIsFocused, useLocalSearchParams, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { api } from '../api';
+import { api, type StaffSession } from '../api';
+import { AttendanceCount, AttendeeSearch } from '../attendance';
 import { createScanSession, type ScanResult } from '../scanner';
 import { useSession } from '../session';
 import { useLanguage } from '../language';
@@ -13,17 +14,29 @@ import { errorMessage } from '../messages';
 export default function ScanScreen() {
   const { id, title } = useLocalSearchParams<{ id: string; title: string }>();
   const eventId = Number(id);
-  const { session, setSession } = useSession();
+  const { session } = useSession();
+  if (!session?.token) return <Redirect href="/" />;
+  if (!Number.isSafeInteger(eventId) || eventId < 1) return <Redirect href="/events" />;
+  return <EventScanner key={`${session.userId}:${eventId}`} eventId={eventId} title={title} session={session} />;
+}
+
+function EventScanner({ eventId, title, session }: { eventId: number; title?: string; session: StaffSession }) {
+  const { setSession } = useSession();
   const { copy, locale } = useLanguage();
-  const token = session?.token;
+  const { token } = session;
   const [permission, requestPermission, getPermission] = useCameraPermissions();
   const [result, setResult] = useState<ScanResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [cameraError, setCameraError] = useState(false);
   const [checkingCamera, setCheckingCamera] = useState(false);
   const cameraLock = useRef(false);
+  const [inputMode, setInputMode] = useState({ lookupOpen: false });
+  const currentMode = useRef(inputMode);
+  const { lookupOpen } = inputMode;
+  const [attendanceRevision, setAttendanceRevision] = useState(0);
   const [active, setActive] = useState(AppState.currentState === 'active');
   const focused = useIsFocused();
+  const navigation = useNavigation();
   const mounted = useRef(true);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -35,7 +48,7 @@ export default function ScanScreen() {
   ), [eventId]);
   const scanner = scanSession.scanner;
 
-  useEffect(() => { scanSession.setToken(token || ''); }, [scanSession, token]);
+  useEffect(() => { scanSession.setToken(token); }, [scanSession, token]);
 
   useEffect(() => {
     mounted.current = true;
@@ -80,12 +93,39 @@ export default function ScanScreen() {
     setBusy(true);
     setResult(null);
     void promise.then(value => {
-      if (mounted.current) { setResult(value); setBusy(false); }
+      if (!mounted.current) return;
+      setResult(value);
+      setBusy(false);
+      if (value.receipt) refreshAttendance();
     });
   }
 
+  function refreshAttendance() {
+    setAttendanceRevision(revision => revision + 1);
+  }
+
+  function changeLookup(open: boolean) {
+    if (scanner.requestId() || loginLock.current || currentMode.current.lookupOpen === open) return;
+    // Invalidate queued callbacks immediately, even if the same mode is reopened.
+    const nextMode = { lookupOpen: open };
+    currentMode.current = nextMode;
+    setInputMode(nextMode);
+  }
+
+  function submitTicket(payload: string) {
+    if (inputMode !== currentMode.current || !mounted.current || !navigation.isFocused()
+      || AppState.currentState !== 'active' || loginLock.current) return;
+    show(scanner.scan(payload));
+  }
+
+  function signInAgain() {
+    if (scanner.mustResolve() || loginLock.current) return;
+    scanSession.setToken('');
+    setSession(null);
+  }
+
   async function reauthenticate() {
-    if (!session || loginLock.current || !loginEmail.trim() || !loginPassword) return;
+    if (loginLock.current || !loginEmail.trim() || !loginPassword) return;
     loginLock.current = true;
     setLoggingIn(true);
     setLoginError(null);
@@ -103,9 +143,7 @@ export default function ScanScreen() {
     }
   }
 
-  if (!token) return <Redirect href="/" />;
-  if (!Number.isInteger(eventId) || eventId < 1) return <Redirect href="/events" />;
-  const canScan = permission?.granted && focused && active && !busy && !loggingIn && !result && !cameraError && !checkingCamera;
+  const canScan = !lookupOpen && permission?.granted && focused && active && !busy && !loggingIn && !result && !cameraError && !checkingCamera;
   const mustStay = busy || scanner.mustResolve() || loggingIn;
   const error = result?.error;
   const pending = scanner.mustResolve();
@@ -118,9 +156,18 @@ export default function ScanScreen() {
     <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ headerBackVisible: !mustStay, gestureEnabled: !mustStay }} />
       <Text style={styles.title}>{title || copy.selectedEvent}</Text>
-      <Text style={styles.hint}>{copy.scanHint}</Text>
-      {(!permission || checkingCamera) && <Text>{copy.checkingPermission}</Text>}
-      {permission && !permission.granted && (
+      {focused && active && <AttendanceCount key={attendanceRevision} token={token} eventId={eventId}
+        locked={mustStay || error?.status === 401} onReload={refreshAttendance} onSignInAgain={signInAgain} />}
+      {lookupOpen ? (
+        <AttendeeSearch token={token} eventId={eventId} locked={!focused || !active || mustStay || result !== null}
+          onClose={() => changeLookup(false)} onSignInAgain={signInAgain}
+          onMark={submitTicket} />
+      ) : (
+        !result && !mustStay && <Button title={copy.findManually} onPress={() => changeLookup(true)} />
+      )}
+      {!lookupOpen && <Text style={styles.hint}>{copy.scanHint}</Text>}
+      {!lookupOpen && (!permission || checkingCamera) && <Text>{copy.checkingPermission}</Text>}
+      {!lookupOpen && permission && !permission.granted && (
         <View style={styles.box}>
           <Text>{copy.needCamera}</Text>
           <Button title={permission.canAskAgain ? copy.allowCamera : copy.openSettings} disabled={checkingCamera}
@@ -128,11 +175,9 @@ export default function ScanScreen() {
         </View>
       )}
       {canScan && (
-        <CameraView style={styles.camera} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-          onBarcodeScanned={({ data }) => { if (data) show(scanner.scan(data)); }}
-          onMountError={() => setCameraError(true)} />
+        <ScanCamera onScan={submitTicket} onError={() => setCameraError(true)} />
       )}
-      {cameraError && <View style={styles.box}>
+      {!lookupOpen && cameraError && <View style={styles.box}>
         <Text accessibilityRole="alert" style={styles.error}>{copy.cameraError}</Text>
         <Button title={copy.retryCamera} disabled={checkingCamera} onPress={() => { void cameraPermission(true); }} />
       </View>}
@@ -170,6 +215,18 @@ export default function ScanScreen() {
     </ScrollView>
     </SafeAreaView>
   );
+}
+
+function ScanCamera({ onScan, onError }: { onScan: (payload: string) => void; onError: () => void }) {
+  const attached = useRef(false);
+  useLayoutEffect(() => {
+    attached.current = true;
+    return () => { attached.current = false; };
+  }, []);
+
+  return <CameraView style={styles.camera} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+    onBarcodeScanned={({ data }) => { if (attached.current) onScan(data); }}
+    onMountError={() => { if (attached.current) onError(); }} />;
 }
 
 const styles = StyleSheet.create({
