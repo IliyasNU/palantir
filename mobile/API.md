@@ -123,4 +123,18 @@ Both routes allow the event's assigned staff, its organizer and admins. Access i
 | 404 | `EVENT_NOT_FOUND` | Event missing |
 | 422 | `QUERY_TOO_SHORT` | Search text shorter than 3 characters |
 
+## Pending ticket cancellation and refund contract
+
+SRS section 4.8 requires separate results for a cancelled ticket and a refunded ticket. The current backend has no individual ticket state for either case. `EVENT_CANCELLED` describes cancellation of the whole event. Mobile handling of individual cancellation/refund reasons remains pending backend agreement.
+
+Before adding mobile mappings, the backend owner and mobile owner need to agree on:
+
+- The HTTP status and stable `detail.code` for each ticket state, after authentication and event permission checks.
+- How cancelling or refunding a ticket invalidates admission, including a race with an in-flight check-in.
+- What a replay of the same request returns when the original check-in committed before the ticket state changed, and how a new request differs from that replay.
+
+After agreement, add both codes to the error table and RU/KZ messages, and exercise the actual server responses with the scanner. An uncertain earlier attempt must retain its QR and request ID until a matching receipt or organizer verification resolves it. A later rejection alone does not establish the outcome of the earlier request.
+
+Only a matching `CHECKED_IN` receipt confirms admission. Tests that return other status strings in HTTP 2xx responses are deliberately invalid receipt fixtures. They verify safe rejection and recovery, and do not define cancellation/refund API codes or establish that these SRS features are implemented.
+
 Undoing a check-in is not implemented.
