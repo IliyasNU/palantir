@@ -58,6 +58,9 @@ export function createScanner(
     mustResolve(): boolean {
       return busy || unresolved;
     },
+    canHandOff(requestId: string): boolean {
+      return unresolved && !busy && pending?.request_id === requestId;
+    },
     requestId(): string | null {
       return pending?.request_id ?? null;
     },

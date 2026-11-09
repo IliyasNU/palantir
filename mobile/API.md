@@ -76,7 +76,7 @@ Example error:
 
 An unknown route (`404` with `detail: "Not Found"`) is shown as unavailable, not as an invalid ticket. Successful status alone is insufficient: the mobile client also requires `CHECKED_IN`, the matching event/request ID, a ticket ID and a timestamp.
 
-If a scan fails with an event error or 403 and there is no pending uncertain attempt, the app offers a return to the event list. A rejection received after a timeout or server error leaves the earlier attempt unconfirmed. The app retains the original request. For a conflict or another terminal rejection after an uncertain result, the organizer needs to verify the existing record.
+If a scan fails with an event error or 403 and there is no pending uncertain attempt, the app offers a return to the event list. A rejection received after a timeout or server error leaves the earlier attempt unconfirmed. The app retains the original request. If a retry cannot resolve the result, the staff member can give the displayed request ID to the organizer. After the organizer verifies the record, the staff member can explicitly confirm a return to the event list. The app keeps the original scan locked until the screen is dismissed. This action does not confirm admission, undo a check-in, or send another request.
 
 The backend handles atomic check-in, duplicate protection, event and staff permissions, and storage. A valid receipt is required for the mobile client to confirm admission.
 

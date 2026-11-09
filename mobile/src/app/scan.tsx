@@ -124,6 +124,25 @@ function EventScanner({ eventId, title, session }: { eventId: number; title?: st
     setSession(null);
   }
 
+  function leaveAfterVerification() {
+    const requestId = scanner.requestId();
+    if (!requestId || loginLock.current || !scanner.canHandOff(requestId)) return;
+
+    Alert.alert(copy.handoffTitle, copy.handoffHint(requestId), [
+      { text: copy.stayOnScan, style: 'cancel' },
+      {
+        text: copy.handoffConfirm,
+        onPress: () => {
+          if (mounted.current && navigation.isFocused() && AppState.currentState === 'active'
+            && !loginLock.current && scanner.canHandOff(requestId)) {
+            // Keep the request locked until this scanner screen is dismissed.
+            router.dismissTo('/events');
+          }
+        },
+      },
+    ]);
+  }
+
   async function reauthenticate() {
     if (loginLock.current || !loginEmail.trim() || !loginPassword) return;
     loginLock.current = true;
@@ -207,6 +226,8 @@ function EventScanner({ eventId, title, session }: { eventId: number; title?: st
             <Text>{copy.noAccess}</Text>
             {pending && <Button title={copy.retryAccess} onPress={() => show(scanner.retry())} />}
           </View>}
+          {error && pending && !busy && <Button title={copy.handoffTitle} disabled={loggingIn}
+            onPress={leaveAfterVerification} />}
           {backToEvents && <Button title={copy.backToEvents} onPress={() => router.dismissTo('/events')} />}
           {!pending && !backToEvents && error?.status !== 401 &&
             <Button title={copy.nextTicket} onPress={() => { if (scanner.next()) setResult(null); }} />}

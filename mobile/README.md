@@ -51,6 +51,8 @@ The tests cover API requests, health response validation, errors, invalid receip
 
 ## Phone / integration checklist
 
+Use [device acceptance](DEVICE-ACCEPTANCE.md) for the release run, including web and printed QR, Android, and camera-to-result timing. Record device results separately from JS exports and HTTP checks.
+
 Run this with the backend team on a test database. Record the device, backend commit, date and actual results.
 
 1. Set the API address and tap “Проверить соединение” / “Байланысты тексеру”. A healthy API and database should be reported. Stop the server and verify it reports a failure. Sign in and also try a wrong password.
@@ -63,6 +65,8 @@ Run this with the backend team on a test database. Record the device, backend co
 8. Expire the token during an unconfirmed scan. A different staff account must be rejected without sending a retry. The original account must be able to retry the same request. Check that the camera pauses when the app is backgrounded, and test Back and sign-out.
 9. Open “Найти вручную” while the camera sees a test QR. The preview pauses and only an intentional tap on “Отметить вход” admits a search result. Switch back and verify the camera resumes. Search by name and email, compare masked addresses and check-in times, and confirm an admitted result has no action. Repeat after denying camera access.
 10. Compare the attendance totals with the API before entry and after a confirmed manual or camera check-in. After “Следующий билет”, the same search should show the updated check-in time. A duplicate or a successful replay must not add an entry. Return to the scanner and confirm it fetches current totals.
+
+If replay cannot confirm the result, give the displayed request ID to the organizer. Once the organizer has checked the record, choose “Выйти после сверки с организатором” and confirm to return to the event list. Cancelling the dialog keeps the request on screen. The app does not show admission success from this action.
 
 The operating system can terminate the app, which discards a pending retry ID. Do not admit the attendee after an unconfirmed result; ask the organizer to verify it on the server. There is no offline queue or recovery after restart in this version.
 

@@ -171,6 +171,36 @@ test('token refresh during an in-flight retry only affects the following retry o
   assert.equal(scanner.next(), true);
 });
 
+test('organizer handoff is available only for the current unresolved request while idle', async () => {
+  const response = deferred<Receipt>();
+  let sends = 0;
+  let ids = 0;
+  const scanner = createScanner(async request => {
+    sends++;
+    if (sends === 2) return response.promise;
+    throw new ApiError('NETWORK_ERROR', 'response lost');
+  }, () => `request-${++ids}`);
+
+  assert.equal(scanner.canHandOff('request-1'), false);
+  await scanner.scan('first-ticket');
+  assert.equal(scanner.canHandOff('request-2'), false);
+  assert.equal(scanner.canHandOff('request-1'), true);
+  assert.equal(scanner.next(), false);
+
+  const retry = scanner.retry();
+  assert.equal(scanner.canHandOff('request-1'), false);
+  response.resolve(receiptFor({ qr_payload: 'first-ticket', request_id: 'request-1' }));
+  assert.ok((await retry)?.receipt);
+  assert.equal(scanner.canHandOff('request-1'), false);
+  assert.equal(scanner.next(), true);
+
+  await scanner.scan('second-ticket');
+  assert.equal(scanner.canHandOff('request-1'), false);
+  assert.equal(scanner.canHandOff('request-2'), true);
+  assert.equal(scanner.scan('different-ticket'), null);
+  assert.equal(sends, 3);
+});
+
 test('an invalid-ticket response for a campaign URL cannot become a successful admission', async () => {
   const payload = 'https://biletflow.example/events/7?campaign=opaque-test-token';
   const sent: ScanRequest[] = [];

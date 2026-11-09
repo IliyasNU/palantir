@@ -45,7 +45,8 @@ export class ApiError extends Error {
 export function apiAddress(value: string) {
   try {
     const url = new URL(value.trim());
-    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password
+      || url.href.includes('?') || url.href.includes('#')) {
       throw new Error();
     }
     if (['localhost', '0.0.0.0', '[::1]'].includes(url.hostname) || url.hostname.startsWith('127.')) {
