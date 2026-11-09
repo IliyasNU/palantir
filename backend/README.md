@@ -123,3 +123,71 @@ python -m scripts.create_admin --email admin@example.com --full-name "Platform A
 
 Conventional Commits (`feat(auth): ...`, `fix(events): ...`, `test: ...`, `docs: ...`); one ClickUp task per feature,
 linked to its GitHub issues.
+
+## W2 PostgreSQL 16 locale and acceptance
+
+The selected W2 demo/test configuration is PostgreSQL 16, UTF-8, ICU provider, ICU locale `und`. Attendee search compares Python-lowercased input with PostgreSQL `lower(full_name)` / `lower(email)`, so the database's Unicode case conversion is part of the contract.
+
+For a **new isolated Compose database**, save this local override as `work/compose.w2-pg16-icu.yml`:
+
+```yaml
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=icu --icu-locale=und"
+```
+
+The root Compose file does not forward `POSTGRES_INITDB_ARGS` from `.env`; setting it there alone has no effect. The override passes it explicitly. These arguments apply only when PostgreSQL initializes an empty data directory. They do not convert an existing database.
+
+Use the existing root credential setup to prepare a separate local `.env.w2-pg16` with generated credentials, `POSTGRES_DB=biletflow_test_w2_pg16`, `ENVIRONMENT=test`, and unused `DB_PORT` / `BACKEND_PORT`. Keep that file local. Choose an unused Compose project name and confirm its `<project>_postgres_data` volume does not already exist before starting; the new project gets its own volume. Do not reuse, reinitialize, or remove any existing team database/volume to change its locale.
+
+```powershell
+# From the repository root; choose a new, unused project name.
+$w2Pg16Project = 'biletflow-w2-pg16-icu-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
+docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -f work/compose.w2-pg16-icu.yml up --build -d
+docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -f work/compose.w2-pg16-icu.yml exec backend alembic current
+```
+
+Compose applies `alembic upgrade head` before starting the API; expect `0002 (head)` and `/health` HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
+
+Run this SQL **in the database used by the API** and retain the actual output with the tested commit:
+
+```sql
+SELECT version();
+SELECT datname, datlocprovider, daticulocale,
+       pg_encoding_to_char(encoding) AS encoding,
+       current_setting('server_version') AS server_version
+FROM pg_database
+WHERE datname = current_database();
+SELECT lower('ӘЛИЯ') = 'әлия' AS kazakh_casefold_ok;
+```
+
+Expected: server major 16, `datlocprovider = 'i'`, `daticulocale = 'und'`, `encoding = 'UTF8'`, and `kazakh_casefold_ok = true`. A successful startup alone does not verify these properties.
+
+Reuse the explicit isolated API/JWT/database configuration from [End-to-end tests against PostgreSQL](#end-to-end-tests-against-postgresql): `RUN_POSTGRES_E2E=1`, `ENVIRONMENT=test`, `E2E_BASE_URL` pointing to this API, and matching `E2E_DATABASE_URL` / `JWT_SECRET_KEY`. The migration test needs permission for its own temporary scratch database. From `backend/`, run separate processes:
+
+```powershell
+python -m pytest -q tests
+python -m pytest -q e2e
+```
+
+Acceptance includes `e2e/test_attendance.py`: uppercase Kazakh-name search must find the issued ticket and feed the existing check-in endpoint; parallel duplicate scans must leave attendance equal to the actual check-in row count. Record the date, full source SHA, PostgreSQL version/provider/locale/encoding, migration head, health result, commands, passed/failed/skipped counts, and remaining gaps.
+
+Historical evidence from 9 November 2026, W2 `80246eab19ff0370df30625dbc7f149171e0b8f5`: PostgreSQL 18.1 with locale `C` produced 24 passed / 1 failed (Kazakh case-insensitive search); a separate PostgreSQL 18.1 ICU `und` database produced 25 passed. These are historical PostgreSQL 18.1 results, not fresh PostgreSQL 16 acceptance.
+
+Fresh verification by the agent, 9 November 2026, source `80246eab19ff0370df30625dbc7f149171e0b8f5` (85 backend blobs verified unchanged before and after testing):
+
+| Check | Observed result |
+| --- | --- |
+| Database | Official Ubuntu PostgreSQL **16.15** packages, extracted without system installation, running in WSL Ubuntu 24.04.1; new isolated tmpfs test cluster |
+| SQL metadata | `datlocprovider = 'i'`, `daticulocale = 'und'`, encoding `UTF8`; `lower('ӘЛИЯ') = 'әлия'` returned `true` |
+| Empty-database migrations | `python -m alembic upgrade head`, then schema revision `0002` |
+| Live API health | HTTP 200, `{"status":"ok","database":"up"}` |
+| Unit tests | `python -m pytest -q tests`: **300 passed, 0 failed, 0 skipped**, one Starlette deprecation warning (14.38 s) |
+| Full live PostgreSQL e2e | `python -m pytest -q e2e`: **25 passed, 0 failed, 0 skipped**, one Starlette deprecation warning (27.41 s), including Kazakh case-insensitive search and parallel check-in/count assertions |
+| API runtime | Python 3.14.5 on Windows 11; loopback API connected only to the new isolated PostgreSQL cluster |
+
+`datcollate` and `datctype` were `C` in this ICU database; those fields alone do not identify the effective locale provider. Check `datlocprovider` and `daticulocale` as above. No pre-existing database or team data was connected to or changed. These agent checks are not Temirlan's independent review or approval. No W3 phone/camera validation was performed.
+
+Docker Desktop currently crashes before its engine starts. The Ubuntu/WSL results establish that tested environment's behavior; they do not verify `postgres:16-alpine`, Docker initialization, or Compose volume parity. The Alpine/Compose run remains pending until it actually completes.
