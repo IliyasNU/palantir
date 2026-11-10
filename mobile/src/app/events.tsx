@@ -61,7 +61,11 @@ function EventsList({ token }: { token: string }) {
           <Pressable accessibilityRole="button" accessibilityLabel={`${copy.scanTickets}: ${item.title}`} style={styles.event}
             disabled={busy} accessibilityState={{ disabled: busy }}
             onPress={() => {
-              if (!busy) router.push({ pathname: '/scan', params: { id: String(item.id), title: item.title } });
+              if (!busy) {
+                router.push({ pathname: '/scan', params: {
+                  id: String(item.id), title: item.title, manage: item.can_manage === true ? '1' : '0',
+                } });
+              }
             }}>
             <Text style={styles.title}>{item.title}</Text>
             <Text>{new Date(item.date).toLocaleString(locale === 'kk' ? 'kk-KZ' : 'ru-RU')}</Text>

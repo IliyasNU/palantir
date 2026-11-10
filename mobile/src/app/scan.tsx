@@ -4,28 +4,36 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { randomUUID } from 'expo-crypto';
 import { Redirect, Stack, router, useIsFocused, useLocalSearchParams, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { api, type StaffSession } from '../api';
-import { AttendanceCount, AttendeeSearch } from '../attendance';
+import { api, type StaffSession, type UndoReceipt } from '../api';
+import { AttendanceCount, AttendeeSearch, UndoEntry } from '../attendance';
 import { createScanSession, type ScanResult } from '../scanner';
 import { useSession } from '../session';
 import { useLanguage } from '../language';
 import { errorMessage } from '../messages';
 
 export default function ScanScreen() {
-  const { id, title } = useLocalSearchParams<{ id: string; title: string }>();
+  const { id, title, manage } = useLocalSearchParams<{ id: string; title: string; manage?: string }>();
   const eventId = Number(id);
   const { session } = useSession();
   if (!session?.token) return <Redirect href="/" />;
   if (!Number.isSafeInteger(eventId) || eventId < 1) return <Redirect href="/events" />;
-  return <EventScanner key={`${session.userId}:${eventId}`} eventId={eventId} title={title} session={session} />;
+  // `manage` only decides whether the undo action is offered. The server checks the permission on every undo.
+  return <EventScanner key={`${session.userId}:${eventId}`} eventId={eventId} title={title} session={session}
+    canUndo={manage === '1'} />;
 }
 
-function EventScanner({ eventId, title, session }: { eventId: number; title?: string; session: StaffSession }) {
+function EventScanner({ eventId, title, session, canUndo }: {
+  eventId: number;
+  title?: string;
+  session: StaffSession;
+  canUndo: boolean;
+}) {
   const { setSession } = useSession();
   const { copy, locale } = useLanguage();
   const { token } = session;
   const [permission, requestPermission, getPermission] = useCameraPermissions();
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [undone, setUndone] = useState<UndoReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [cameraError, setCameraError] = useState(false);
   const [checkingCamera, setCheckingCamera] = useState(false);
@@ -92,6 +100,7 @@ function EventScanner({ eventId, title, session }: { eventId: number; title?: st
     if (!promise) return;
     setBusy(true);
     setResult(null);
+    setUndone(null);
     void promise.then(value => {
       if (!mounted.current) return;
       setResult(value);
@@ -116,6 +125,17 @@ function EventScanner({ eventId, title, session }: { eventId: number; title?: st
     if (inputMode !== currentMode.current || !mounted.current || !navigation.isFocused()
       || AppState.currentState !== 'active' || loginLock.current) return;
     show(scanner.scan(payload));
+  }
+
+  // Whether a confirmation that was shown earlier may still act: same screen, in front, nothing being sent.
+  function canAct() {
+    return mounted.current && navigation.isFocused() && AppState.currentState === 'active' && !loginLock.current;
+  }
+
+  function entryUndone(receipt: UndoReceipt) {
+    if (!mounted.current || result?.receipt?.check_in_id !== receipt.check_in_id) return;
+    setUndone(receipt);
+    refreshAttendance();
   }
 
   function signInAgain() {
@@ -175,12 +195,12 @@ function EventScanner({ eventId, title, session }: { eventId: number; title?: st
     <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ headerBackVisible: !mustStay, gestureEnabled: !mustStay }} />
       <Text style={styles.title}>{title || copy.selectedEvent}</Text>
-      {focused && active && <AttendanceCount key={attendanceRevision} token={token} eventId={eventId}
-        locked={mustStay || error?.status === 401} onReload={refreshAttendance} onSignInAgain={signInAgain} />}
+      {focused && active && <AttendanceCount token={token} eventId={eventId} revision={attendanceRevision}
+        locked={mustStay || error?.status === 401} onSignInAgain={signInAgain} />}
       {lookupOpen ? (
         <AttendeeSearch token={token} eventId={eventId} locked={!focused || !active || mustStay || result !== null}
-          onClose={() => changeLookup(false)} onSignInAgain={signInAgain}
-          onMark={submitTicket} />
+          canUndo={canUndo} canAct={canAct} onClose={() => changeLookup(false)} onSignInAgain={signInAgain}
+          onMark={submitTicket} onChanged={refreshAttendance} />
       ) : (
         !result && !mustStay && <Button title={copy.findManually} onPress={() => changeLookup(true)} />
       )}
@@ -201,7 +221,15 @@ function EventScanner({ eventId, title, session }: { eventId: number; title?: st
         <Button title={copy.retryCamera} disabled={checkingCamera} onPress={() => { void cameraPermission(true); }} />
       </View>}
       {busy && <View style={styles.box}><Text>{copy.checking}</Text><Text>{copy.wait}</Text></View>}
-      {result && (
+      {result && undone && (
+        <View accessibilityLiveRegion="polite" style={[styles.box, styles.failure]}>
+          <Text style={styles.resultTitle}>{copy.undone}</Text>
+          <Text>{copy.undoneHint}</Text>
+          <Text>{copy.ticket} #{undone.ticket_id} · {new Date(undone.undone_at).toLocaleTimeString(locale === 'kk' ? 'kk-KZ' : 'ru-RU')}</Text>
+          <Button title={copy.nextTicket} onPress={() => { if (scanner.next()) { setResult(null); setUndone(null); } }} />
+        </View>
+      )}
+      {result && !undone && (
         <View accessibilityLiveRegion="polite" style={[styles.box, result.receipt ? styles.success : styles.failure]}>
           <Text style={styles.resultTitle}>{result.receipt ? copy.admitted : copy.rejected}</Text>
           <Text>{result.receipt ? copy.confirmed : errorMessage(result.error, locale)}</Text>
@@ -231,6 +259,10 @@ function EventScanner({ eventId, title, session }: { eventId: number; title?: st
           {backToEvents && <Button title={copy.backToEvents} onPress={() => router.dismissTo('/events')} />}
           {!pending && !backToEvents && error?.status !== 401 &&
             <Button title={copy.nextTicket} onPress={() => { if (scanner.next()) setResult(null); }} />}
+          {canUndo && result.receipt?.check_in_id !== undefined && <UndoEntry key={result.receipt.check_in_id}
+            token={token} eventId={eventId}
+            checkInId={result.receipt.check_in_id} name={`${copy.ticket} #${result.receipt.ticket_id}`}
+            canAct={canAct} onUndone={entryUndone} onSignInAgain={signInAgain} />}
         </View>
       )}
     </ScrollView>
