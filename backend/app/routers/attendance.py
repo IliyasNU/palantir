@@ -25,7 +25,12 @@ SEARCH_LIMIT = 20
 def get_attendance(event_id: int, db: DbSession, current_user: CurrentUser):
     event = get_event_or_404(db, event_id)
     ensure_can_scan(db, event, current_user)
-    checked_in = select(func.count(CheckIn.id)).where(CheckIn.event_id == Event.id).scalar_subquery()
+    # Current admissions only: an undone check-in is history and no longer counts.
+    checked_in = (
+        select(func.count(CheckIn.id))
+        .where(CheckIn.event_id == Event.id, CheckIn.undone_at.is_(None))
+        .scalar_subquery()
+    )
     # One statement, so all three counters come from a single snapshot of the database.
     capacity, tickets_issued, checked_in_count = db.execute(
         select(Event.capacity, Event.tickets_issued, checked_in).where(Event.id == event.id)
@@ -54,9 +59,11 @@ def search_attendees(event_id: int, db: DbSession, current_user: CurrentUser, q:
 
     needle = term.lower()
     query = (
-        select(Ticket.id, User.full_name, User.email, CheckIn.checked_in_at, Ticket.qr_payload)
+        select(
+            Ticket.id, User.full_name, User.email, Ticket.status, CheckIn.checked_in_at, CheckIn.id, Ticket.qr_payload
+        )
         .join(User, User.id == Ticket.attendee_id)
-        .outerjoin(CheckIn, CheckIn.ticket_id == Ticket.id)
+        .outerjoin(CheckIn, (CheckIn.ticket_id == Ticket.id) & CheckIn.undone_at.is_(None))
         .where(
             Ticket.event_id == event.id,
             # autoescape: "%" and "_" in the query are literal characters, not wildcards.
@@ -71,8 +78,10 @@ def search_attendees(event_id: int, db: DbSession, current_user: CurrentUser, q:
             ticket_id=ticket_id,
             full_name=full_name,
             masked_email=mask_email(email),
+            status=ticket_status,
             checked_in_at=checked_in_at,
+            check_in_id=check_in_id,
             qr_payload=qr_payload,
         )
-        for ticket_id, full_name, email, checked_in_at, qr_payload in db.execute(query)
+        for ticket_id, full_name, email, ticket_status, checked_in_at, check_in_id, qr_payload in db.execute(query)
     ]
