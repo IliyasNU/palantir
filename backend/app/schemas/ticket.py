@@ -14,5 +14,6 @@ class TicketRead(BaseModel):
     attendee_id: int
     qr_payload: str  # encode exactly this string into the QR code
     created_at: UTCDateTime
-    checked_in_at: Optional[UTCDateTime]
+    status: str  # active | cancelled | refunded; only an active ticket can be admitted
+    checked_in_at: Optional[UTCDateTime]  # the current admission; null again after an undo
     event: EventSummary

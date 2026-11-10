@@ -32,6 +32,9 @@ class AttendeeSearchResult(BaseModel):
     ticket_id: int
     full_name: str
     masked_email: str
+    status: str  # active | cancelled | refunded
     checked_in_at: Optional[UTCDateTime]
+    # The current admission, for the undo route; null when the ticket is not admitted right now.
+    check_in_id: Optional[int]
     # Exact payload of the ticket's QR: the scanner submits it to POST /events/{id}/check-in unchanged.
     qr_payload: str

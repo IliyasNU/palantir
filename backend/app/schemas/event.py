@@ -71,3 +71,9 @@ class EventSummary(BaseModel):
     date: UTCDateTime
     location: str
     status: str
+
+
+class StaffEventRead(EventSummary):
+    """An event the caller may scan at, and whether they manage it (and so may undo a check-in)."""
+
+    can_manage: bool
