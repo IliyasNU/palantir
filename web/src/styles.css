@@ -47,6 +47,12 @@ p { line-height: 1.7; overflow-wrap: anywhere; }
 .button { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 12px 20px; border-radius: 9px; background: #254e38; color: #fff; font-weight: 600; line-height: 1.4; text-decoration: none; }
 .content-card .button { margin-top: 12px; }
 .button:hover { background: #173c28; }
+.button:disabled { opacity: 0.6; cursor: default; }
+.button-secondary { background: #fff; color: #862d27; border: 1px solid #e6b7ae; }
+.button-secondary:hover { background: #fff2ef; }
+.ticket-action { margin-bottom: 16px; }
+.ticket-action .button { border-width: 0; }
+.ticket-action .button-secondary { border-width: 1px; }
 .text-link { color: #254e38; text-underline-offset: 4px; font-weight: 600; }
 .text-link:hover { text-decoration-thickness: 2px; }
 .site-footer { border-top: 1px solid #dce3d8; }
