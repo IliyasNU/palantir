@@ -29,6 +29,15 @@ SELECT count(*) FROM check_ins WHERE ticket_id = <test_ticket_id>;
 
 An uncertain response may have committed on the server. Keep the visitor waiting and retry the same request or have the organizer verify the record. If the app was restarted, use the organizer check before deciding whether the visitor can enter.
 
+### How the organizer verifies the record
+
+The organizer check is a server lookup of the ticket holder made by the event organizer or an administrator. Use one of these, in order of preference:
+
+1. `GET /events/{event_id}/attendees?q=<name or email>` in the API docs at `/docs`, signed in as the organizer. A non-null `checked_in_at` for the attendee means the original request was committed, so the visitor may enter. `null` means no admission was recorded.
+2. The read-only `check_ins` query above with the ticket ID, when the organizer has database access on the test setup.
+
+The organizer web dashboard does not show attendance on this candidate. Once it does, use its attendee search for this check and record that here. Do not show or copy the `qr_payload` from the API response while verifying.
+
 ## Measure W7 latency and record results
 
 Record 10 scans of fresh tickets on the intended test network. For each sample, measure from the QR first being fully in the camera frame to a visible admission result, using a second camera or another timestamped recording that shows both points. Record each duration and report median and maximum per device. Compare the observed typical time with the SRS target of two seconds. Record connection failures or rejected samples separately with their reason.
