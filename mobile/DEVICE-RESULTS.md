@@ -20,6 +20,11 @@ PostgreSQL version and locale: pending · `SELECT lower('ӘЛИЯ') = 'әлия'
 | 6 | Connection interrupted, language changed, expired token | pending | |
 | 7 | Uncertain attempt, organizer verification, return to events | pending | |
 | 8 | Ticket PDF on A4 paper in grayscale and on screen | pending: PDF endpoint not merged | |
+| 9 | Attendance refresh after an entry on another phone, and with the network off | pending | |
+| 10 | Cancelled ticket and refunded ticket, scan and search, RU and KZ | pending: needs a backend with migration 0003 | |
+| 11 | Undo from search as organizer; no undo action as staff | pending: needs a backend with migration 0003 | |
+| 12 | Undo from the result screen, then scan the ticket again | pending: needs a backend with migration 0003 | |
+| 13 | Undo with the network interrupted, then retry | pending: needs a backend with migration 0003 | |
 
 ### Scan latency (W7)
 
