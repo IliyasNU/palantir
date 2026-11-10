@@ -136,7 +136,7 @@ erDiagram
 | `GET /events`, `GET /events/{id}` (published or cancelled) | anyone |
 | `GET /events/{id}` (draft) | the event's organizer, or an admin |
 | `GET /auth/me`, `GET /organizer-profiles/{id}` | any logged-in user |
-| `POST /events/{id}/tickets`, `GET /tickets/me`, `GET /tickets/{id}` (own) | any logged-in user |
+| `POST /events/{id}/tickets`, `GET /tickets/me`, `GET /tickets/{id}`, `GET /tickets/{id}/pdf` (own) | any logged-in user |
 | `GET /staff/events` | any logged-in user (lists what they may scan; may be `[]`) |
 | `POST /organizer-profiles`, `GET /organizer-profiles/me`, `PUT\|PATCH /organizer-profiles/me` | organizer |
 | `POST /events`, `GET /events/mine` | organizer |
@@ -175,6 +175,12 @@ erDiagram
   the attendee's claim keeps returning that closed ticket. A ticket with a current admission cannot be closed
   (`409 TICKET_CHECKED_IN`) until the check-in is undone, so `checked_in` never exceeds `tickets_issued`.
   Tickets are free: `refunded` records the admission state only and no payment is processed.
+* `GET /tickets/{id}/pdf` returns the printable ticket: one A4 page drawn with `fpdf2`, the QR built by `qrcode`
+  from exactly `ticket.qr_payload` with error correction M and a four-module quiet zone, as on the website. The code
+  is black vector rectangles that overlap slightly, because some renderers otherwise leave a white hairline between
+  rows and the code stops scanning. Text uses the bundled DejaVu Sans (`app/assets/fonts`, licence beside it), which
+  has the Russian and Kazakh letters. The event time is printed in UTC+5 with the offset shown. A closed ticket or a
+  ticket of a cancelled event is not printed (`409`). The response is `private, no-store`.
 * Undo (`POST /events/{id}/check-ins/{check_in_id}/undo`, organizer or admin) keeps the `check_ins` row and sets
   `undone_at`, `undone_by_id` and `undo_request_id`. The undo has its own `request_id`, so a retry returns the same
   `UNDONE` receipt. The undone check-in's own `request_id` then answers `409 CHECK_IN_UNDONE`: it cannot admit

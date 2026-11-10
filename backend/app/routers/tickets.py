@@ -19,10 +19,17 @@ from app.dependencies.roles import is_admin
 from app.errors import api_error
 from app.models import Event, EventStatus, Ticket, TicketStatus, User
 from app.schemas.ticket import TicketRead
+from app.ticket_pdf import build_ticket_pdf
 
 router = APIRouter(tags=["tickets"])
 
 QR_PAYLOAD_PREFIX = "biletflow:ticket:v1:"
+
+
+_STATE_CODES = {
+    TicketStatus.CANCELLED.value: ("TICKET_CANCELLED", "Ticket was cancelled"),
+    TicketStatus.REFUNDED.value: ("TICKET_REFUNDED", "Ticket was refunded"),
+}
 
 
 def new_qr_payload() -> str:
@@ -99,19 +106,41 @@ def list_my_tickets(db: DbSession, current_user: CurrentUser):
     return db.scalars(query).unique().all()
 
 
-@router.get("/tickets/{ticket_id}", response_model=TicketRead)
-def get_ticket(ticket_id: int, db: DbSession, current_user: CurrentUser):
-    """One of your tickets (admins may read any). Other people's tickets look like they do not exist."""
+def _readable_ticket(db: Session, ticket_id: int, user: User) -> Ticket:
     ticket = db.get(Ticket, ticket_id)
-    if ticket is None or (ticket.attendee_id != current_user.id and not is_admin(current_user)):
+    if ticket is None or (ticket.attendee_id != user.id and not is_admin(user)):
         raise api_error(status.HTTP_404_NOT_FOUND, "TICKET_NOT_FOUND", "Ticket not found")
     return ticket
 
 
-_STATE_CODES = {
-    TicketStatus.CANCELLED.value: ("TICKET_CANCELLED", "Ticket was cancelled"),
-    TicketStatus.REFUNDED.value: ("TICKET_REFUNDED", "Ticket was refunded"),
-}
+@router.get("/tickets/{ticket_id}", response_model=TicketRead)
+def get_ticket(ticket_id: int, db: DbSession, current_user: CurrentUser):
+    """One of your tickets (admins may read any). Other people's tickets look like they do not exist."""
+    return _readable_ticket(db, ticket_id, current_user)
+
+
+@router.get(
+    "/tickets/{ticket_id}/pdf",
+    response_class=Response,
+    responses={200: {"content": {"application/pdf": {}}, "description": "The ticket as one A4 page"}},
+)
+def get_ticket_pdf(ticket_id: int, db: DbSession, current_user: CurrentUser):
+    """The printable ticket with the same QR as the screen. Only a ticket that can still admit is printed."""
+    ticket = _readable_ticket(db, ticket_id, current_user)
+    if ticket.status != TicketStatus.ACTIVE.value:
+        raise api_error(status.HTTP_409_CONFLICT, *_STATE_CODES[ticket.status])
+    if ticket.event.status == EventStatus.CANCELLED.value:
+        raise api_error(status.HTTP_409_CONFLICT, "EVENT_CANCELLED", "Event is cancelled")
+    attendee = db.get(User, ticket.attendee_id)
+    return Response(
+        build_ticket_pdf(ticket, attendee),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="biletflow-ticket-{ticket.id}.pdf"',
+            # The page carries the admission QR: keep it out of shared caches.
+            "Cache-Control": "private, no-store",
+        },
+    )
 
 
 def _close_ticket(db: Session, ticket_id: int, user: User, target: TicketStatus, owner_allowed: bool) -> Ticket:
