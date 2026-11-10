@@ -36,7 +36,7 @@ docker compose -p biletflow-test exec backend alembic current
 Invoke-RestMethod http://127.0.0.1:8000/health
 ```
 
-Ожидается `0002 (head)` и `{"status":"ok","database":"up"}`. Compose запускает PostgreSQL, ждёт `pg_isready` и применяет `alembic upgrade head` перед стартом API. Если контейнер backend ещё запускается, дождитесь окончания миграций и повторите `/health` перед открытием форм. При ошибке смотрите `docker compose -p biletflow-test logs backend db`. Для остановки используйте `docker compose -p biletflow-test stop`, чтобы сохранить данные.
+Ожидается `0003 (head)` и `{"status":"ok","database":"up"}`. Compose запускает PostgreSQL, ждёт `pg_isready` и применяет `alembic upgrade head` перед стартом API. Если контейнер backend ещё запускается, дождитесь окончания миграций и повторите `/health` перед открытием форм. При ошибке смотрите `docker compose -p biletflow-test logs backend db`. Для остановки используйте `docker compose -p biletflow-test stop`, чтобы сохранить данные.
 
 При прямом запуске создайте отдельную PostgreSQL `biletflow_test` с собственным пользователем и паролем. В `backend/.env` укажите реальный `DATABASE_URL` в формате `postgresql+psycopg://USER:PASSWORD@127.0.0.1:5432/biletflow_test`, созданный `JWT_SECRET_KEY` и `CORS_ORIGINS=http://localhost:5173`. Используйте фактический порт PostgreSQL. Спецсимволы в имени и пароле URI должны быть закодированы. pgAdmin управляет PostgreSQL через интерфейс.
 

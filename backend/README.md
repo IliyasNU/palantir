@@ -99,12 +99,15 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `GET /events/{id}` | public or owner/admin | draft details are restricted |
 | `POST /events/{id}/publish` or `/cancel` | owner or admin | state transitions |
 | `POST /events/{id}/tickets` | authenticated | `201` new ticket, `200` existing ticket |
-| `GET /tickets/me` or `/tickets/{id}` | authenticated | ownership enforced |
+| `GET /tickets/me` or `/tickets/{id}` | authenticated | ownership enforced; `status` is `active`, `cancelled` or `refunded` |
+| `POST /tickets/{id}/cancel` | attendee of the ticket, event owner or admin | final; releases the seat; `409 TICKET_CHECKED_IN` while admitted |
+| `POST /tickets/{id}/refund` | event owner or admin | final; records the admission state only, no payment is processed |
 | `POST /events/{id}/staff` | owner or admin | assign event staff |
-| `GET /staff/events` | authenticated | permitted published events |
-| `POST /events/{id}/check-in` | staff, owner or admin | exact QR payload plus UUID request ID |
+| `GET /staff/events` | authenticated | permitted published events, each with `can_manage` |
+| `POST /events/{id}/check-in` | staff, owner or admin | exact QR payload plus UUID request ID; `409 TICKET_CANCELLED` / `TICKET_REFUNDED` for closed tickets |
+| `POST /events/{id}/check-ins/{check_in_id}/undo` | owner or admin | `{request_id}`; keeps the row as history, the ticket can be scanned again |
 | `GET /events/{id}/attendance` | staff, owner or admin | `{event_id, capacity, tickets_issued, checked_in}` |
-| `GET /events/{id}/attendees?q=` | staff, owner or admin | name/e-mail search, `q` ≥ 3 chars, ≤ 20 results, masked e-mail + `qr_payload` |
+| `GET /events/{id}/attendees?q=` | staff, owner or admin | name/e-mail search, `q` ≥ 3 chars, ≤ 20 results, masked e-mail, ticket `status`, current `check_in_id` + `qr_payload` |
 | `PUT` or `PATCH /events/{id}` | owner or admin | partial update |
 
 Send the access token as `Authorization: Bearer <token>`. Use paths exactly as written (no trailing slash).
@@ -149,7 +152,7 @@ docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -
 docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -f work/compose.w2-pg16-icu.yml exec backend alembic current
 ```
 
-Compose applies `alembic upgrade head` before starting the API; expect `0002 (head)` and `/health` HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
+Compose applies `alembic upgrade head` before starting the API; expect `0003 (head)` and `/health` HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
 
 Run this SQL **in the database used by the API** and retain the actual output with the tested commit:
 
