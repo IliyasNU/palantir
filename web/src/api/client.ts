@@ -36,6 +36,8 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
   /** Explicit access token; the client does not store or refresh tokens. */
   token?: string;
+  /** Return a successful response as a Blob (a file download) instead of parsed JSON. Errors stay JSON. */
+  blob?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -116,14 +118,14 @@ function requestUrl(baseUrl: string | undefined, path: string): string {
   }
 }
 
-/** A JSON-only HTTP client. fetchImpl can be replaced in isolated tests. */
+/** A JSON HTTP client that can also fetch a file as a Blob. fetchImpl can be replaced in isolated tests. */
 export function createApiClient(baseUrl: string | undefined, fetchImpl: typeof fetch = fetch, timeoutMs = 15000) {
   return {
     async request<T = unknown>(path: string, options: ApiRequestOptions = {}): Promise<T> {
       const url = requestUrl(baseUrl, path);
-      const { body, token, headers: suppliedHeaders, ...init } = options;
+      const { body, token, blob, headers: suppliedHeaders, ...init } = options;
       const headers = new Headers(suppliedHeaders);
-      if (!headers.has('Accept')) headers.set('Accept', 'application/json');
+      if (!headers.has('Accept')) headers.set('Accept', blob ? 'application/pdf, application/json' : 'application/json');
       if (body !== undefined && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
       if (token) headers.set('Authorization', `Bearer ${token}`);
 
@@ -141,6 +143,8 @@ export function createApiClient(baseUrl: string | undefined, fetchImpl: typeof f
       const timer = setTimeout(() => deadline.abort(), timeoutMs);
       try {
         response = await fetchImpl(url, { ...init, signal, headers, body: serializedBody });
+        // Read the file inside the same deadline, so a stalled download is reported as a timeout.
+        if (blob && response.ok) return await response.blob() as T;
         text = await response.text();
       } catch (cause) {
         // Cancellation belongs to the caller and must not look like a network failure.

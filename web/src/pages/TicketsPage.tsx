@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { authLink } from '../auth/returnTo';
 import { Page } from '../components/Page';
 import { formatEventDate } from '../events/catalog';
-import { readTickets, ticketErrorMessage } from '../tickets/model';
+import { readTickets, ticketErrorMessage, ticketState } from '../tickets/model';
 import type { Ticket } from '../tickets/model';
 
 export function TicketsPage() {
@@ -38,8 +38,7 @@ function TicketList({ request }: { request: typeof api.request }) {
       <h2><Link className="text-link" to={`/tickets/${ticket.id}`}>{ticket.event.title}</Link></h2>
       <p><time dateTime={ticket.event.date}>{formatEventDate(ticket.event.date)}</time></p>
       <p>{ticket.event.location}</p>
-      <p>{ticket.event.status === 'cancelled' ? 'Событие отменено' : ticket.checked_in_at ? 'Билет уже использован'
-        : ticket.event.status === 'published' ? 'Билет готов к входу' : 'Вход по билету сейчас недоступен'}</p>
+      <p>{ticketState(ticket).label}</p>
       <Link className="button" to={`/tickets/${ticket.id}`}>Открыть билет №{ticket.id}</Link>
     </article></li>)}
   </ul>;
