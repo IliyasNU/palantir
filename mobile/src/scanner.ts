@@ -1,8 +1,20 @@
-import { ApiError, type Receipt, type ScanRequest } from './api.ts';
+import { ApiError, type Receipt, type ScanRequest, type UndoReceipt } from './api.ts';
 
 export type ScanResult =
   | { receipt: Receipt; error?: never }
   | { error: ApiError; receipt?: never };
+
+export type UndoResult =
+  | { receipt: UndoReceipt; error?: never }
+  | { error: ApiError; receipt?: never };
+
+function uncertain(error: ApiError): boolean {
+  return ['NETWORK_ERROR', 'SERVER_ERROR'].includes(error.code) || (error.status !== undefined && error.status >= 500);
+}
+
+// The server names this exact request (CHECK_IN_UNDONE) or a final ticket state. Either way no admission
+// from this request is or can become current, so an earlier uncertain attempt is settled as not admitted.
+const SETTLED = ['CHECK_IN_UNDONE', 'TICKET_CANCELLED', 'TICKET_REFUNDED'];
 
 export function createScanSession(send: (token: string, request: ScanRequest) => Promise<Receipt>, newId: () => string) {
   let token = '';
@@ -30,11 +42,10 @@ export function createScanner(
       const error = problem instanceof ApiError
         ? problem
         : new ApiError('SERVER_ERROR', 'Check-in could not be confirmed.');
-      const uncertain = ['NETWORK_ERROR', 'SERVER_ERROR'].includes(error.code)
-        || (error.status !== undefined && error.status >= 500);
       // После неизвестного результата даже 401/403 не доказывают,
       // что предыдущая попытка не успела записаться в БД.
-      if (uncertain) unresolved = true;
+      if (uncertain(error)) unresolved = true;
+      else if (error.status === 409 && SETTLED.includes(error.code)) unresolved = false;
       return { error };
     } finally {
       busy = false;
@@ -63,6 +74,53 @@ export function createScanner(
     },
     requestId(): string | null {
       return pending?.request_id ?? null;
+    },
+  };
+}
+
+export function createUndoSession(
+  send: (token: string, checkInId: number, requestId: string) => Promise<UndoReceipt>,
+  newId: () => string,
+) {
+  let token = '';
+  return {
+    ...createUndo((checkInId, requestId) => send(token, checkInId, requestId), newId),
+    setToken(value: string) { token = value; },
+  };
+}
+
+// One undo at a time. A repeat for the same check-in reuses its request ID until the server gives a
+// definite answer, so a lost response can be retried without a second reversal.
+export function createUndo(
+  send: (checkInId: number, requestId: string) => Promise<UndoReceipt>,
+  newId: () => string,
+) {
+  let pending: { checkInId: number; requestId: string } | null = null;
+  let busy = false;
+
+  return {
+    undo(checkInId: number): Promise<UndoResult> | null {
+      if (busy || !Number.isSafeInteger(checkInId) || checkInId < 1) return null;
+      if (pending?.checkInId !== checkInId) pending = { checkInId, requestId: newId() };
+      const { requestId } = pending;
+      busy = true;
+      return send(checkInId, requestId).then(
+        (receipt): UndoResult => { pending = null; return { receipt }; },
+        (problem): UndoResult => {
+          const error = problem instanceof ApiError
+            ? problem
+            : new ApiError('SERVER_ERROR', 'The undo could not be confirmed.');
+          // Keep the ID while the outcome is unknown or the session has to be renewed.
+          if (!uncertain(error) && error.status !== 401) pending = null;
+          return { error };
+        },
+      ).finally(() => { busy = false; });
+    },
+    unconfirmed(checkInId: number): boolean {
+      return !busy && pending?.checkInId === checkInId;
+    },
+    requestId(): string | null {
+      return pending?.requestId ?? null;
     },
   };
 }

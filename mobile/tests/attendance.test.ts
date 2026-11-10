@@ -12,7 +12,9 @@ const attendee = {
   ticket_id: 21,
   full_name: 'Тестовый Посетитель',
   masked_email: 'vi***@example.com',
+  status: 'active',
   checked_in_at: null,
+  check_in_id: null,
   qr_payload: 'biletflow:ticket:v1:fixture+/_-',
 };
 
@@ -41,7 +43,7 @@ test('attendance rejects malformed and inconsistent counts instead of showing fa
 });
 
 test('search encodes the full trimmed query and reads both new and checked-in tickets', async () => {
-  const arrived = { ...attendee, ticket_id: 22, checked_in_at: arrivedAt };
+  const arrived = { ...attendee, ticket_id: 22, checked_in_at: arrivedAt, check_in_id: 90 };
   const api = createApi(base, async (url, options) => {
     const target = new URL(String(url));
     assert.equal(target.origin, base);
