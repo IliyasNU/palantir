@@ -1,11 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert, Button, StyleSheet, Text, TextInput, View } from 'react-native';
 import { randomUUID } from 'expo-crypto';
 import { api, ApiError, canSearchAttendees, type Attendance, type Attendee, type UndoReceipt } from './api';
 import { useLanguage } from './language';
 import { emptyLoad, loadFailed, loadSucceeded, loadView } from './loading';
 import { errorMessage, type Locale } from './messages';
-import { createUndoSession } from './scanner';
+import { createUndoStore } from './undo';
 
 type EventAccess = {
   token: string;
@@ -59,7 +59,8 @@ export function AttendanceCount({ token, eventId, revision, locked, onSignInAgai
   </View>;
 }
 
-export function AttendeeSearch({ token, eventId, locked, canUndo, canAct, onClose, onMark, onChanged, onSignInAgain }: EventAccess & {
+export function AttendeeSearch({ token, userId, eventId, locked, canUndo, canAct, onClose, onMark, onChanged, onSignInAgain }: EventAccess & {
+  userId: number;
   locked: boolean;
   canUndo: boolean;
   canAct: () => boolean;
@@ -93,12 +94,13 @@ export function AttendeeSearch({ token, eventId, locked, canUndo, canAct, onClos
       autoCapitalize="none" autoCorrect={false} returnKeyType="search" onSubmitEditing={submit} style={styles.input} />
     <Button title={copy.search} disabled={!valid} onPress={submit} />
     <Button title={copy.backToCamera} onPress={onClose} />
-    {submission && <AttendeeResults key={submission.attempt} term={submission.term} token={token} eventId={eventId}
-      canUndo={canUndo} canAct={canAct} onMark={onMark} onUndone={reload} onSignInAgain={onSignInAgain} />}
+    {submission && <AttendeeResults key={submission.attempt} term={submission.term} token={token} userId={userId}
+      eventId={eventId} canUndo={canUndo} canAct={canAct} onMark={onMark} onUndone={reload} onSignInAgain={onSignInAgain} />}
   </View>;
 }
 
-function AttendeeResults({ token, eventId, term, canUndo, canAct, onMark, onUndone, onSignInAgain }: EventAccess & {
+function AttendeeResults({ token, userId, eventId, term, canUndo, canAct, onMark, onUndone, onSignInAgain }: EventAccess & {
+  userId: number;
   term: string;
   canUndo: boolean;
   canAct: () => boolean;
@@ -140,9 +142,8 @@ function AttendeeResults({ token, eventId, term, canUndo, canAct, onMark, onUndo
       : item.status === 'refunded' ? <Text style={styles.error}>{copy.ticketRefunded}</Text>
         : item.checked_in_at !== null ? <>
           <Text>{copy.enteredAt} · {new Date(item.checked_in_at).toLocaleString(localeTag(locale))}</Text>
-          {canUndo && item.check_in_id !== null && <UndoEntry token={token} eventId={eventId}
-            checkInId={item.check_in_id} name={item.full_name} canAct={canAct} onUndone={onUndone}
-            onSignInAgain={onSignInAgain} />}
+          {canUndo && item.check_in_id !== null && <UndoEntry token={token} userId={userId} eventId={eventId}
+            checkInId={item.check_in_id} name={item.full_name} canAct={canAct} onUndone={onUndone} />}
         </> : (
           <Button title={copy.markEntry} accessibilityLabel={`${copy.markEntry} · ${item.full_name}`}
             onPress={() => { if (attached.current) onMark(item.qr_payload); }} />
@@ -150,61 +151,123 @@ function AttendeeResults({ token, eventId, term, canUndo, canAct, onMark, onUndo
   </View>);
 }
 
-// Reverses one admission after an explicit confirmation. Only an UNDONE receipt for this check-in counts;
-// while the outcome is unknown the same request ID is sent again.
-export function UndoEntry({ token, eventId, checkInId, name, canAct, onUndone, onSignInAgain }: EventAccess & {
-  checkInId: number;
-  name: string;
+export const undoStore = createUndoStore(
+  (token, eventId, checkInId, requestId) => api.undoCheckIn(token, eventId, checkInId, requestId), randomUUID,
+);
+
+export function useUndoStore() {
+  useSyncExternalStore(undoStore.subscribe, undoStore.version);
+  return undoStore;
+}
+
+type UndoAccess = {
+  token: string;
+  userId: number;
+  eventId: number;
   canAct: () => boolean;
   onUndone: (receipt: UndoReceipt) => void;
+};
+
+// Starts the undo of one admission after an explicit confirmation. Only an UNDONE receipt for this
+// check-in counts. A request without a definite answer lives in the undo store and is continued from
+// PendingUndos, so it outlives this row, the scanner screen and a new sign-in.
+export function UndoEntry({ token, userId, eventId, checkInId, name, canAct, onUndone }: UndoAccess & {
+  checkInId: number;
+  name: string;
 }) {
   const { copy, locale } = useLanguage();
+  const store = useUndoStore();
   const attached = useRef(false);
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<{ error: ApiError; retry: boolean } | null>(null);
-  const undo = useMemo(() => createUndoSession(
-    (access, id, requestId) => api.undoCheckIn(access, eventId, id, requestId), randomUUID,
-  ), [eventId]);
+  const [refused, setRefused] = useState<ApiError | null>(null);
+  const entry = store.find(userId, eventId, checkInId);
 
-  useEffect(() => { undo.setToken(token); }, [undo, token]);
   useLayoutEffect(() => {
     attached.current = true;
     return () => { attached.current = false; };
   }, []);
 
   function send() {
-    const attempt = undo.undo(checkInId);
+    const attempt = store.undo({ token, userId }, eventId, checkInId, name);
     if (!attempt) return;
-    setBusy(true);
-    setProblem(null);
+    setRefused(null);
     void attempt.then(result => {
       if (!attached.current) return;
-      setBusy(false);
       if (result.receipt) onUndone(result.receipt);
-      else setProblem({ error: result.error, retry: undo.unconfirmed(checkInId) });
+      else if (!store.find(userId, eventId, checkInId)) setRefused(result.error);
     });
   }
 
   function confirm() {
-    if (busy || !canAct()) return;
+    if (entry || !canAct()) return;
     Alert.alert(copy.undoTitle, copy.undoHint(name), [
       { text: copy.undoKeep, style: 'cancel' },
       { text: copy.undoEntry, style: 'destructive', onPress: () => { if (attached.current && canAct()) send(); } },
     ]);
   }
 
-  const expired = problem?.error.status === 401;
+  if (entry) return <Text accessibilityLiveRegion="polite">{entry.busy ? copy.undoing : copy.undoPending}</Text>;
   return <>
-    {busy && <Text accessibilityLiveRegion="polite">{copy.undoing}</Text>}
-    {problem && <Text accessibilityRole="alert" style={styles.error}>
-      {errorMessage(problem.error, locale)}{problem.retry && !expired ? ` ${copy.undoUnknown}` : ''}
-    </Text>}
-    {expired ? <Button title={copy.signInAgain} onPress={onSignInAgain} />
-      : problem?.retry ? <Button title={copy.retryUndo} disabled={busy}
-        onPress={() => { if (canAct()) send(); }} />
-        : <Button title={copy.undoEntry} accessibilityLabel={`${copy.undoEntry} · ${name}`} disabled={busy}
-          onPress={confirm} />}
+    {refused && <Text accessibilityRole="alert" style={styles.error}>{errorMessage(refused, locale)}</Text>}
+    <Button title={copy.undoEntry} accessibilityLabel={`${copy.undoEntry} · ${name}`} onPress={confirm} />
   </>;
+}
+
+// This account's undo requests for the event that have no definite answer yet. Retrying sends the same
+// request ID. After a 401 the retry is offered once the account has signed in again with a new token.
+export function PendingUndos({ token, userId, eventId, locked, canAct, onUndone, onChanged, onSignInAgain }: UndoAccess & {
+  locked: boolean;
+  onChanged: () => void;
+  onSignInAgain: () => void;
+}) {
+  const { copy, locale } = useLanguage();
+  const store = useUndoStore();
+  const attached = useRef(false);
+  const [settled, setSettled] = useState<{ label: string; error: ApiError | null } | null>(null);
+  const entries = store.pending(userId, eventId);
+  const open = entries.length;
+  const seen = useRef(open);
+
+  useLayoutEffect(() => {
+    attached.current = true;
+    return () => { attached.current = false; };
+  }, []);
+
+  useEffect(() => {
+    // A request left the list: it was confirmed or refused, so the totals may have changed.
+    if (open < seen.current) onChanged();
+    seen.current = open;
+  }, [open, onChanged]);
+
+  function retry(checkInId: number, label: string) {
+    if (locked || !canAct()) return;
+    const attempt = store.undo({ token, userId }, eventId, checkInId, label);
+    if (!attempt) return;
+    setSettled(null);
+    void attempt.then(result => {
+      if (!attached.current) return;
+      if (result.receipt) { setSettled({ label, error: null }); onUndone(result.receipt); }
+      else if (!store.find(userId, eventId, checkInId)) setSettled({ label, error: result.error });
+    });
+  }
+
+  if (!open && !settled) return null;
+  return <View style={styles.box}>
+    {entries.map(entry => <View key={entry.checkInId} style={styles.attendee}>
+      <Text style={styles.count}>{copy.undoPendingTitle} · {entry.label}</Text>
+      {entry.busy ? <Text accessibilityLiveRegion="polite">{copy.undoing}</Text> : <>
+        {entry.lastError && <Text accessibilityRole="alert" style={styles.error}>{errorMessage(entry.lastError, locale)}</Text>}
+        <Text>{copy.undoUnknown}</Text>
+        <Text selectable>{copy.requestId}: {entry.requestId}</Text>
+        {entry.expiredToken === token
+          ? <Button title={copy.signInAgain} disabled={locked} onPress={onSignInAgain} />
+          : <Button title={copy.retryUndo} accessibilityLabel={`${copy.retryUndo} · ${entry.label}`}
+            disabled={locked} onPress={() => retry(entry.checkInId, entry.label)} />}
+      </>}
+    </View>)}
+    {settled && <Text accessibilityLiveRegion="polite" style={settled.error ? styles.error : styles.count}>
+      {settled.label}: {settled.error ? errorMessage(settled.error, locale) : copy.undone}
+    </Text>}
+  </View>;
 }
 
 const styles = StyleSheet.create({

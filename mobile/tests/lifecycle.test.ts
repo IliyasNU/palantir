@@ -3,7 +3,7 @@ import test from 'node:test';
 import { ApiError, createApi, type ScanRequest } from '../src/api.ts';
 import { emptyLoad, loadFailed, loadSucceeded, loadView } from '../src/loading.ts';
 import { errorMessage, messages, type Locale } from '../src/messages.ts';
-import { createScanner, createUndo, createUndoSession } from '../src/scanner.ts';
+import { createScanner } from '../src/scanner.ts';
 
 const base = 'https://biletflow.example';
 const token = 'test-access';
@@ -163,100 +163,6 @@ test('a first scan of a closed ticket is a plain rejection and the next ticket c
   assert.equal((await scanner.scan(row.qr_payload))?.error?.code, 'TICKET_REFUNDED');
   assert.equal(scanner.mustResolve(), false);
   assert.equal(scanner.next(), true);
-});
-
-test('a second tap while an undo is in flight sends nothing', async () => {
-  let release: (() => void) | undefined;
-  const sent: string[] = [];
-  const undo = createUndo(async (_checkInId, requestId) => {
-    sent.push(requestId);
-    await new Promise<void>(resolve => { release = resolve; });
-    return { ...undone, request_id: requestId } as typeof undone & { status: 'UNDONE' };
-  }, ids('02'));
-
-  const first = undo.undo(90);
-  assert.equal(undo.undo(90), null);
-  assert.equal(undo.undo(91), null);
-  release?.();
-  assert.equal((await first)?.receipt?.check_in_id, 90);
-  assert.equal(sent.length, 1);
-});
-
-test('an undo whose response was lost is retried with the same request ID and reversed once', async () => {
-  const sent: { checkInId: number; requestId: string }[] = [];
-  const reversed = new Map<number, string>();
-  const undo = createUndo(async (checkInId, requestId) => {
-    sent.push({ checkInId, requestId });
-    const earlier = reversed.get(checkInId);
-    if (earlier !== undefined && earlier !== requestId) throw new ApiError('CHECK_IN_ALREADY_UNDONE', 'done', 409);
-    reversed.set(checkInId, requestId); // the server commits even when the reply never arrives
-    if (sent.length === 1) throw new ApiError('NETWORK_ERROR', 'response lost');
-    return { ...undone, check_in_id: checkInId, request_id: requestId } as typeof undone & { status: 'UNDONE' };
-  }, ids('02'));
-
-  assert.equal((await undo.undo(90))?.error?.code, 'NETWORK_ERROR');
-  assert.equal(undo.unconfirmed(90), true);
-  assert.equal(undo.requestId(), sent[0].requestId);
-  const retried = await undo.undo(90);
-  assert.equal(retried?.receipt?.request_id, sent[0].requestId);
-  assert.deepEqual(sent[1], sent[0]);
-  assert.equal(undo.unconfirmed(90), false);
-  assert.equal(undo.requestId(), null);
-
-  // A later, separate undo of the same record is a new request and is told the truth by the server.
-  assert.equal((await undo.undo(90))?.error?.code, 'CHECK_IN_ALREADY_UNDONE');
-  assert.notEqual(sent[2].requestId, sent[0].requestId);
-  assert.equal(undo.unconfirmed(90), false);
-});
-
-test('an undo keeps its request ID through server errors and re-login, and drops it on a definite answer', async () => {
-  const outcomes: (ApiError | null)[] = [
-    new ApiError('SERVER_ERROR', 'unknown', 500), new ApiError('UNAUTHORIZED', 'expired', 401),
-    new ApiError('UNDO_NOT_ALLOWED', 'organizer only', 403), null,
-  ];
-  const sent: string[] = [];
-  const undo = createUndo(async (checkInId, requestId) => {
-    sent.push(requestId);
-    const outcome = outcomes[sent.length - 1];
-    if (outcome) throw outcome;
-    return { ...undone, check_in_id: checkInId, request_id: requestId } as typeof undone & { status: 'UNDONE' };
-  }, ids('02'));
-
-  assert.equal((await undo.undo(90))?.error?.code, 'SERVER_ERROR');
-  assert.equal((await undo.undo(90))?.error?.code, 'UNAUTHORIZED');
-  assert.equal(undo.unconfirmed(90), true);
-  assert.equal((await undo.undo(90))?.error?.code, 'UNDO_NOT_ALLOWED');
-  assert.equal(undo.unconfirmed(90), false);
-  assert.equal((await undo.undo(90))?.receipt?.status, 'UNDONE');
-  assert.deepEqual([sent[0] === sent[1], sent[1] === sent[2], sent[2] === sent[3]], [true, true, false]);
-});
-
-test('each check-in gets its own undo request ID and invalid targets send nothing', async () => {
-  const sent: { checkInId: number; requestId: string }[] = [];
-  const undo = createUndo(async (checkInId, requestId) => {
-    sent.push({ checkInId, requestId });
-    throw new TypeError('offline');
-  }, ids('02'));
-
-  assert.equal((await undo.undo(90))?.error?.code, 'SERVER_ERROR');
-  assert.equal((await undo.undo(91))?.error?.code, 'SERVER_ERROR');
-  assert.notEqual(sent[1].requestId, sent[0].requestId);
-  for (const target of [0, -1, 1.5, Number.NaN]) assert.equal(undo.undo(target), null);
-  assert.equal(sent.length, 2);
-});
-
-test('an undo session sends the current token, including one renewed after it was created', async () => {
-  const seen: string[] = [];
-  const api = createApi(base, async (_url, options) => {
-    seen.push(new Headers(options?.headers).get('Authorization') ?? '');
-    return Response.json({ ...undone, request_id: JSON.parse(String(options?.body)).request_id });
-  });
-  const session = createUndoSession((access, id, requestId) => api.undoCheckIn(access, eventId, id, requestId), ids('02'));
-  session.setToken('first');
-  await session.undo(90);
-  session.setToken('renewed');
-  await session.undo(90);
-  assert.deepEqual(seen, ['Bearer first', 'Bearer renewed']);
 });
 
 test('a manual attendance refresh shows loading, then new totals, and keeps the last totals when it fails', () => {

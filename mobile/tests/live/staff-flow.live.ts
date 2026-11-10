@@ -9,7 +9,8 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { ApiError, createApi, type ScanRequest } from '../../src/api.ts';
-import { createScanner, createUndo } from '../../src/scanner.ts';
+import { createScanner } from '../../src/scanner.ts';
+import { createUndoStore } from '../../src/undo.ts';
 
 const target = process.env.LIVE_API_URL ?? '';
 const psqlUrl = process.env.LIVE_PSQL_URL ?? '';
@@ -235,17 +236,32 @@ await step('assigned staff cannot undo; outsiders and a wrong event are refused'
   assert.equal(rows(tickets.undo.id) ?? '1/1', '1/1');
 });
 
-await step('the organizer undoes the entry; a lost response is retried with the same ID and reverses once', async () => {
-  const undo = createUndo((id, requestId) => api.undoCheckIn(organizer.token, eventId, id, requestId), randomUUID);
+await step('undo, lost response, sign in again: the same request is repeated under the new token and reverses once', async () => {
+  const store = createUndoStore((token, event, id, requestId) => api.undoCheckIn(token, event, id, requestId), randomUUID);
+  const checkInId = firstEntry!.check_in_id!;
   loseNextResponse = true;
-  const lost = undo.undo(firstEntry!.check_in_id!);
-  assert.equal(undo.undo(firstEntry!.check_in_id!), null); // a second tap while the first is in flight
+  const lost = store.undo(organizer, eventId, checkInId, visitors.undo.fullName);
+  assert.equal(store.undo(organizer, eventId, checkInId, visitors.undo.fullName), null); // a second tap in flight
   assert.equal((await lost)?.error?.code, 'NETWORK_ERROR');
   assert.equal(rows(tickets.undo.id) ?? '1/0', '1/0'); // already reversed on the server
-  const requestId = undo.requestId();
-  const retried = await undo.undo(firstEntry!.check_in_id!);
-  assert.deepEqual([retried?.receipt?.status, retried?.receipt?.request_id], ['UNDONE', requestId]);
-  assert.equal(await code(api.undoCheckIn(organizer.token, eventId, firstEntry!.check_in_id!, randomUUID())), 'CHECK_IN_ALREADY_UNDONE');
+  const kept = store.find(organizer.userId, eventId, checkInId)!;
+
+  // The stored token stops working (here: a token the server does not accept), so the retry gets a 401.
+  const expired = await store.undo({ ...organizer, token: 'expired-token' }, eventId, checkInId, kept.label);
+  assert.deepEqual([expired?.error?.code, store.find(organizer.userId, eventId, checkInId)?.requestId],
+    ['UNAUTHORIZED', kept.requestId]);
+  // Another account on the same phone has nothing to repeat.
+  assert.deepEqual(store.pending(otherOrganizer.userId), []);
+
+  const again = await api.login(organizer.email, password, organizer.userId);
+  assert.notEqual(again.token, organizer.token);
+  const [pending] = store.pending(again.userId, eventId);
+  const repeated = await store.undo(again, pending.eventId, pending.checkInId, pending.label);
+  assert.deepEqual([repeated?.receipt?.status, repeated?.receipt?.request_id, repeated?.receipt?.check_in_id],
+    ['UNDONE', kept.requestId, checkInId]);
+  assert.deepEqual(store.pending(again.userId), []);
+  assert.equal(sql(`SELECT undo_request_id FROM check_ins WHERE id = ${checkInId}`) ?? kept.requestId, kept.requestId);
+  assert.equal(await code(api.undoCheckIn(organizer.token, eventId, checkInId, randomUUID())), 'CHECK_IN_ALREADY_UNDONE');
   assert.equal(rows(tickets.undo.id) ?? '1/0', '1/0');
 });
 

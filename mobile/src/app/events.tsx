@@ -3,6 +3,7 @@ import { ActivityIndicator, Button, FlatList, Pressable, StyleSheet, Text, View 
 import { Redirect, router, useIsFocused } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api, ApiError, type StaffEvent } from '../api';
+import { useUndoStore } from '../attendance';
 import { useSession } from '../session';
 import { useLanguage } from '../language';
 import { errorMessage } from '../messages';
@@ -15,16 +16,18 @@ export default function EventsScreen() {
   if (!focused) return null;
 
   // Returning to this screen or changing accounts starts with a fresh list.
-  return <EventsList key={session.token} token={session.token} />;
+  return <EventsList key={session.token} token={session.token} userId={session.userId} />;
 }
 
-function EventsList({ token }: { token: string }) {
+function EventsList({ token, userId }: { token: string; userId: number }) {
   const { setSession } = useSession();
   const { copy, locale } = useLanguage();
   const [events, setEvents] = useState<StaffEvent[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(true);
   const [reload, setReload] = useState(0);
+  // Events where this account still has an undo without a definite answer.
+  const unconfirmed = new Set(useUndoStore().pending(userId).map(entry => entry.eventId));
 
   useEffect(() => {
     let active = true;
@@ -70,6 +73,7 @@ function EventsList({ token }: { token: string }) {
             <Text style={styles.title}>{item.title}</Text>
             <Text>{new Date(item.date).toLocaleString(locale === 'kk' ? 'kk-KZ' : 'ru-RU')}</Text>
             <Text>{item.location}</Text>
+            {unconfirmed.has(item.id) && <Text accessibilityRole="alert" style={styles.error}>{copy.eventUndoPending}</Text>}
             <Text style={styles.link}>{copy.scanTickets} →</Text>
           </Pressable>
         )} />

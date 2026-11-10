@@ -5,7 +5,7 @@ import { randomUUID } from 'expo-crypto';
 import { Redirect, Stack, router, useIsFocused, useLocalSearchParams, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api, type StaffSession, type UndoReceipt } from '../api';
-import { AttendanceCount, AttendeeSearch, UndoEntry } from '../attendance';
+import { AttendanceCount, AttendeeSearch, PendingUndos, UndoEntry } from '../attendance';
 import { createScanSession, type ScanResult } from '../scanner';
 import { useSession } from '../session';
 import { useLanguage } from '../language';
@@ -133,9 +133,9 @@ function EventScanner({ eventId, title, session, canUndo }: {
   }
 
   function entryUndone(receipt: UndoReceipt) {
-    if (!mounted.current || result?.receipt?.check_in_id !== receipt.check_in_id) return;
-    setUndone(receipt);
+    if (!mounted.current) return;
     refreshAttendance();
+    if (result?.receipt?.check_in_id === receipt.check_in_id) setUndone(receipt);
   }
 
   function signInAgain() {
@@ -197,8 +197,10 @@ function EventScanner({ eventId, title, session, canUndo }: {
       <Text style={styles.title}>{title || copy.selectedEvent}</Text>
       {focused && active && <AttendanceCount token={token} eventId={eventId} revision={attendanceRevision}
         locked={mustStay || error?.status === 401} onSignInAgain={signInAgain} />}
+      {focused && active && <PendingUndos token={token} userId={session.userId} eventId={eventId} locked={mustStay}
+        canAct={canAct} onUndone={entryUndone} onChanged={refreshAttendance} onSignInAgain={signInAgain} />}
       {lookupOpen ? (
-        <AttendeeSearch token={token} eventId={eventId} locked={!focused || !active || mustStay || result !== null}
+        <AttendeeSearch token={token} userId={session.userId} eventId={eventId} locked={!focused || !active || mustStay || result !== null}
           canUndo={canUndo} canAct={canAct} onClose={() => changeLookup(false)} onSignInAgain={signInAgain}
           onMark={submitTicket} onChanged={refreshAttendance} />
       ) : (
@@ -260,9 +262,9 @@ function EventScanner({ eventId, title, session, canUndo }: {
           {!pending && !backToEvents && error?.status !== 401 &&
             <Button title={copy.nextTicket} onPress={() => { if (scanner.next()) setResult(null); }} />}
           {canUndo && result.receipt?.check_in_id !== undefined && <UndoEntry key={result.receipt.check_in_id}
-            token={token} eventId={eventId}
+            token={token} userId={session.userId} eventId={eventId}
             checkInId={result.receipt.check_in_id} name={`${copy.ticket} #${result.receipt.ticket_id}`}
-            canAct={canAct} onUndone={entryUndone} onSignInAgain={signInAgain} />}
+            canAct={canAct} onUndone={entryUndone} />}
         </View>
       )}
     </ScrollView>
