@@ -26,7 +26,7 @@ These need the backend from [PR #10](https://github.com/IliyasNU/palantir/pull/1
 
 - A cancelled ticket and a refunded ticket each get their own rejection message, different from the message for a cancelled event. Neither can be admitted. “Refunded” is an admission state set by the organizer; tickets are free and no payment is involved.
 - The organizer of the event, or an admin, sees “Отменить вход” on an admitted search result and on a fresh confirmation. It asks for confirmation, then removes the admission. The ticket can be scanned again afterwards. Assigned staff do not see the action, and the server refuses it for them.
-- If the undo response is lost, the app says the outcome is unknown and “Повторить отмену” repeats the same request, so the entry is reversed once.
+- If the undo response is lost, the scanner lists the undo as unconfirmed and “Повторить отмену” repeats the same request, so the entry is reversed once. The request is kept for the whole app session: if the retry needs a new sign-in, the same account finds it again on the event list and in the scanner and repeats it under the new token. Another account never sees or sends it.
 - If an earlier scan result was unknown and the retry reports a cancelled ticket, a refunded ticket or an undone check-in, the app treats the attempt as settled and not admitted. Other rejections still leave it unconfirmed.
 
 ## Run on a phone
@@ -62,7 +62,7 @@ The tests cover API requests, health response validation, errors, invalid receip
 
 ## Run the client against a real API
 
-`tests/live/staff-flow.live.ts` drives the app's own API client, scanner and undo logic over HTTP: staff access, search with Kazakh letter case, camera and manual admission, duplicates, a response lost after the commit, cancelled and refunded tickets, and undo. With `LIVE_PSQL_URL` it also compares the result with the `check_ins` and `tickets` rows. It registers accounts and events, so use a disposable test database with migration `0003`.
+`tests/live/staff-flow.live.ts` drives the app's own API client, scanner and undo logic over HTTP: staff access, search with Kazakh letter case, camera and manual admission, duplicates, a response lost after the commit, cancelled and refunded tickets, and undo including a lost response followed by a new sign-in. With `LIVE_PSQL_URL` it also compares the result with the `check_ins` and `tickets` rows. It registers accounts and events, so use a disposable test database with migration `0003`.
 
 ```bash
 LIVE_API_URL=http://127.0.0.1:8000 \
@@ -75,7 +75,7 @@ It does not exercise the screens, the camera or a phone. Those are in the checkl
 
 ## Phone / integration checklist
 
-Use [device acceptance](DEVICE-ACCEPTANCE.md) for the release run, including web and printed QR, Android, and camera-to-result timing. Record device results separately from JS exports and HTTP checks.
+Use the [short device run](DEVICE-QUICK-RUN.md) at the phone: it lists the steps in order and `tests/live/seed-device-run.ts` prepares its accounts, tickets and PDFs. [Device acceptance](DEVICE-ACCEPTANCE.md) explains each check, including web and printed QR, Android, and camera-to-result timing. Record device results separately from JS exports and HTTP checks.
 
 Run this with the backend team on a test database. Record the device, backend commit, date and actual results.
 
@@ -103,7 +103,8 @@ The operating system can terminate the app, which discards a pending retry ID. D
 - `src/api.ts`: HTTP requests and response checks.
 - `src/attendance.tsx`: event totals, manual attendee search and the undo action.
 - `src/loading.ts`: state of a reloadable value (totals with the last good read).
-- `src/scanner.ts`: scan lock and retry ID, undo request ID.
+- `src/scanner.ts`: scan lock and retry ID.
+- `src/undo.ts`: undo requests kept per account, event and check-in until the server answers.
 - `src/session.tsx`: the current account and login token.
 - `src/language.tsx` and `src/messages.ts`: language choice and Russian/Kazakh screen text.
 - `tests/`: small API and scanner tests.
