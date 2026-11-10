@@ -2,7 +2,7 @@
 
 Use the current `integration/biletflow-e2e` backend, which includes tickets, staff check-in, and attendance (W2, merged in [PR #5](https://github.com/IliyasNU/palantir/pull/5)). [`feature/temirlan-tickets-checkin`](https://github.com/IliyasNU/palantir/tree/26d0dbd58aaea5fc44d63144155d14fdeb8ad67a/backend) introduced the base ticket and check-in endpoints. The attendance and attendee search routes below were added by W2.
 
-Ticket states and check-in undo come from [PR #10](https://github.com/IliyasNU/palantir/pull/10) (migration `0003`). Against a backend without it, the app still scans and searches: every ticket reads as active, no undo is offered, and the undo route answers as unavailable.
+Ticket states and check-in undo come from [PR #10](https://github.com/IliyasNU/palantir/pull/10) (migration `0003`). The printable ticket comes from [PR #11](https://github.com/IliyasNU/palantir/pull/11), and the website's download button and ticket states from [PR #12](https://github.com/IliyasNU/palantir/pull/12). Against a backend without it, the app still scans and searches: every ticket reads as active, no undo is offered, and the undo route answers as unavailable.
 
 ## Connection check
 
@@ -202,6 +202,20 @@ The server keeps the check-in row as history and marks it undone. After that:
 - A new scan with a new `request_id` admits the ticket again as a new record with a new `check_in_id`.
 - A retry of the same undo by the same account returns the same receipt.
 
-The app asks for confirmation before sending. A second tap while a request is in flight sends nothing. After a lost response the retry button repeats the same request ID. After a confirmed undo the app reloads the search results and the totals.
+The app asks for confirmation before sending. A second tap while a request is in flight sends nothing. After a confirmed undo the app reloads the search results and the totals.
 
-The app does not store the undo or a pending scan across a restart. After a restart, read the ticket's state from search before deciding anything.
+### An undo without a definite answer
+
+An undo that ended in a lost response, a 5xx or a 401 is kept in memory for the whole app, not inside the screen that started it. The record holds the account's user ID, the event ID, the check-in ID and the request ID.
+
+- The scanner of that event lists it as “Отмена входа не подтверждена” with the request ID and a retry button. The event list marks the event.
+- The retry sends the same request ID to the same event and check-in, with the token the account holds at that moment. The server then either reverses the entry or replays the receipt of the reversal it already made, so the entry is reversed once.
+- After a 401 the record offers “Войти снова”. Signing in again unmounts the scanner; the record stays. Once the same account is signed in with a new token, the retry is offered again.
+- Another account on the same phone never sees or sends the record. If it undoes the same check-in, it uses its own request ID and gets the server's definite answer.
+- A definite answer (a receipt, or a refusal such as `CHECK_IN_ALREADY_UNDONE`, `UNDO_NOT_ALLOWED` or `CHECK_IN_NOT_FOUND`) removes the record.
+
+The record does not survive an app restart, and neither does a pending scan. After a restart, read the ticket's state from search before deciding anything.
+
+## Printable ticket
+
+`GET /tickets/{id}/pdf` returns the holder's ticket as one A4 page. Its QR encodes the same `qr_payload` as the website's QR, so the scanner sees one ticket: whichever copy is scanned first is admitted and the other is then `ALREADY_CHECKED_IN`. A cancelled or refunded ticket, or a ticket of a cancelled event, has no PDF. The staff app does not call this route.
