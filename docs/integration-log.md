@@ -4,7 +4,7 @@ One entry per verification run of a branch or pull request. GitHub Actions is th
 
 ## CI status
 
-Since November 8, every run of "Web API integration" ends within a few seconds without starting a job. GitHub reports the reason on the run: "The job was not started because your account is locked due to a billing issue." This is an account setting of the repository owner and is unrelated to the code. Runs resume once the owner resolves it under Settings, Billing and plans.
+As of November 10, none of the 20 runs of "Web API integration" since the first one on November 6 has succeeded; each ends within a few seconds without starting a job. GitHub reports the reason on the latest run (November 9): "The job was not started because your account is locked due to a billing issue." This is an account setting of the repository owner and is unrelated to the code. Runs resume once the owner resolves it under Settings, Billing and plans.
 
 ## How to add an entry
 
