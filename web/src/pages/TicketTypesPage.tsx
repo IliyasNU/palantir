@@ -162,7 +162,8 @@ function ActionLog({ eventId, request, revision }: { eventId: number; request: t
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    request<unknown>(`/events/${eventId}/action-log`, { signal: controller.signal }).then((payload) => {
+    // The event timeline also holds check-ins, staff and lifecycle actions; this section lists type changes only.
+    request<unknown>(`/events/${eventId}/action-log?action=ticket_type`, { signal: controller.signal }).then((payload) => {
       if (!Array.isArray(payload) || payload.some((entry) => !entry || typeof entry !== 'object'
         || !Number.isSafeInteger(entry.id) || entry.event_id !== eventId || !Number.isSafeInteger(entry.actor_id)
         || typeof entry.occurred_at !== 'string' || !Number.isFinite(Date.parse(entry.occurred_at))
