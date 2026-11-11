@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { authLink } from '../auth/returnTo';
 import { readTicket, readTickets, ticketErrorMessage } from '../tickets/model';
 import type { EventDetails } from './details';
+import { ticketTypePrice, ticketTypeUnavailable } from '../ticket-types/model';
 
 export interface EventActionsProps {
   event: EventDetails;
@@ -28,6 +29,11 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const types = event.ticket_types;
+  const freeTypes = types?.filter((type) => ticketTypeUnavailable(type) === null);
+  const [selectedTypeId, setSelectedTypeId] = useState<number | null>(() => freeTypes?.length === 1 ? freeTypes[0]?.id ?? null : null);
+  const selectedType = types?.find((type) => type.id === selectedTypeId);
+  const typeUnavailable = types !== undefined && (!selectedType || ticketTypeUnavailable(selectedType) !== null);
   const inFlight = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -43,14 +49,15 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
   useEffect(() => () => { inFlight.current?.abort(); }, []);
 
   async function claim() {
-    if (inFlight.current) return;
+    if (inFlight.current || typeUnavailable) return;
     const controller = new AbortController();
     inFlight.current = controller;
     setClaiming(true);
     setError(null);
     try {
       // Server handles both a new claim (201) and an existing ticket (200).
-      const ticket = readTicket(await request(`/events/${event.id}/tickets`, { method: 'POST', signal: controller.signal }), undefined, event.id);
+      const ticket = readTicket(await request(`/events/${event.id}/tickets`, { method: 'POST', signal: controller.signal,
+        ...(types === undefined ? {} : { body: { ticket_type_id: selectedTypeId } }) }), undefined, event.id);
       if (!controller.signal.aborted) navigate(`/tickets/${ticket.id}`);
     } catch (failure) {
       if (!controller.signal.aborted) setError(ticketErrorMessage(failure));
@@ -64,7 +71,18 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
   if (ticketId !== null) return <p><Link className="button" to={`/tickets/${ticketId}`}>Открыть мой билет</Link></p>;
   return <div className="ticket-actions" aria-busy={claiming}>
     {error && <p className="notice notice-error" role="alert">{error}</p>}
-    {event.status === 'published' && remainingSeats !== 0 && <button className="button" type="button" disabled={claiming}
+    {types !== undefined && event.status === 'published' && <fieldset className="ticket-type-selection" disabled={claiming}>
+      <legend>Выберите тип билета</legend>
+      {types.map((type) => <label key={type.id}>
+        <input type="radio" name={`ticket-type-${event.id}`} value={type.id} checked={type.id === selectedTypeId}
+          disabled={ticketTypeUnavailable(type) !== null} onChange={() => setSelectedTypeId(type.id)} />
+        <span>{type.name} — {ticketTypePrice(type.price_tiyn)} · осталось {type.remaining}
+          {ticketTypeUnavailable(type) && <small>{ticketTypeUnavailable(type)}</small>}</span>
+      </label>)}
+      {types.length === 0 && <p>Доступных типов билетов пока нет.</p>}
+      {types.some((type) => type.price_tiyn > 0) && <p className="field-hint">Платные типы можно посмотреть. Продажа появится на следующем этапе.</p>}
+    </fieldset>}
+    {event.status === 'published' && remainingSeats !== 0 && <button className="button" type="button" disabled={claiming || typeUnavailable}
       onClick={() => { void claim(); }}>{claiming ? 'Получаем билет…' : 'Получить бесплатный билет'}</button>}
     {event.status === 'published' && remainingSeats === 0 && <p>Все билеты уже получены.</p>}
     {event.status !== 'published' && <p>Новые билеты сейчас недоступны.</p>}

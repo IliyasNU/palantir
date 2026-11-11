@@ -39,7 +39,15 @@ def drawn(monkeypatch):
     return calls
 
 
-def test_attendee_downloads_one_a4_pdf_with_their_own_ticket(client, setup, drawn):
+def test_attendee_downloads_one_a4_pdf_with_their_own_ticket(client, setup, drawn, monkeypatch):
+    labels = []
+    multi_cell = ticket_pdf.FPDF.multi_cell
+
+    def record_label(pdf, width, height, text, **kwargs):
+        labels.append(text)
+        return multi_cell(pdf, width, height, text, **kwargs)
+
+    monkeypatch.setattr(ticket_pdf.FPDF, "multi_cell", record_label)
     response = client.get(f"/tickets/{setup['ticket']['id']}/pdf", headers=setup["attendee"])
     assert response.status_code == 200, response.text
     assert response.headers["content-type"] == "application/pdf"
@@ -53,6 +61,7 @@ def test_attendee_downloads_one_a4_pdf_with_their_own_ticket(client, setup, draw
     assert drawn[0].ticket_id == setup["ticket"]["id"]
     assert drawn[0].qr_payload == setup["ticket"]["qr_payload"]  # the exact string the screen QR encodes
     assert (drawn[0].title, drawn[0].name) == ("Клубтар жәрмеңкесі", "Әлия Нұрланқызы")
+    assert f"Тип билета: {setup['ticket']['ticket_type']['name']}" in labels
 
 
 def test_downloading_changes_nothing_about_the_ticket(client, setup):

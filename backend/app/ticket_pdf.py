@@ -90,6 +90,9 @@ def build_ticket_pdf(ticket: Ticket, attendee: User) -> bytes:
 
     line(attendee.full_name, 16)
     line(f"Билет № {ticket.id}", 12, gap=8)
+    ticket_type = getattr(ticket, "ticket_type", None)
+    if ticket_type is not None:
+        line(f"Тип билета: {ticket_type.name}", 12, gap=3)
     line("Покажите этот QR-код на входе. Билет действителен на один вход.", 11, gap=2)
     line("Распечатанный билет и билет на экране — один и тот же билет.", 11)
     return bytes(pdf.output())

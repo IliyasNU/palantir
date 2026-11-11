@@ -8,6 +8,7 @@ import { formatEventDate } from '../events/catalog';
 import { eventStatusLabel, parseEventId, readEventDetails, remainingSeats } from '../events/details';
 import type { EventDetails } from '../events/details';
 import { EventActions } from '../events/EventActions';
+import { ticketTypePrice, ticketTypeUnavailable } from '../ticket-types/model';
 
 type DetailsState =
   | { kind: 'loading' }
@@ -23,6 +24,7 @@ export function EventDetailsPage() {
 }
 
 function EventContent({ id, request, guest }: { id: string | undefined; request: typeof api.request; guest: boolean }) {
+  const { user } = useAuth();
   const eventId = parseEventId(id);
   const returnTo = safeReturnTo(`/events/${id}`);
   const [state, setState] = useState<DetailsState>({ kind: 'loading' });
@@ -85,8 +87,19 @@ function EventContent({ id, request, guest }: { id: string | undefined; request:
             <dd>{available === null ? 'Доступность неизвестна' : `Осталось мест: ${available}`}</dd>
           </dl>
           {available === 0 && <p role="status">Свободных мест нет.</p>}
+          {event.ticket_types !== undefined && <section className="public-ticket-types" aria-label="Типы билетов">
+            <h2>Типы билетов</h2>
+            {event.ticket_types.length ? <ul>{event.ticket_types.map((type) => <li key={type.id}>
+              <strong>{type.name}</strong> — {ticketTypePrice(type.price_tiyn)} · осталось {type.remaining}
+              {type.description && <p>{type.description}</p>}
+              {ticketTypeUnavailable(type) && <p className="field-hint">{ticketTypeUnavailable(type)}</p>}
+            </li>)}</ul> : <p>Доступных типов пока нет.</p>}
+          </section>}
           {/* Do not hide/disable this slot when full: an existing ticket may still be opened. */}
           <EventActions event={event} remainingSeats={available} returnTo={returnTo} />
+          {user && (user.role === 'admin' || user.id === event.organizer_id) && <p>
+            <Link className="text-link" to={`/organizer/events/${event.id}/ticket-types`}>Управлять типами билетов</Link>
+          </p>}
         </article>
       )}
       <div className="event-navigation">

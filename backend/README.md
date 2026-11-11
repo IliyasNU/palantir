@@ -115,6 +115,45 @@ Send the access token as `Authorization: Bearer <token>`. Use paths exactly as w
 Datetimes are ISO 8601; values without a timezone are treated as UTC and responses are always UTC.
 Errors: 401 missing/invalid/expired token · 403 wrong role or not the owner · 404 not found · 409 conflict · 422 validation.
 
+## Ticket types and action log (P1)
+
+Revision `0004` follows `0003`. Each existing event receives one free type with its full
+capacity. Every existing ticket is linked to that type and the initial issued count includes
+only active tickets. New events start with the same default type.
+
+| Method and path | Access | Result |
+| --- | --- | --- |
+| `GET /events/{id}/ticket-types` | Same visibility as the event | Visible types and remaining quantities |
+| `GET /events/{id}/ticket-types/manage` | Event owner or admin | All types, including hidden ones |
+| `POST /events/{id}/ticket-types` | Event owner or admin | Create a type (201) |
+| `PATCH /events/{id}/ticket-types/{type_id}` | Event owner or admin | Edit or hide a type |
+| `GET /events/{id}/action-log` | Event owner or admin | Read action history, newest first |
+| `POST /events/{id}/tickets` | Authenticated | Optional `{"ticket_type_id": 42}`. Existing tickets return 200. New free tickets return 201 |
+
+Set `name`, `quantity` and optionally `description`, integer `price_tiyn`, `sales_start`,
+`sales_end`, `order_limit`, and `hidden`. Sales open at the start and close at the end.
+Omit either timestamp to leave that boundary open. Hidden types still count toward event
+capacity. Reduce the default quantity before allocating another type. A type's quantity
+cannot fall below its active ticket count. A single default allocation equal to the event
+capacity follows edits to that capacity.
+
+When the body is omitted, the API selects the sole visible free type. P1 issues at most one
+ticket per attendee per event and stores the order limit for later phases. Paid types can be
+configured. Issuing a ticket for one returns `409 PAID_TICKETS_NOT_SUPPORTED`.
+Ticket responses include `ticket_type_id` and a `ticket_type` summary. The PDF prints the
+type name. These fields reflect the type's current details.
+
+The event and type counters change together. A failed type claim rolls back the event seat.
+Cancellation and refunds release both counters. The API records type creation and edits
+with the actor and time in the same transaction. The downgrade guard rejects databases
+whose configured types or action history cannot be represented in revision `0003`.
+
+P1's isolated demo-compatible run used PostgreSQL 16.15 initialized with
+`POSTGRES_INITDB_ARGS="--encoding=UTF8 --locale-provider=icu --icu-locale=und"`.
+SQL confirmed provider ICU (`i`), locale `und` and encoding `UTF8`. The PostgreSQL
+e2e suite passed 38 tests, including case-insensitive Kazakh name search, concurrent
+type claims, and upgrade and downgrade against data from revision `0003`.
+
 ## Admin accounts
 
 Admins cannot register through the API. Create one (or promote an existing user) with:
@@ -153,7 +192,7 @@ docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -
 docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -f work/compose.w2-pg16-icu.yml exec backend alembic current
 ```
 
-Compose applies `alembic upgrade head` before starting the API; expect `0003 (head)` and `/health` HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
+Compose applies `alembic upgrade head` before starting the API. On P1, expect `0004 (head)` and `/health` HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
 
 Run this SQL **in the database used by the API** and retain the actual output with the tested commit:
 

@@ -50,6 +50,7 @@ function TicketContent({ id, request }: { id: number; request: typeof api.reques
   return <article className="content-card ticket-details">
     <h2>{ticket.event.title}</h2>
     <p>Билет №{ticket.id}</p>
+    {ticket.ticket_type && <p>Тип билета: {ticket.ticket_type.name}</p>}
     <p><time dateTime={ticket.event.date}>{formatEventDate(ticket.event.date)}</time></p>
     <p>{ticket.event.location}</p>
     {ticket.status === 'cancelled' && <p className="notice notice-error" role="status">Билет отменён. Он не даёт права на вход.</p>}
