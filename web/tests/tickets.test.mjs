@@ -5,7 +5,7 @@ import jsQR from 'jsqr';
 import { ApiError } from '../src/api/client.ts';
 import { apiBaseUrl } from '../src/api/config.ts';
 import { safeReturnTo, authLink } from '../src/auth/returnTo.ts';
-import { readTicket, readTickets, ticketErrorMessage } from '../src/tickets/model.ts';
+import { readTicket, readTickets, ticketErrorMessage, ticketPdfName, ticketState } from '../src/tickets/model.ts';
 import { ticketQrDataUrl } from '../src/tickets/qr.ts';
 
 const ticket = {
@@ -15,10 +15,42 @@ const ticket = {
 };
 
 test('ticket contracts preserve the exact server payload and existing used/cancelled tickets', () => {
-  assert.deepEqual(readTicket(ticket, 21, 7), ticket);
-  const used = { ...ticket, checked_in_at: '2030-07-15T11:55:00Z', event: { ...ticket.event, status: 'cancelled' } };
+  // A server without ticket states sends no status: the ticket is active.
+  assert.deepEqual(readTicket(ticket, 21, 7), { ...ticket, status: 'active' });
+  const used = { ...ticket, status: 'active', checked_in_at: '2030-07-15T11:55:00Z', event: { ...ticket.event, status: 'cancelled' } };
   assert.deepEqual(readTickets([used]), [used]);
   assert.deepEqual(readTickets([]), []);
+});
+
+test('ticket status is read as sent, keeps id and QR payload, and contradictions are rejected', () => {
+  for (const status of ['active', 'cancelled', 'refunded']) {
+    const read = readTicket({ ...ticket, status }, 21, 7);
+    assert.deepEqual([read.status, read.id, read.qr_payload], [status, ticket.id, ticket.qr_payload]);
+  }
+  for (const payload of [{ ...ticket, status: 'expired' }, { ...ticket, status: null }, { ...ticket, status: 1 },
+    { ...ticket, status: 'cancelled', checked_in_at: '2030-07-15T11:55:00Z' },
+    { ...ticket, status: 'refunded', checked_in_at: '2030-07-15T11:55:00Z' }]) {
+    assert.throws(() => readTicket(payload), (error) => error.kind === 'response');
+  }
+});
+
+test('only an active ticket of a live event shows its QR, prints, or can be cancelled by its holder', () => {
+  const state = (changes = {}, event = {}) => {
+    const { usable, printable, cancellable, label } = ticketState(readTicket({ ...ticket, ...changes, event: { ...ticket.event, ...event } }));
+    return [usable, printable, cancellable, label];
+  };
+  assert.deepEqual(state(), [true, true, true, 'Билет готов к входу']);
+  assert.deepEqual(state({ checked_in_at: '2030-07-15T11:55:00Z' }), [false, true, false, 'Билет уже использован']);
+  assert.deepEqual(state({ status: 'cancelled' }), [false, false, false, 'Билет отменён']);
+  assert.deepEqual(state({ status: 'refunded' }), [false, false, false, 'Билет возвращён']);
+  // A cancelled event is a different thing from a cancelled ticket; the ticket itself can still be given up.
+  assert.deepEqual(state({}, { status: 'cancelled' }), [false, false, true, 'Событие отменено']);
+  assert.deepEqual(state({ status: 'cancelled' }, { status: 'cancelled' }), [false, false, false, 'Билет отменён']);
+  assert.deepEqual(state({}, { status: 'draft' }), [false, true, true, 'Вход по билету сейчас недоступен']);
+  assert.equal(ticketPdfName(21), 'biletflow-ticket-21.pdf');
+  for (const [code, text] of [['TICKET_CANCELLED', 'отменён'], ['TICKET_REFUNDED', 'возвращён'], ['TICKET_CHECKED_IN', 'вход']]) {
+    assert.ok(ticketErrorMessage(new ApiError('server text', { kind: 'http', status: 409, code })).includes(text));
+  }
 });
 
 test('ticket readers reject an unexpected identity or malformed receipt instead of inventing a QR', () => {

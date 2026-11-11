@@ -97,3 +97,94 @@ test('foreign ticket 404 reveals no QR and an anonymous visitor sends no private
   await expect(page.getByRole('status')).toContainText('принадлежит другому');
   await expect(page.getByRole('img')).toHaveCount(0);
 });
+
+for (const [status, notice, label] of [['cancelled', 'Билет отменён', 'Билет отменён'], ['refunded', 'Билет возвращён', 'Билет возвращён']]) {
+  test(`a ${status} ticket shows its state, no QR and no actions, on the ticket and in the list`, async ({ page }) => {
+    const closed = { ...ticket, status };
+    let pdfRequests = 0;
+    await page.route(`${base}/tickets/me`, (route) => route.fulfill({ json: [closed] }));
+    await page.route(`${base}/tickets/21`, (route) => route.fulfill({ json: closed }));
+    await page.route(`${base}/tickets/21/pdf`, (route) => { pdfRequests++; return route.abort(); });
+    await login(page, '/tickets/21');
+    const details = page.locator('.ticket-details');
+    await expect(details.getByRole('status')).toContainText(notice);
+    await expect(details).not.toContainText('Событие отменено');
+    await expect(page.getByRole('img')).toHaveCount(0);
+    await expect(details.getByRole('button')).toHaveCount(0);
+    await page.getByRole('link', { name: 'Все мои билеты' }).click();
+    await expect(page.getByRole('list', { name: 'Мои билеты' })).toContainText(label);
+    expect(pdfRequests).toBe(0);
+  });
+}
+
+test('the ticket PDF is downloaded from the API with the session token and keeps the ticket on screen', async ({ page }) => {
+  const pdf = Buffer.from('%PDF-1.3\n% fixture ticket 21\n%%EOF\n');
+  const requests = [];
+  await page.route(`${base}/tickets/21`, (route) => route.fulfill({ json: { ...ticket, status: 'active' } }));
+  await page.route(`${base}/tickets/21/pdf`, (route) => {
+    requests.push({ method: route.request().method(), authorization: route.request().headers().authorization });
+    return route.fulfill({ status: 200, contentType: 'application/pdf', body: pdf,
+      headers: { 'Content-Disposition': 'attachment; filename="server-name.pdf"', 'Cache-Control': 'private, no-store' } });
+  });
+  await login(page, '/tickets/21');
+  expect(await decodedQr(page)).toBe(ticket.qr_payload);
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Скачать билет в PDF' }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe('biletflow-ticket-21.pdf');
+  const chunks = [];
+  for await (const chunk of await file.createReadStream()) chunks.push(chunk);
+  expect(Buffer.concat(chunks).equals(pdf)).toBe(true);
+  expect(requests).toEqual([{ method: 'GET', authorization: 'Bearer test-token' }]);
+  await expect(page.getByRole('button', { name: 'Скачать билет в PDF' })).toBeEnabled();
+  expect(await decodedQr(page)).toBe(ticket.qr_payload);
+});
+
+test('a refused or malformed PDF is an error message, not a download', async ({ page }) => {
+  let reply = { status: 409, json: { detail: { code: 'TICKET_REFUNDED', message: 'Ticket was refunded' } } };
+  let downloads = 0;
+  page.on('download', () => { downloads++; });
+  await page.route(`${base}/tickets/21`, (route) => route.fulfill({ json: ticket }));
+  await page.route(`${base}/tickets/21/pdf`, (route) => route.fulfill(reply));
+  await login(page, '/tickets/21');
+  await page.getByRole('button', { name: 'Скачать билет в PDF' }).click();
+  await expect(page.locator('.ticket-details').getByRole('alert')).toContainText('Билет возвращён');
+  reply = { status: 200, contentType: 'text/html', body: '<html>proxy page</html>' };
+  await page.getByRole('button', { name: 'Скачать билет в PDF' }).click();
+  await expect(page.locator('.ticket-details').getByRole('alert')).toContainText('некорректный файл билета');
+  expect(downloads).toBe(0);
+});
+
+test('the holder cancels a ticket only after confirming, and the page then shows the server state', async ({ page }) => {
+  const posts = [];
+  await page.route(`${base}/tickets/21`, (route) => route.fulfill({ json: { ...ticket, status: 'active' } }));
+  await page.route(`${base}/tickets/21/cancel`, (route) => {
+    posts.push({ method: route.request().method(), body: route.request().postData(), authorization: route.request().headers().authorization });
+    return route.fulfill({ json: { ...ticket, status: 'cancelled' } });
+  });
+  await login(page, '/tickets/21');
+  expect(await decodedQr(page)).toBe(ticket.qr_payload);
+
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await page.getByRole('button', { name: 'Отменить билет' }).click();
+  expect(posts).toEqual([]);
+  await expect(page.getByRole('img')).toHaveCount(1);
+
+  page.once('dialog', (dialog) => { expect(dialog.message()).toContain('нельзя отменить'); return dialog.accept(); });
+  await page.getByRole('button', { name: 'Отменить билет' }).click();
+  await expect(page.locator('.ticket-details').getByRole('status')).toContainText('Билет отменён');
+  await expect(page.getByRole('img')).toHaveCount(0);
+  await expect(page.locator('.ticket-details').getByRole('button')).toHaveCount(0);
+  expect(posts).toEqual([{ method: 'POST', body: null, authorization: 'Bearer test-token' }]);
+});
+
+test('a ticket that is already checked in cannot be cancelled and says why', async ({ page }) => {
+  await page.route(`${base}/tickets/21`, (route) => route.fulfill({ json: { ...ticket, status: 'active' } }));
+  await page.route(`${base}/tickets/21/cancel`, (route) => route.fulfill({ status: 409,
+    json: { detail: { code: 'TICKET_CHECKED_IN', message: 'The ticket is checked in; undo the check-in first' } } }));
+  await login(page, '/tickets/21');
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Отменить билет' }).click();
+  await expect(page.locator('.ticket-details').getByRole('alert')).toContainText('уже отмечен вход');
+  expect(await decodedQr(page)).toBe(ticket.qr_payload);
+});
