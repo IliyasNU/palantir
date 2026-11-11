@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { eventDetails } from './event-fixture.mjs';
+import { eventDetails, salesClock, timedTicketType } from './event-fixture.mjs';
 
 const base = 'http://localhost:8000';
 const free = { id: 1, event_id: 42, name: 'Партер', description: null, quantity: 2,
@@ -8,18 +8,90 @@ const free = { id: 1, event_id: 42, name: 'Партер', description: null, qua
 const paid = { ...free, id: 2, name: 'VIP', price_tiyn: 150050, quantity: 1, remaining: 1 };
 const secondFree = { ...free, id: 3, name: 'Балкон' };
 
-async function login(page, destination, role = 'attendee') {
+async function stubSession(page, role = 'attendee') {
   await page.route(`${base}/auth/login`, (route) => route.fulfill({ json: { access_token: 'test-token', token_type: 'bearer' } }));
   await page.route(`${base}/auth/me`, (route) => route.fulfill({ json: {
     id: 1, email: 'fixture@example.com', full_name: 'P1 Test', role,
     is_active: true, created_at: '2030-01-01T00:00:00Z',
   } }));
+}
+
+async function login(page, destination, role = 'attendee') {
+  await stubSession(page, role);
   await page.goto(`/login?returnTo=${encodeURIComponent(destination)}`);
   await page.getByLabel('Email', { exact: true }).fill('fixture@example.com');
   await page.getByLabel('Пароль', { exact: true }).fill('fixture-password');
   await page.getByRole('button', { name: 'Войти', exact: true }).click();
   await expect(page).toHaveURL(destination);
 }
+
+async function pauseBeforeSales(page) {
+  await page.clock.install({ time: Date.parse(salesClock.before) - 5000 });
+  await page.clock.pauseAt(salesClock.before);
+  await page.route(`${base}/tickets/me`, (route) => route.fulfill({ json: [] }));
+}
+
+test('EventActions component crosses the opening and closing boundaries on fake timers', async ({ page }) => {
+  await pauseBeforeSales(page);
+  await stubSession(page);
+  let claimRequests = 0;
+  await page.route(`${base}/events/42/tickets`, (route) => {
+    claimRequests += 1;
+    return route.fulfill({ status: 409, json: { detail: { code: 'TICKET_TYPE_SALES_ENDED' } } });
+  });
+  await page.goto('/tests/browser/fixtures/event-actions.html');
+  await page.getByRole('button', { name: 'Войти в тесте' }).click();
+  const choice = page.getByRole('radio', { name: /Ранний вход/ });
+  const claim = page.getByRole('button', { name: 'Получить бесплатный билет' });
+  await expect(choice).toBeDisabled();
+  await expect(claim).toBeDisabled();
+  await expect(page.getByText('Продажи ещё не начались', { exact: true })).toBeVisible();
+
+  await page.clock.runFor(3000);
+  await expect(choice).toBeEnabled({ timeout: 2000 });
+  await expect(choice).toBeChecked();
+  await expect(claim).toBeEnabled();
+
+  // A wall-clock jump does not fire timers. The click must still recheck the sale.
+  await page.clock.setSystemTime(salesClock.end);
+  await expect(claim).toBeEnabled();
+  await claim.click();
+  await expect(page.getByRole('alert')).toHaveText('Продажи закрыты');
+  expect(claimRequests).toBe(0);
+  await page.clock.runFor(1000);
+  await expect(choice).toBeDisabled();
+  await expect(claim).toBeDisabled();
+  await expect(page.getByRole('group', { name: 'Выберите тип билета' })
+    .getByText('Продажи закрыты', { exact: true })).toBeVisible();
+});
+
+test('event page updates both sales labels without navigating or fetching the event again', async ({ page }) => {
+  await pauseBeforeSales(page);
+  let eventReads = 0;
+  await page.route(`${base}/events/42`, (route) => {
+    eventReads += 1;
+    return route.fulfill({ json: { ...eventDetails, ticket_types: [timedTicketType] } });
+  });
+  await login(page, '/events/42');
+  const list = page.getByRole('region', { name: 'Типы билетов' });
+  const choice = page.getByRole('radio', { name: /Ранний вход/ });
+  const claim = page.getByRole('button', { name: 'Получить бесплатный билет' });
+  await expect(claim).toBeDisabled();
+  await expect(list.getByText('Продажи ещё не начались', { exact: true })).toBeVisible();
+  const initialReads = eventReads;
+
+  await page.clock.runFor(3000);
+  await expect(choice).toBeEnabled({ timeout: 2000 });
+  await expect(claim).toBeEnabled();
+  await expect(list.getByText('Продажи ещё не начались', { exact: true })).toHaveCount(0);
+
+  await page.clock.runFor(5000);
+  await expect(choice).toBeDisabled();
+  await expect(claim).toBeDisabled();
+  await expect(list.getByText('Продажи закрыты', { exact: true })).toBeVisible();
+  await expect(page).toHaveURL('/events/42');
+  expect(eventReads).toBe(initialReads);
+});
 
 test('visitor selects a free type and sees it on the issued ticket', async ({ page }) => {
   const ticket = { id: 21, event_id: 42, attendee_id: 1, qr_payload: 'fixture opaque QR',

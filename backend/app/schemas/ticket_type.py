@@ -3,18 +3,20 @@ from typing import Annotated, Any, Optional
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from app.schemas.common import UTCDateTime, blank_to_none
+from app.ticket_type_name import TICKET_TYPE_NAME_MAX_LENGTH
 
-Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=TICKET_TYPE_NAME_MAX_LENGTH)]
 Description = Annotated[str, StringConstraints(strip_whitespace=True, max_length=5000)]
 Money = Annotated[int, Field(strict=True, ge=0, le=2_147_483_647)]
 Quantity = Annotated[int, Field(strict=True, ge=0, le=1_000_000)]
 OrderLimit = Annotated[int, Field(strict=True, ge=1, le=1_000_000)]
-TypeId = Annotated[int, Field(strict=True, gt=0, le=2_147_483_647)]
+ResourceId = Annotated[int, Field(strict=True, gt=0, le=2_147_483_647)]
 
 
 class TicketTypeCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    event_id: Optional[ResourceId] = None
     name: Name
     description: Optional[Description] = None
     price_tiyn: Money = 0
@@ -84,7 +86,7 @@ class TicketTypeRead(TicketTypeSummary):
 
 class TicketClaimRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    ticket_type_id: Optional[TypeId] = None
+    ticket_type_id: Optional[ResourceId] = None
 
 
 class ActionLogRead(BaseModel):

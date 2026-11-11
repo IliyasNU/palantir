@@ -6,6 +6,7 @@ import { authLink } from '../auth/returnTo';
 import { Page } from '../components/Page';
 import { formatEventDate } from '../events/catalog';
 import { parseEventId } from '../events/details';
+import { ticketTypeNamePolicy } from '../ticket-types/model';
 import { readTicket, ticketErrorMessage, ticketPdfName, ticketState } from '../tickets/model';
 import type { Ticket } from '../tickets/model';
 import { TicketQr } from '../tickets/TicketQr';
@@ -50,7 +51,8 @@ function TicketContent({ id, request }: { id: number; request: typeof api.reques
   return <article className="content-card ticket-details">
     <h2>{ticket.event.title}</h2>
     <p>Билет №{ticket.id}</p>
-    {ticket.ticket_type && <p>Тип билета: {ticket.ticket_type.name}</p>}
+      {ticket.ticket_type && <p className="ticket-type-label" title={ticket.ticket_type.name}
+        style={{ WebkitLineClamp: ticketTypeNamePolicy.displayLines }}>Тип билета: {ticket.ticket_type.name}</p>}
     <p><time dateTime={ticket.event.date}>{formatEventDate(ticket.event.date)}</time></p>
     <p>{ticket.event.location}</p>
     {ticket.status === 'cancelled' && <p className="notice notice-error" role="status">Билет отменён. Он не даёт права на вход.</p>}

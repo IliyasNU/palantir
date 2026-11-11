@@ -7,6 +7,7 @@ import pytest
 
 from app import ticket_pdf
 from app.routers import tickets as tickets_router
+from app.schemas.ticket_type import TicketTypeCreate
 
 
 def detail_code(response):
@@ -43,9 +44,9 @@ def test_attendee_downloads_one_a4_pdf_with_their_own_ticket(client, setup, draw
     labels = []
     multi_cell = ticket_pdf.FPDF.multi_cell
 
-    def record_label(pdf, width, height, text, **kwargs):
+    def record_label(pdf, w, h, text, **kwargs):
         labels.append(text)
-        return multi_cell(pdf, width, height, text, **kwargs)
+        return multi_cell(pdf, w, h, text, **kwargs)
 
     monkeypatch.setattr(ticket_pdf.FPDF, "multi_cell", record_label)
     response = client.get(f"/tickets/{setup['ticket']['id']}/pdf", headers=setup["attendee"])
@@ -137,6 +138,79 @@ def test_the_page_fits_a_long_title_and_kazakh_letters_and_shows_local_time():
     assert ticket_pdf._event_time(ticket) == "13 ноября 2026, 01:30 (UTC+5)"  # 20:30 UTC is the next day in UTC+5
     naive = SimpleNamespace(event=SimpleNamespace(date=datetime(2026, 11, 12, 7, 5)))
     assert ticket_pdf._event_time(naive) == "12 ноября 2026, 12:05 (UTC+5)"
+
+
+@pytest.mark.parametrize("long_header", [False, True], ids=["existing-qr-position", "oversized-header"])
+def test_pdf_long_type_wraps_inside_margins_without_moving_qr(monkeypatch, long_header):
+    max_length = TicketTypeCreate.model_json_schema()["properties"]["name"]["maxLength"]
+    ticket_type = TicketTypeCreate(name="Ш" * max_length, quantity=1)
+    ticket = SimpleNamespace(
+        id=1,
+        qr_payload="biletflow:ticket:v1:synthetic-review",
+        ticket_type=ticket_type,
+        event=SimpleNamespace(
+            title="Ш" * 200 if long_header else ("Билеты " * 14).strip(),
+            date=datetime(2030, 7, 15, tzinfo=timezone.utc),
+            location="Ш" * 255 if long_header else ("Конференц-зал " * 9).strip(),
+        ),
+    )
+    attendee = SimpleNamespace(full_name="Ш" * 255 if long_header else ("Александров " * 8).strip())
+    text_blocks = []
+    rectangles = []
+    inside_multi_cell = False
+    multi_cell = ticket_pdf.FPDF.multi_cell
+    rect = ticket_pdf.FPDF.rect
+
+    def record_text(pdf, w, h, text, **kwargs):
+        nonlocal inside_multi_cell
+        if inside_multi_cell:
+            return multi_cell(pdf, w, h, text, **kwargs)
+        inside_multi_cell = True
+        try:
+            x, y = pdf.get_x(), pdf.get_y()
+            result = multi_cell(pdf, w, h, text, **kwargs)
+            if not kwargs.get("dry_run"):
+                text_blocks.append(SimpleNamespace(text=text, left=x, top=y, right=x + w, bottom=pdf.get_y(),
+                                                  line_height=h, page_width=pdf.w, page_height=pdf.h))
+            return result
+        finally:
+            inside_multi_cell = False
+
+    def record_qr(pdf, x, y, width, height, **kwargs):
+        rectangles.append((x, y, width, height, kwargs["style"]))
+        return rect(pdf, x, y, width, height, **kwargs)
+
+    monkeypatch.setattr(ticket_pdf.FPDF, "multi_cell", record_text)
+    monkeypatch.setattr(ticket_pdf.FPDF, "rect", record_qr)
+    data = ticket_pdf.build_ticket_pdf(ticket, attendee)
+    assert data.count(b"/Type /Page\n") == 1
+    label = next(block for block in text_blocks if block.text.startswith("Тип билета:"))
+    margin = ticket_pdf.PAGE_MARGIN_MM
+    assert label.bottom <= label.page_height - margin, label
+    assert label.bottom - label.top <= 2 * label.line_height + 0.01
+    assert label.text.endswith("…")
+    for block in text_blocks:
+        assert block.left >= margin - 0.01 and block.right <= block.page_width - margin + 0.01, block
+        assert block.top >= margin - 0.01 and block.bottom <= block.page_height - margin + 0.01, block
+
+    module = ticket_pdf.QR_SIZE_MM / len(ticket_pdf.qr_matrix(ticket.qr_payload))
+    quiet = ticket_pdf.QUIET_ZONE_MODULES * module
+    top = min(y for _, y, _, _, _ in rectangles)
+    if not long_header:
+        assert top == pytest.approx(125 + quiet)  # QR anchor before this fix for the same event header
+    left = min(x for x, _, _, _, _ in rectangles)
+    right = max(x + width for x, _, width, _, _ in rectangles)
+    bottom = max(y + height for _, y, _, height, _ in rectangles)
+    assert (left + right - ticket_pdf.MODULE_OVERLAP_MM) / 2 == pytest.approx(label.page_width / 2)
+    assert right - left == pytest.approx(ticket_pdf.QR_SIZE_MM + ticket_pdf.MODULE_OVERLAP_MM)
+    assert bottom - top == pytest.approx(ticket_pdf.QR_SIZE_MM + ticket_pdf.MODULE_OVERLAP_MM)
+    assert top - quiet >= margin and bottom + quiet <= label.page_height - margin
+    assert all(style == "F" for _, _, _, _, style in rectangles)
+    original_rectangles = rectangles.copy()
+    rectangles.clear()
+    ticket.ticket_type = TicketTypeCreate(name="Партер", quantity=1)
+    ticket_pdf.build_ticket_pdf(ticket, attendee)
+    assert rectangles == original_rectangles
 
 
 def test_the_bundled_font_has_the_russian_and_kazakh_letters():

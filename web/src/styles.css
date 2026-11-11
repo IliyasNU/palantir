@@ -101,6 +101,7 @@ button.nav-link { color: inherit; background: transparent; }
 .ticket-actions { margin-top: 24px; }
 .ticket-qr { display: block; width: 320px; max-width: 100%; height: auto; margin-block: 20px; image-rendering: pixelated; }
 .ticket-details { max-width: 590px; }
+.ticket-type-label { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 
 .public-ticket-types { margin-top: 28px; }
 .public-ticket-types ul { padding-left: 20px; }

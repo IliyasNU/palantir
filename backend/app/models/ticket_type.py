@@ -6,6 +6,7 @@ from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, In
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, utcnow
+from app.ticket_type_name import TICKET_TYPE_NAME_MAX_LENGTH
 
 
 class TicketType(Base):
@@ -21,7 +22,7 @@ class TicketType(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="RESTRICT"), index=True)
-    name: Mapped[str] = mapped_column(String(120))
+    name: Mapped[str] = mapped_column(String(TICKET_TYPE_NAME_MAX_LENGTH))
     description: Mapped[Optional[str]] = mapped_column(Text)
     price_tiyn: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     quantity: Mapped[int] = mapped_column(Integer)

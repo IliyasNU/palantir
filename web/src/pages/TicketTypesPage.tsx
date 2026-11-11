@@ -126,7 +126,7 @@ function TypeManagement({ eventId, request }: { eventId: number; request: typeof
         {error && <p className="notice notice-error" role="alert">{error}</p>}
         <fieldset disabled={saving}>
           <label htmlFor="type-name">Название типа</label>
-          <input id="type-name" value={draft.name} onChange={(input) => field('name', input.target.value)} required maxLength={120} />
+          <input id="type-name" value={draft.name} onChange={(input) => field('name', input.target.value)} required />
           <label htmlFor="type-description">Описание типа</label>
           <textarea id="type-description" value={draft.description} onChange={(input) => field('description', input.target.value)} rows={3} maxLength={5000} />
           <label htmlFor="type-price">Цена в тиынах</label>

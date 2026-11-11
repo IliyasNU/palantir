@@ -4,7 +4,7 @@ import { ApiError } from '../src/api/client.ts';
 import { safeReturnTo } from '../src/auth/returnTo.ts';
 import { readEventDetails } from '../src/events/details.ts';
 import { readTicket } from '../src/tickets/model.ts';
-import { emptyTicketTypeDraft, readTicketTypes, ticketTypeDraft, ticketTypeError, ticketTypePayload, ticketTypePrice, ticketTypeUnavailable } from '../src/ticket-types/model.ts';
+import { emptyTicketTypeDraft, readTicketTypes, ticketTypeDraft, ticketTypeError, ticketTypeNamePolicy, ticketTypePayload, ticketTypePrice, ticketTypeUnavailable } from '../src/ticket-types/model.ts';
 
 const type = { id: 3, event_id: 42, name: 'Стандарт', description: null, price_tiyn: 0,
   quantity: 12, tickets_issued: 2, remaining: 10, sales_start: null, sales_end: null, order_limit: 1, hidden: false };
@@ -26,7 +26,7 @@ test('availability distinguishes sold out, sales windows, hidden and paid types'
   assert.equal(ticketTypeUnavailable(type, now), null);
   assert.match(ticketTypeUnavailable({ ...type, quantity: 2, remaining: 0 }, now), /нет/);
   assert.match(ticketTypeUnavailable({ ...type, sales_start: '2030-05-01T00:00:00Z' }, now), /ещё не/);
-  assert.match(ticketTypeUnavailable({ ...type, sales_end: '2030-04-01T00:00:00Z' }, now), /завершены/);
+  assert.equal(ticketTypeUnavailable({ ...type, sales_end: '2030-04-01T00:00:00Z' }, now), 'Продажи закрыты');
   assert.match(ticketTypeUnavailable({ ...type, price_tiyn: 12500 }, now), /Платные/);
   assert.match(ticketTypeUnavailable({ ...type, hidden: true }, now), /скрыт/);
   assert.equal(ticketTypePrice(0), 'Бесплатно');
@@ -53,6 +53,13 @@ test('ticket keeps type identity and rejects a mismatched summary without changi
   assert.equal(result.qr_payload, ticket.qr_payload);
   assert.throws(() => readTicket({ ...ticket, ticket_type_id: 4 }), (error) => error.kind === 'response');
   assert.throws(() => readTicket({ ...ticket, ticket_type: undefined }), (error) => error.kind === 'response');
+});
+
+test('the editor counts name length in Unicode code points like the API', () => {
+  const name = '🎟'.repeat(ticketTypeNamePolicy.maxLength);
+  const draft = { ...emptyTicketTypeDraft(), name };
+  assert.equal(ticketTypePayload(draft).name, name);
+  assert.throws(() => ticketTypePayload({ ...draft, name: name + 'Ш' }), (error) => error.kind === 'validation');
 });
 
 test('editing price preserves a sales window with sub-minute precision', () => {

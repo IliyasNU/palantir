@@ -125,7 +125,7 @@ only active tickets. New events start with the same default type.
 | --- | --- | --- |
 | `GET /events/{id}/ticket-types` | Same visibility as the event | Visible types and remaining quantities |
 | `GET /events/{id}/ticket-types/manage` | Event owner or admin | All types, including hidden ones |
-| `POST /events/{id}/ticket-types` | Event owner or admin | Create a type (201) |
+| `POST /events/{id}/ticket-types` | Event owner or admin | Create a type (201). An optional body `event_id` must match the path |
 | `PATCH /events/{id}/ticket-types/{type_id}` | Event owner or admin | Edit or hide a type |
 | `GET /events/{id}/action-log` | Event owner or admin | Read action history, newest first |
 | `POST /events/{id}/tickets` | Authenticated | Optional `{"ticket_type_id": 42}`. Existing tickets return 200. New free tickets return 201 |
@@ -136,6 +136,13 @@ Omit either timestamp to leave that boundary open. Hidden types still count towa
 capacity. Reduce the default quantity before allocating another type. A type's quantity
 cannot fall below its active ticket count. A single default allocation equal to the event
 capacity follows edits to that capacity.
+
+The shared name policy in `app/assets/ticket-type-name.json` defines the 120-character
+API limit and two display lines for the ticket page and PDF. Ticket type IDs are scoped to
+the event in the URL. A foreign type returns 404 on edit and claim, including at full capacity
+or when the attendee already holds a ticket. Request validation returns 422 with a field-error
+array in `detail`. A PATCH that conflicts with the stored sales window returns 422 with
+`detail.code = INVALID_INPUT`.
 
 When the body is omitted, the API selects the sole visible free type. P1 issues at most one
 ticket per attendee per event and stores the order limit for later phases. Paid types can be

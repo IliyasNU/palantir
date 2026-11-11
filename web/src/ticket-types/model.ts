@@ -1,4 +1,10 @@
 import { ApiError, getErrorMessage } from '../api/client.ts';
+import ticketTypeNamePolicy from '../../../backend/app/assets/ticket-type-name.json' with { type: 'json' };
+
+export { ticketTypeNamePolicy };
+
+const SALES_NOT_STARTED = 'Продажи ещё не начались';
+const SALES_CLOSED = 'Продажи закрыты';
 
 export interface TicketTypeSummary {
   id: number;
@@ -75,8 +81,8 @@ export function ticketTypePrice(priceTiyn: number): string {
 export function ticketTypeUnavailable(type: TicketType, now = Date.now()): string | null {
   if (type.hidden) return 'Тип скрыт';
   if (type.price_tiyn > 0) return 'Платные продажи пока недоступны';
-  if (type.sales_start !== null && Date.parse(type.sales_start) > now) return 'Продажи ещё не начались';
-  if (type.sales_end !== null && Date.parse(type.sales_end) <= now) return 'Продажи завершены';
+  if (type.sales_start !== null && Date.parse(type.sales_start) > now) return SALES_NOT_STARTED;
+  if (type.sales_end !== null && Date.parse(type.sales_end) <= now) return SALES_CLOSED;
   if (type.remaining === 0) return 'Билетов этого типа нет';
   return null;
 }
@@ -110,6 +116,7 @@ export function ticketTypePayload(draft: TicketTypeDraft, original?: TicketType)
   };
   const name = draft.name.trim();
   if (!name) fail('Укажите название типа билета.');
+  if ([...name].length > ticketTypeNamePolicy.maxLength) fail(`Название типа должно быть не длиннее ${ticketTypeNamePolicy.maxLength} символов.`);
   const salesStart = original && draft.sales_start === localDate(original.sales_start) ? original.sales_start : date(draft.sales_start);
   const salesEnd = original && draft.sales_end === localDate(original.sales_end) ? original.sales_end : date(draft.sales_end);
   if (salesStart && salesEnd && Date.parse(salesEnd) <= Date.parse(salesStart)) fail('Конец продаж должен быть позже начала.');
@@ -130,8 +137,8 @@ export function ticketTypeError(error: unknown): string {
       case 'TICKET_TYPE_NOT_FOUND': return 'Тип билета не найден для этого события.';
       case 'TICKET_TYPE_REQUIRED': return 'Выберите тип бесплатного билета.';
       case 'TICKET_TYPE_HIDDEN': return 'Этот тип билета скрыт. Обновите страницу события.';
-      case 'TICKET_TYPE_SALES_NOT_STARTED': return 'Продажи этого типа ещё не начались.';
-      case 'TICKET_TYPE_SALES_ENDED': return 'Продажи этого типа завершены.';
+      case 'TICKET_TYPE_SALES_NOT_STARTED': return SALES_NOT_STARTED;
+      case 'TICKET_TYPE_SALES_ENDED': return SALES_CLOSED;
       case 'TICKET_TYPE_SOLD_OUT': return 'Билеты выбранного типа закончились. Выберите другой тип или обновите страницу.';
       case 'PAID_TICKETS_NOT_SUPPORTED': return 'Платные продажи пока недоступны. Выберите бесплатный тип.';
     }

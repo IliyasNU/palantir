@@ -57,6 +57,10 @@ def claim_ticket(event_id: int, db: DbSession, current_user: CurrentUser, respon
     if not is_visible(event, current_user):
         raise api_error(status.HTTP_404_NOT_FOUND, "EVENT_NOT_FOUND", "Event not found")
 
+    ticket_type_id = payload.ticket_type_id if payload else None
+    if ticket_type_id is not None and not any(ticket_type.id == ticket_type_id for ticket_type in event.ticket_types):
+        raise api_error(404, "TICKET_TYPE_NOT_FOUND", "Ticket type not found at this event")
+
     existing = _find_ticket(db, event.id, current_user.id)
     if existing is not None:
         response.status_code = status.HTTP_200_OK
@@ -90,7 +94,7 @@ def claim_ticket(event_id: int, db: DbSession, current_user: CurrentUser, respon
         db.rollback()
         response.status_code = status.HTTP_200_OK
         return _find_ticket(db, event.id, current_user.id)
-    ticket_type = select_claim_type(db, event.id, payload.ticket_type_id if payload else None)
+    ticket_type = select_claim_type(db, event.id, ticket_type_id)
     now = utcnow()
     type_seat_taken = db.execute(
         update(TicketType)

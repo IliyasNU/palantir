@@ -35,9 +35,11 @@ def manage_ticket_types(event_id: int, db: DbSession, current_user: CurrentUser)
 def create_ticket_type(event_id: int, payload: TicketTypeCreate, db: DbSession, current_user: CurrentUser):
     event = get_event_or_404(db, event_id)
     ensure_can_manage(event, current_user)
+    if payload.event_id is not None and payload.event_id != event_id:
+        raise api_error(404, "EVENT_NOT_FOUND", "Ticket type event does not match the route")
     event = lock_event(db, event_id)
     check_allocation(db, event, payload.quantity)
-    ticket_type = TicketType(event_id=event_id, **payload.model_dump())
+    ticket_type = TicketType(event_id=event_id, **payload.model_dump(exclude={"event_id"}))
     db.add(ticket_type)
     db.flush()
     record_action(db, event_id=event_id, actor_id=current_user.id, action="ticket_type.created",
