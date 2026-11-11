@@ -156,7 +156,8 @@ test('disconnection and timeout leave check-in unconfirmed', async () => {
 });
 
 test('configuration requires a reachable backend address instead of phone localhost', () => {
-  for (const address of ['', 'localhost:8000', 'http://localhost:8000', 'http://127.0.0.1:8000', 'https://user:password@example.com']) {
+  for (const address of ['', 'localhost:8000', 'http://localhost:8000', 'http://127.0.0.1:8000', 'https://user:password@example.com',
+    'https://example.com/api?', 'https://example.com/api#', 'https://example.com/api?q=1', 'https://example.com/api#section']) {
     assert.throws(() => apiAddress(address), code('CONFIG_ERROR'));
   }
   assert.equal(apiAddress('http://192.168.1.100:8000/'), 'http://192.168.1.100:8000');
