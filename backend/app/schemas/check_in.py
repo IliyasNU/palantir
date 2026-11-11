@@ -19,5 +19,21 @@ class CheckInReceipt(BaseModel):
     status: Literal["CHECKED_IN"] = "CHECKED_IN"
     event_id: int
     ticket_id: int
+    # Identifies this admission for POST /events/{id}/check-ins/{check_in_id}/undo.
+    check_in_id: int
     request_id: str
     checked_in_at: UTCDateTime
+
+
+class UndoRequest(BaseModel):
+    # A new UUID for the undo itself, not the request_id of the check-in being undone.
+    request_id: RequestId
+
+
+class UndoReceipt(BaseModel):
+    status: Literal["UNDONE"] = "UNDONE"
+    event_id: int
+    ticket_id: int
+    check_in_id: int
+    request_id: str
+    undone_at: UTCDateTime

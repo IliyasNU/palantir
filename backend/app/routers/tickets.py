@@ -1,4 +1,8 @@
-"""Free tickets: claim one per event, list and view your own."""
+"""Free tickets: claim one per event, list and view your own, cancel or mark refunded.
+
+``cancelled`` and ``refunded`` are admission states of one ticket: such a ticket can never be checked in.
+Tickets are free, so no payment exists here; marking a ticket refunded records the state only and moves no money.
+"""
 import secrets
 from typing import Optional
 
@@ -9,10 +13,11 @@ from sqlalchemy.orm import Session
 
 from app.dependencies.auth import CurrentUser
 from app.dependencies.db import DbSession
-from app.dependencies.events import get_event_or_404, is_visible
+from app.db.base import utcnow
+from app.dependencies.events import can_manage, get_event_or_404, is_visible
 from app.dependencies.roles import is_admin
 from app.errors import api_error
-from app.models import Event, EventStatus, Ticket
+from app.models import Event, EventStatus, Ticket, TicketStatus, User
 from app.schemas.ticket import TicketRead
 
 router = APIRouter(tags=["tickets"])
@@ -101,3 +106,66 @@ def get_ticket(ticket_id: int, db: DbSession, current_user: CurrentUser):
     if ticket is None or (ticket.attendee_id != current_user.id and not is_admin(current_user)):
         raise api_error(status.HTTP_404_NOT_FOUND, "TICKET_NOT_FOUND", "Ticket not found")
     return ticket
+
+
+_STATE_CODES = {
+    TicketStatus.CANCELLED.value: ("TICKET_CANCELLED", "Ticket was cancelled"),
+    TicketStatus.REFUNDED.value: ("TICKET_REFUNDED", "Ticket was refunded"),
+}
+
+
+def _close_ticket(db: Session, ticket_id: int, user: User, target: TicketStatus, owner_allowed: bool) -> Ticket:
+    """Move an active ticket to a final state and give its seat back. Repeating the same change is a no-op."""
+    ticket = db.get(Ticket, ticket_id)
+    manager = ticket is not None and can_manage(ticket.event, user)
+    owner = ticket is not None and ticket.attendee_id == user.id
+    if ticket is None or not (manager or owner):
+        raise api_error(status.HTTP_404_NOT_FOUND, "TICKET_NOT_FOUND", "Ticket not found")
+    if not manager and not owner_allowed:
+        raise api_error(
+            status.HTTP_403_FORBIDDEN, "FORBIDDEN", "Only the event organizer or an admin can mark a ticket refunded"
+        )
+
+    # Same lock order as check-in: the event row, then the ticket row. The exclusive event lock waits for
+    # scans in flight, and the ticket lock makes a parallel scan of this ticket see the result.
+    db.execute(select(Event.id).where(Event.id == ticket.event_id).with_for_update())
+    ticket = db.scalar(
+        select(Ticket).where(Ticket.id == ticket_id).with_for_update(of=Ticket)
+        .execution_options(populate_existing=True)
+    )
+    if ticket.status == target.value:
+        db.rollback()
+        return db.get(Ticket, ticket_id)
+    if ticket.status != TicketStatus.ACTIVE.value:
+        db.rollback()
+        raise api_error(status.HTTP_409_CONFLICT, *_STATE_CODES[ticket.status])
+    if ticket.check_in is not None:
+        db.rollback()
+        raise api_error(
+            status.HTTP_409_CONFLICT, "TICKET_CHECKED_IN", "The ticket is checked in; undo the check-in first"
+        )
+
+    ticket.status = target.value
+    ticket.status_changed_at = utcnow()
+    ticket.status_changed_by_id = user.id
+    db.execute(
+        update(Event)
+        .where(Event.id == ticket.event_id)
+        .values(tickets_issued=Event.tickets_issued - 1)
+        .execution_options(synchronize_session=False)
+    )
+    db.commit()
+    db.expire_all()  # the event counter changed outside the ORM
+    return db.get(Ticket, ticket_id)
+
+
+@router.post("/tickets/{ticket_id}/cancel", response_model=TicketRead)
+def cancel_ticket(ticket_id: int, db: DbSession, current_user: CurrentUser):
+    """Cancel a ticket for good (its attendee, the event's organizer or an admin). It can no longer be checked in."""
+    return _close_ticket(db, ticket_id, current_user, TicketStatus.CANCELLED, owner_allowed=True)
+
+
+@router.post("/tickets/{ticket_id}/refund", response_model=TicketRead)
+def refund_ticket(ticket_id: int, db: DbSession, current_user: CurrentUser):
+    """Mark a ticket refunded (the event's organizer or an admin). Records the admission state; moves no money."""
+    return _close_ticket(db, ticket_id, current_user, TicketStatus.REFUNDED, owner_allowed=False)

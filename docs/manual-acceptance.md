@@ -16,7 +16,7 @@
 
 ## Подготовка
 
-1. Запишите SHA ветки и запустите API на отдельной тестовой PostgreSQL по [инструкции проекта](https://github.com/IliyasNU/palantir/blob/integration/biletflow-e2e/README.md). Проверьте `alembic current` → `0002 (head)` и `/health` → HTTP 200, `status: ok`, `database: up`.
+1. Запишите SHA ветки и запустите API на отдельной тестовой PostgreSQL по [инструкции проекта](https://github.com/IliyasNU/palantir/blob/integration/biletflow-e2e/README.md). Проверьте `alembic current` → `0003 (head)` и `/health` → HTTP 200, `status: ok`, `database: up`.
 2. Укажите реальные адреса API в `VITE_API_URL` и `EXPO_PUBLIC_API_URL`. При запуске web на том же компьютере пример API — `http://127.0.0.1:8000`. Для телефона укажите LAN-адрес компьютера, откройте `/health` с телефона и проверьте, что телефон и компьютер в одной Wi-Fi сети. Для опубликованного web используйте доступный HTTPS API и добавьте точный origin web в `CORS_ORIGINS`.
 3. Запустите Vite и Metro. Для физического iPhone войдите в Expo CLI и Expo Go SDK 58 одним аккаунтом Expo. На Windows подходят команды `npx.cmd expo login`, `npx.cmd expo whoami` и `npx.cmd expo start --go --lan`. [Инструкция Expo](https://docs.expo.dev/troubleshooting/expo-go-sign-in-required/)
 4. Подготовьте отдельные аккаунты организатора, двух посетителей и сотрудника. Опубликуйте тестовое событие, назначьте сотрудника и подготовьте ещё одно событие с одним местом. Для проверки прав понадобится пользователь без назначения. Для первого прогона используйте свежий билет и держите web-страницу билета на отдельном экране.

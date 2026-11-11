@@ -186,7 +186,9 @@ def test_search_result_shape_and_values(client, setup):
             "ticket_id": setup["ticket"]["id"],
             "full_name": "Aigerim Attendee",
             "masked_email": "at***@example.com",
+            "status": "active",
             "checked_in_at": None,
+            "check_in_id": None,
             "qr_payload": setup["ticket"]["qr_payload"],
         }
     ]
