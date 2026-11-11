@@ -133,8 +133,8 @@ erDiagram
 | Endpoint | Who |
 |---|---|
 | `GET /health`, `POST /auth/register`, `POST /auth/login`, `POST /auth/token`, `POST /auth/refresh` | anyone |
-| `GET /events`, `GET /events/{id}` (published or cancelled) | anyone |
-| `GET /events/{id}` (draft) | the event's organizer, or an admin |
+| `GET /events`, `GET /events/{id}` (published or cancelled, not suspended) | anyone |
+| `GET /events/{id}` (draft or suspended) | the event's organizer, or an admin |
 | `GET /auth/me`, `GET /organizer-profiles/{id}` | any logged-in user |
 | `POST /events/{id}/tickets`, `GET /tickets/me`, `GET /tickets/{id}`, `GET /tickets/{id}/pdf` (own) | any logged-in user |
 | `GET /staff/events` | any logged-in user (lists what they may scan; may be `[]`) |
@@ -147,6 +147,9 @@ erDiagram
 | `POST /tickets/{id}/cancel` | the ticket's attendee, the event's organizer, or an admin |
 | `POST /tickets/{id}/refund` | the event's organizer, or an admin |
 | `GET /events/{id}/attendance`, `GET /events/{id}/attendees?q=` | the event's assigned staff, its organizer, or an admin |
+| `GET /events/{id}/action-log` | the event's organizer, or an admin |
+| `GET /admin/users`, `POST /admin/users/{id}/suspend\|reactivate` | admin |
+| `GET /admin/events`, `POST /admin/events/{id}/suspend\|reactivate`, `GET /admin/action-log` | admin |
 
 ## Design decisions
 
@@ -194,7 +197,7 @@ erDiagram
   `EVENT_NOT_PUBLISHED`, `EVENT_CANCELLED`, `SOLD_OUT`, `CAPACITY_BELOW_ISSUED`, `TICKET_NOT_FOUND`,
   `USER_NOT_FOUND`, `STAFF_CHANGED`, `FORBIDDEN`, `INVALID_TICKET`, `ALREADY_CHECKED_IN`, `REQUEST_ID_CONFLICT`,
   `QUERY_TOO_SHORT`, `TICKET_CANCELLED`, `TICKET_REFUNDED`, `TICKET_CHECKED_IN`, `CHECK_IN_UNDONE`,
-  `CHECK_IN_NOT_FOUND`, `CHECK_IN_ALREADY_UNDONE`, `UNDO_NOT_ALLOWED`.
+  `CHECK_IN_NOT_FOUND`, `CHECK_IN_ALREADY_UNDONE`, `UNDO_NOT_ALLOWED`, `EVENT_SUSPENDED`, `CANNOT_SUSPEND_SELF`.
 * `GET /events/{id}/attendance` returns `capacity` and `tickets_issued` from the event row and `checked_in` as a
   `COUNT` of its `check_ins` that are not undone, all read in one statement. `GET /events/{id}/attendees?q=` searches the event's ticket
   holders by name or e-mail (case-insensitive substring, `q` at least 3 characters after trimming, `%`/`_` literal,
@@ -223,6 +226,34 @@ two concurrent requests cannot allocate more seats than the event has.
 The caller adds the record in the transaction that creates or changes a type. The owner
 and administrators can read the event's history. The API exposes no write operation on
 the history itself.
+
+### Admin suspension and the full event timeline
+
+Migration `0005` adds `events.suspended_at` and makes `action_logs.event_id` nullable.
+
+**Suspending an event** (`POST /admin/events/{id}/suspend`, admin only, with a `reason`) hides it from everyone
+except its organizer and admins, exactly like a draft: it leaves the public list, and its details, ticket types and
+ticket claims answer `404 EVENT_NOT_FOUND`. The organizer and admins see it with `suspended: true` and cannot
+issue tickets either (`409 EVENT_SUSPENDED`). The suspension takes the event row lock, so it waits for claims in
+flight, and the claim's seat `UPDATE` requires `suspended_at IS NULL`, so a claim that loses the race is refused
+with `409 EVENT_SUSPENDED` and takes no seat. Suspension is independent of `status`: reactivating restores the
+event as it was. Tickets issued earlier stay readable and still admit; check-in is unchanged.
+
+**Suspending a user** (`POST /admin/users/{id}/suspend`) sets the existing `users.is_active` to false. Sign-in and
+every request with an existing token are refused at once. An admin cannot suspend their own account
+(`409 CANNOT_SUSPEND_SELF`). Both suspensions are idempotent and reversible with `/reactivate`.
+
+**The timeline.** Besides ticket-type changes, the action log records, in the same transaction as the change:
+`event.created`, `event.updated` (capacity and date with old and new values, texts as "changed"),
+`event.published`, `event.cancelled`, `event.suspended`, `event.reactivated`, `staff.assigned`, `staff.removed`,
+`ticket.cancelled`, `ticket.refunded`, `check_in.created`, `check_in.undone`, and the platform actions
+`user.suspended` and `user.reactivated` (no event). Repeats and no-ops write nothing, and a refused or rolled-back
+request leaves no entry. Claiming a ticket is not a management action and is not recorded.
+
+`GET /events/{id}/action-log` (organizer or admin) returns the event's entries newest first, each with
+`actor_id` and `actor_name`. Optional filters: `date_from`, `date_to`, `action` (a type or prefix such as
+`check_in`; `_` and `%` are literal), `limit` (default 200, at most 500) and `offset`.
+`GET /admin/action-log` (admin) reads the whole platform's history with the same filters plus `event_id`.
 
 ## Not built yet
 
