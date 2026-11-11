@@ -100,6 +100,7 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `POST /events/{id}/publish` or `/cancel` | owner or admin | state transitions |
 | `POST /events/{id}/tickets` | authenticated | `201` new ticket, `200` existing ticket |
 | `GET /tickets/me` or `/tickets/{id}` | authenticated | ownership enforced; `status` is `active`, `cancelled` or `refunded` |
+| `GET /tickets/{id}/pdf` | holder of the ticket or admin | one A4 page with the same QR as the screen; `409` for a closed ticket or a cancelled event |
 | `POST /tickets/{id}/cancel` | attendee of the ticket, event owner or admin | final; releases the seat; `409 TICKET_CHECKED_IN` while admitted |
 | `POST /tickets/{id}/refund` | event owner or admin | final; records the admission state only, no payment is processed |
 | `POST /events/{id}/staff` | owner or admin | assign event staff |
