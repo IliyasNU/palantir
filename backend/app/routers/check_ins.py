@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.audit import record_action
 from app.dependencies.auth import CurrentUser
 from app.dependencies.db import DbSession
 from app.db.base import utcnow
@@ -126,6 +127,9 @@ def check_in(event_id: int, payload: CheckInRequest, db: DbSession, current_user
     record = CheckIn(ticket_id=ticket.id, event_id=event.id, staff_id=current_user.id, request_id=request_id)
     db.add(record)
     try:
+        db.flush()  # assigns the id the history entry refers to; a lost race surfaces here or at the commit
+        record_action(db, event_id=event.id, actor_id=current_user.id, action="check_in.created",
+                      entity_type="check_in", entity_id=record.id, description=f"Checked in ticket {ticket.id}")
         db.commit()
     except IntegrityError:  # lost a race: either the same request_id or the same ticket was committed first
         db.rollback()
@@ -174,6 +178,8 @@ def undo_check_in(event_id: int, check_in_id: int, payload: UndoRequest, db: DbS
     record.undone_at = utcnow()
     record.undone_by_id = current_user.id
     record.undo_request_id = request_id
+    record_action(db, event_id=event.id, actor_id=current_user.id, action="check_in.undone", entity_type="check_in",
+                  entity_id=record.id, description=f"Undid the check-in of ticket {record.ticket_id}")
     try:
         db.commit()
     except IntegrityError:  # the same undo request_id was committed for another check-in at the same moment

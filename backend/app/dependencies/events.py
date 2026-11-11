@@ -41,5 +41,7 @@ def ensure_can_scan(db: Session, event: Event, user: User) -> None:
 
 
 def is_visible(event: Event, user: Optional[User]) -> bool:
-    """Drafts are private to their managers; published and cancelled events are public."""
-    return event.status != EventStatus.DRAFT.value or (user is not None and can_manage(event, user))
+    """Drafts and suspended events are private to their managers; other published and cancelled events are public."""
+    if event.status == EventStatus.DRAFT.value or event.suspended_at is not None:
+        return user is not None and can_manage(event, user)
+    return True

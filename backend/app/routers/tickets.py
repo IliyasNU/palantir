@@ -11,6 +11,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.audit import record_action
 from app.dependencies.auth import CurrentUser
 from app.dependencies.db import DbSession
 from app.db.base import utcnow
@@ -47,6 +48,9 @@ def _ensure_open_for_tickets(event: Event) -> None:
         raise api_error(status.HTTP_409_CONFLICT, "EVENT_NOT_PUBLISHED", "Event is not published yet")
     if event.status == EventStatus.CANCELLED.value:
         raise api_error(status.HTTP_409_CONFLICT, "EVENT_CANCELLED", "Event is cancelled")
+    # Reached by the event's own managers, and by a claim that raced a suspension: everyone else gets 404.
+    if event.suspended_at is not None:
+        raise api_error(status.HTTP_409_CONFLICT, "EVENT_SUSPENDED", "Ticket sales for this event are suspended")
 
 
 @router.post("/events/{event_id}/tickets", response_model=TicketRead, status_code=status.HTTP_201_CREATED)
@@ -73,6 +77,7 @@ def claim_ticket(event_id: int, db: DbSession, current_user: CurrentUser, respon
         .where(
             Event.id == event.id,
             Event.status == EventStatus.PUBLISHED.value,
+            Event.suspended_at.is_(None),  # a suspension that commits first stops this claim
             Event.tickets_issued < Event.capacity,
         )
         .values(tickets_issued=Event.tickets_issued + 1)
@@ -222,6 +227,11 @@ def _close_ticket(db: Session, ticket_id: int, user: User, target: TicketStatus,
         update(TicketType).where(TicketType.id == ticket.ticket_type_id)
         .values(tickets_issued=TicketType.tickets_issued - 1)
         .execution_options(synchronize_session=False)
+    )
+    record_action(
+        db, event_id=ticket.event_id, actor_id=user.id, action=f"ticket.{target.value}", entity_type="ticket",
+        entity_id=ticket.id,
+        description=f"Ticket {target.value} by {'event management' if manager else 'its attendee'}",
     )
     db.commit()
     db.expire_all()  # the event counter changed outside the ORM

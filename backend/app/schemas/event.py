@@ -60,6 +60,8 @@ class EventRead(BaseModel):
     tickets_issued: int
     created_at: UTCDateTime
     updated_at: UTCDateTime
+    # True only in answers to the event's organizer or an admin: a suspended event is hidden from everyone else.
+    suspended: bool
     ticket_types: list[TicketTypeRead] = Field(validation_alias="public_ticket_types")
 
 
