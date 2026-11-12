@@ -36,7 +36,7 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
   const types = event.ticket_types;
   const time = useTicketTypeClock(types);
   const [selectedTypeId, setSelectedTypeId] = useState<number | null>(null);
-  const choices = types?.map((type) => ({ type, unavailable: ticketTypeUnavailable(type, time) }));
+  const choices = types?.map((type) => ({ type, unavailable: ticketTypeUnavailable(type, time, event.paid_sales_available) }));
   const availableChoices = choices?.filter(({ unavailable }) => unavailable === null);
   const selected = selectedTypeId === null && availableChoices?.length === 1
     ? availableChoices[0] : choices?.find(({ type }) => type.id === selectedTypeId);
@@ -57,9 +57,13 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
 
   async function claim() {
     if (inFlight.current || (types !== undefined && !selected)) return;
-    const unavailableNow = selected ? ticketTypeUnavailable(selected.type) : null;
+    const unavailableNow = selected ? ticketTypeUnavailable(selected.type, Date.now(), event.paid_sales_available) : null;
     if (unavailableNow !== null) {
       setError(unavailableNow);
+      return;
+    }
+    if (selected && selected.type.price_tiyn > 0) {
+      navigate(`/events/${event.id}/checkout?type=${selected.type.id}`);
       return;
     }
     const controller = new AbortController();
@@ -92,10 +96,10 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
           {unavailable && <small>{unavailable}</small>}</span>
       </label>)}
       {choices.length === 0 && <p>Доступных типов билетов пока нет.</p>}
-      {choices.some(({ type }) => type.price_tiyn > 0) && <p className="field-hint">Платные типы можно посмотреть. Продажа появится на следующем этапе.</p>}
+      {choices.some(({ type }) => type.price_tiyn > 0) && <p className="field-hint">Демонстрационная оплата, деньги не списываются</p>}
     </fieldset>}
     {event.status === 'published' && remainingSeats !== 0 && <button className="button" type="button" disabled={claiming || typeUnavailable}
-      onClick={() => { void claim(); }}>{claiming ? 'Получаем билет…' : 'Получить бесплатный билет'}</button>}
+      onClick={() => { void claim(); }}>{claiming ? 'Получаем билет…' : selected && selected.type.price_tiyn > 0 ? 'Купить' : 'Получить бесплатный билет'}</button>}
     {event.status === 'published' && remainingSeats === 0 && <p>Все билеты уже получены.</p>}
     {event.status !== 'published' && <p>Новые билеты сейчас недоступны.</p>}
     {error && <button className="text-button" type="button" disabled={claiming} onClick={() => setAttempt((value) => value + 1)}>Проверить мои билеты</button>}

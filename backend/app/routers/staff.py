@@ -6,6 +6,7 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.audit import record_action
 from app.dependencies.auth import CurrentUser
 from app.dependencies.db import DbSession
 from app.dependencies.events import can_manage, ensure_can_manage, get_event_or_404
@@ -50,6 +51,8 @@ def assign_staff(event_id: int, payload: StaffAssign, db: DbSession, current_use
 
     assignment = EventStaff(event_id=event.id, user=user)
     db.add(assignment)
+    record_action(db, event_id=event.id, actor_id=current_user.id, action="staff.assigned", entity_type="user",
+                  entity_id=user.id, description=f"Assigned {user.email} as check-in staff")
     try:
         db.commit()
     except IntegrityError:  # assigned concurrently
@@ -66,7 +69,12 @@ def remove_staff(event_id: int, user_id: int, db: DbSession, current_user: Curre
     """Revoke scanning access. Removing someone who is not assigned is a no-op."""
     event = get_event_or_404(db, event_id)
     ensure_can_manage(event, current_user)
-    db.execute(delete(EventStaff).where(EventStaff.event_id == event.id, EventStaff.user_id == user_id))
+    removed = db.execute(
+        delete(EventStaff).where(EventStaff.event_id == event.id, EventStaff.user_id == user_id)
+    ).rowcount
+    if removed:
+        record_action(db, event_id=event.id, actor_id=current_user.id, action="staff.removed", entity_type="user",
+                      entity_id=user_id, description="Removed check-in staff access")
     db.commit()
 
 

@@ -1,5 +1,79 @@
 # Palantir – System Architecture
 
+## P2 demo checkout and activation
+
+P2 adds simulated paid sales (SRS 3.2, 4.5, 4.6). Money is integer tiyn, payment screens and
+successful payment responses are labelled as a simulation. No external provider is contacted.
+
+Data path: `EventActions` selects a paid type → `CheckoutPage` posts contact details and a UUID
+to `routers/orders.py` → the service locks the event, expires old reservations, checks activation,
+suspension, ticket ownership and pending orders → conditional event/type UPDATEs reserve one
+seat → `orders` stores a price/fee snapshot and a 15-minute deadline. `OrdersPage` displays the
+server total, then posts a simulated success or failure. Success inserts the normal `Ticket`,
+marks the order paid and records `order.paid` in one transaction. QR, PDF and check-in reuse the
+existing ticket path. Failure records `order.failed` and releases both counters.
+
+New modules: `models/order.py` and migration `0006` (`down_revision="0005"`), `schemas/order.py`,
+`routers/orders.py`, `routers/paid_sales.py`, `paid_sales.py`, `order_inventory.py`, `demo_fees.py`,
+and `scripts/expire_orders.py`. The web adds `orders/model.ts`, `CheckoutPage`, `OrdersPage` and
+`ActivationPage`. Shared router/navigation and event/type pages receive small links and fields.
+
+The organizer checklist has five steps: a paid type, simulated profile identity and payout
+suffix, per-event terms, and the per-event activation fee. `paid_sales_activations` stores fee
+amount/time, activation time and the independent paid-sales suspension. Full payout references
+are never accepted: `reference_last4` is exactly four ASCII letters/digits. Organizer profile
+steps are owner-only, event steps and summaries are owner/admin, suspension is admin-only, and
+orders are buyer-only (404 for every other account, including admins). `EventRead` adds only
+`paid_sales_available` for the purchase button. All business denials use `api_error`.
+
+The shared lock order is event → order/ticket/type. Cleanup, free claim, checkout, confirmation,
+capacity/type edits and admin suspension serialize through the same event row. Existing
+conditional UPDATEs and event suspension guards remain in place. A pending order occupies
+inventory but has no ticket. Only `pending` can release its seat; replayed cleanup/cancellation
+does nothing. Confirmation rechecks the deadline after acquiring the event lock, so a request
+that waited beyond its deadline cannot issue. Payment converts the reserve without a second
+increment. Event/type counters equal active tickets plus pending reservations.
+
+Expiry runs lazily on inventory and order reads/writes and through `python -m scripts.expire_orders`.
+It needs no worker. Multiple-event cleanup locks IDs in ascending order. A read may therefore
+persist expiry. The table can retain an expired-time pending row until the next access, but
+inventory operations clean it before using availability. A reservation keeps the original
+price and can be paid until its deadline after the type's sales window closes; event and
+paid-sales suspension still refuse payment. Every operation is a database transaction.
+
+The one-ticket constraint remains unconditional. P2 refuses an existing active ticket with
+`ACTIVE_TICKET_EXISTS`, a closed ticket with `CLOSED_TICKET_EXISTS`, and a live reserve with
+`PENDING_ORDER_EXISTS`. Free claims retain HTTP 200 replay for existing tickets of every state.
+They gain only expiry and pending-order coordination before new issuance. One order buys one
+ticket and validates `order_limit >= 1`. Zero-price orders for free claims remain a known
+SRS 4.4 gap. Order contact snapshots do not change account ownership or the existing PDF/check-in identity.
+
+Creation is idempotent on `(buyer_id, request_id)` with a payload-match check. A partial unique
+index also permits at most one pending order per buyer/event. Confirmation is idempotent on
+the order ID: the first terminal outcome wins. Paid orders have a unique ticket FK and a CHECK
+constraint requires exactly paid orders to have a ticket. APIs never create tickets for pending,
+failed, cancelled or expired orders. Financial refunds are outside P2; existing admission-only
+ticket cancellation/refund routes do not rewrite the order or pretend that money was returned.
+
+Fees are coded demo defaults, not new platform settings: activation 500000 tiyn, processing
+300 bps deducted from organizer proceeds. Round half up with `(amount * bps + 5000) // 10000`.
+The buyer's total equals the ticket price. Orders retain the applied rate and rounded fee.
+The summary reports gross paid totals, fees, zero refunds and gross minus fees as estimated payout.
+
+### Hooks for P3 and P5
+
+P3 can validate and consume campaign usage under the event lock before reserving inventory,
+then snapshot discount and campaign IDs on the order. It must preserve creation idempotency
+and never consume usage twice. P5 can extend the order lifecycle for financial refunds and
+connect existing admission-state transitions under the same event lock, recording refund
+amounts and adjusting the organizer summary. P2 does not implement either phase. B4 may send
+a delivery message after a newly paid order commits, with its own deduplication keyed by order ID.
+
+Verification covers unit denials/checklists/rounding/ownership, real PostgreSQL races and
+counter-to-row reconciliation, populated migration and downgrade guards, and browser fixtures
+for both payment outcomes and activation. SQL must confirm PostgreSQL 16, ICU `und`, UTF8.
+This automated evidence is separate from physical phone/printed-ticket acceptance.
+
 Client–server architecture. Two clients talk to one REST API; the API owns the database.
 
 ```mermaid
@@ -133,8 +207,8 @@ erDiagram
 | Endpoint | Who |
 |---|---|
 | `GET /health`, `POST /auth/register`, `POST /auth/login`, `POST /auth/token`, `POST /auth/refresh` | anyone |
-| `GET /events`, `GET /events/{id}` (published or cancelled) | anyone |
-| `GET /events/{id}` (draft) | the event's organizer, or an admin |
+| `GET /events`, `GET /events/{id}` (published or cancelled, not suspended) | anyone |
+| `GET /events/{id}` (draft or suspended) | the event's organizer, or an admin |
 | `GET /auth/me`, `GET /organizer-profiles/{id}` | any logged-in user |
 | `POST /events/{id}/tickets`, `GET /tickets/me`, `GET /tickets/{id}`, `GET /tickets/{id}/pdf` (own) | any logged-in user |
 | `GET /staff/events` | any logged-in user (lists what they may scan; may be `[]`) |
@@ -147,6 +221,9 @@ erDiagram
 | `POST /tickets/{id}/cancel` | the ticket's attendee, the event's organizer, or an admin |
 | `POST /tickets/{id}/refund` | the event's organizer, or an admin |
 | `GET /events/{id}/attendance`, `GET /events/{id}/attendees?q=` | the event's assigned staff, its organizer, or an admin |
+| `GET /events/{id}/action-log` | the event's organizer, or an admin |
+| `GET /admin/users`, `POST /admin/users/{id}/suspend\|reactivate` | admin |
+| `GET /admin/events`, `POST /admin/events/{id}/suspend\|reactivate`, `GET /admin/action-log` | admin |
 
 ## Design decisions
 
@@ -194,7 +271,7 @@ erDiagram
   `EVENT_NOT_PUBLISHED`, `EVENT_CANCELLED`, `SOLD_OUT`, `CAPACITY_BELOW_ISSUED`, `TICKET_NOT_FOUND`,
   `USER_NOT_FOUND`, `STAFF_CHANGED`, `FORBIDDEN`, `INVALID_TICKET`, `ALREADY_CHECKED_IN`, `REQUEST_ID_CONFLICT`,
   `QUERY_TOO_SHORT`, `TICKET_CANCELLED`, `TICKET_REFUNDED`, `TICKET_CHECKED_IN`, `CHECK_IN_UNDONE`,
-  `CHECK_IN_NOT_FOUND`, `CHECK_IN_ALREADY_UNDONE`, `UNDO_NOT_ALLOWED`.
+  `CHECK_IN_NOT_FOUND`, `CHECK_IN_ALREADY_UNDONE`, `UNDO_NOT_ALLOWED`, `EVENT_SUSPENDED`, `CANNOT_SUSPEND_SELF`.
 * `GET /events/{id}/attendance` returns `capacity` and `tickets_issued` from the event row and `checked_in` as a
   `COUNT` of its `check_ins` that are not undone, all read in one statement. `GET /events/{id}/attendees?q=` searches the event's ticket
   holders by name or e-mail (case-insensitive substring, `q` at least 3 characters after trimming, `%`/`_` literal,
@@ -223,6 +300,57 @@ two concurrent requests cannot allocate more seats than the event has.
 The caller adds the record in the transaction that creates or changes a type. The owner
 and administrators can read the event's history. The API exposes no write operation on
 the history itself.
+
+### Admin suspension and the full event timeline
+
+Migration `0005` adds `events.suspended_at` and makes `action_logs.event_id` nullable.
+
+**Suspending an event** (`POST /admin/events/{id}/suspend`, admin only, with a `reason`) hides it from everyone
+except its organizer and admins, exactly like a draft: it leaves the public list, and its details, ticket types and
+ticket claims answer `404 EVENT_NOT_FOUND`. The organizer and admins see it with `suspended: true` and cannot
+issue tickets either (`409 EVENT_SUSPENDED`). The suspension takes the event row lock, so it waits for claims in
+flight, and the claim's seat `UPDATE` requires `suspended_at IS NULL`, so a claim that loses the race is refused
+with `409 EVENT_SUSPENDED` and takes no seat. Suspension is independent of `status`: reactivating restores the
+event as it was. Tickets issued earlier stay readable and still admit; check-in is unchanged.
+
+**Suspending a user** (`POST /admin/users/{id}/suspend`) sets the existing `users.is_active` to false. Sign-in and
+every request with an existing token are refused at once. An admin cannot suspend their own account
+(`409 CANNOT_SUSPEND_SELF`). Both suspensions are idempotent and reversible with `/reactivate`.
+
+**The timeline.** Besides ticket-type changes, the action log records, in the same transaction as the change:
+`event.created`, `event.updated` (capacity and date with old and new values, texts as "changed"),
+`event.published`, `event.cancelled`, `event.suspended`, `event.reactivated`, `staff.assigned`, `staff.removed`,
+`ticket.cancelled`, `ticket.refunded`, `check_in.created`, `check_in.undone`, and the platform actions
+`user.suspended` and `user.reactivated` (no event). Repeats and no-ops write nothing, and a refused or rolled-back
+request leaves no entry. Claiming a ticket is not a management action and is not recorded.
+
+`GET /events/{id}/action-log` (organizer or admin) returns the event's entries newest first, each with
+`actor_id` and `actor_name`. Optional filters: `date_from`, `date_to`, `action` (an exact type such as
+`event.published`, or the group before its dot such as `check_in`; `ticket` does not select `ticket_type.*`, and
+`_` and `%` are literal), `limit` (default 200, at most 500) and `offset`.
+`GET /admin/action-log` (admin) reads the whole platform's history with the same filters plus `event_id`.
+
+#### Suspension contract for later phases
+
+Checkout, promo codes, analytics and any other new code follow these rules, so that a suspended event behaves the
+same everywhere:
+
+- **Is it suspended?** `events.suspended_at IS NOT NULL` (`suspended: true` in event responses). `status` is not
+  touched and there is no suspended status value, so always test `suspended_at`, never `status`.
+- **Public lists and reads** filter `suspended_at IS NULL` in the query, or call `is_visible(event, user)` from
+  `app/dependencies/events.py` for one event (a suspended event is `404 EVENT_NOT_FOUND` for everyone except its
+  organizer and admins).
+- **Every path that sells or issues** (free claims today; orders, promo codes and the like later) calls
+  `ensure_not_suspended(event)` from `app/dependencies/events.py` on the event row read under `lock_event`, and
+  keeps `suspended_at IS NULL` in its conditional `UPDATE`. The check gives `409 EVENT_SUSPENDED`; the `UPDATE`
+  condition is what stops a request that raced the suspension. The free claim takes its row lock with the seat
+  `UPDATE` itself and calls the same check before it and after a lost race.
+- **Check-in is unaffected**: the check-in routes never read `suspended_at`, so tickets issued before the
+  suspension still admit.
+- **Admin routes**: `POST /admin/events/{id}/suspend` (with a `reason`) and `POST /admin/events/{id}/reactivate`;
+  `POST /admin/users/{id}/suspend` and `POST /admin/users/{id}/reactivate`. Both are idempotent.
+- **Platform actions** that belong to no event are written with `record_action(db, event_id=None, ...)` into
+  `action_logs`, in the transaction of the change. There is no separate admin table.
 
 ## Not built yet
 

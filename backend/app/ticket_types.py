@@ -66,7 +66,7 @@ def select_claim_type(db: Session, event_id: int, ticket_type_id: int | None) ->
     if ticket_type.hidden:
         raise api_error(409, "TICKET_TYPE_HIDDEN", "Ticket type is hidden")
     if ticket_type.price_tiyn:
-        raise api_error(409, "PAID_TICKETS_NOT_SUPPORTED", "Paid ticket sales are not available in this phase")
+        raise api_error(409, "PAID_TICKETS_NOT_SUPPORTED", "Use POST /events/{id}/orders for simulated paid checkout")
     now = utcnow()
     if ticket_type.sales_start is not None and to_utc(ticket_type.sales_start) > now:
         raise api_error(409, "TICKET_TYPE_SALES_NOT_STARTED", "Sales have not started for this ticket type")

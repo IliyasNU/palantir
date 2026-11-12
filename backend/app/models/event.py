@@ -42,9 +42,26 @@ class Event(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now()
     )
+    # Set by a platform admin. Independent of `status`: reactivating restores the event exactly as it was.
+    # Who suspended it and why are in the action log.
+    suspended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     organizer: Mapped["User"] = relationship(back_populates="events")
     ticket_types: Mapped[list["TicketType"]] = relationship(lazy="selectin", order_by="TicketType.id")
+
+    @property
+    def suspended(self) -> bool:
+        return self.suspended_at is not None
+
+    @property
+    def paid_sales_available(self) -> bool:
+        from sqlalchemy.orm import object_session
+        from app.paid_sales import activation_state
+        db = object_session(self)
+        if db is None or self.suspended or self.status != "published":
+            return False
+        state = activation_state(db, self)
+        return state["activated"] and not state["paid_sales_suspended"]
 
     @property
     def public_ticket_types(self) -> list["TicketType"]:

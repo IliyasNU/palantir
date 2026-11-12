@@ -19,6 +19,7 @@ export interface EventDetails {
   updated_at: string;
   /** Absent only when talking to a backend predating ticket types. */
   ticket_types?: TicketType[];
+  paid_sales_available?: boolean;
 }
 
 export function parseEventId(value: string | undefined): number | null {
@@ -65,6 +66,7 @@ export function readEventDetails(payload: unknown, expectedId: number): EventDet
     created_at: event.created_at,
     updated_at: event.updated_at,
     ...(event.ticket_types === undefined ? {} : { ticket_types: readTicketTypes(event.ticket_types, expectedId) }),
+    ...(event.paid_sales_available === undefined ? {} : { paid_sales_available: event.paid_sales_available === true }),
   };
 }
 

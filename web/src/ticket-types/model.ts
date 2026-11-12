@@ -78,9 +78,9 @@ export function ticketTypePrice(priceTiyn: number): string {
   return `${new Intl.NumberFormat('ru-KZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(priceTiyn / 100)} ₸`;
 }
 
-export function ticketTypeUnavailable(type: TicketType, now = Date.now()): string | null {
+export function ticketTypeUnavailable(type: TicketType, now = Date.now(), paidSalesAvailable = false): string | null {
   if (type.hidden) return 'Тип скрыт';
-  if (type.price_tiyn > 0) return 'Платные продажи пока недоступны';
+  if (type.price_tiyn > 0 && !paidSalesAvailable) return 'Платные продажи пока недоступны';
   if (type.sales_start !== null && Date.parse(type.sales_start) > now) return SALES_NOT_STARTED;
   if (type.sales_end !== null && Date.parse(type.sales_end) <= now) return SALES_CLOSED;
   if (type.remaining === 0) return 'Билетов этого типа нет';

@@ -22,6 +22,8 @@ class OrganizerProfile(Base):
     contact_email: Mapped[Optional[str]] = mapped_column(String(255))
     contact_phone: Mapped[Optional[str]] = mapped_column(String(50))
     website: Mapped[Optional[str]] = mapped_column(String(255))
+    demo_identity_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    demo_payout_last4: Mapped[Optional[str]] = mapped_column(String(4))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
