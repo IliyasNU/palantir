@@ -293,6 +293,24 @@ ICU `und`, UTF8 instance. The P2 e2e tests cover buyer/free/paid races, payment 
 suspension, repeated cleanup/confirmation, PDF and check-in, plus populated `0005 → 0006`.
 Always verify the demo database's actual locale before presenting; no existing team volume is reinitialized.
 
+P2 verification on 12 November 2026, implementation `7f8db09`, integrated tree `2e375df`
+(the integration merge did not change backend files):
+
+| Check | Observed result |
+| --- | --- |
+| Backend `python -m pytest -q tests` | 481 passed, one existing Starlette/httpx deprecation warning |
+| PostgreSQL HTTP `python -m pytest -q e2e` | 55 passed, including 12 new P2 cases; same warning |
+| SQL and migrations | PostgreSQL 16.15 / Ubuntu in WSL; provider `i`, ICU `und`, UTF8, Kazakh case folding true; sole head `0006`; empty and populated upgrade, safe downgrade and order guard passed |
+| Web unit, TypeScript, production build | 72 passed; typecheck and build passed with `VITE_API_URL=http://127.0.0.1:8000` |
+| Browser | 53 passed in the standard suite, 1 recovery and 1 isolation test passed separately. Two opt-in cases skipped in the standard suite: isolation was then run separately; strict Docker 667 acceptance was not run |
+
+The API used Python 3.14.5 on Windows, browser Microsoft Edge headless. The CI container matrix
+(Python 3.12, Alpine PostgreSQL, Chromium) and a clean dependency installation were not repeated
+locally. P2 browser flows use HTTP fixtures; PostgreSQL e2e uses the real API, including paid-ticket
+PDF and check-in. Physical phone/printing and the actual demo database remain unverified.
+One earlier browser run timed out during login in the existing PDF refusal test; it passed in
+the final full run without a test change. These checks are agent verification, not a teammate review.
+
 ## Admin accounts
 
 Admins cannot register through the API. Create one (or promote an existing user) with:
