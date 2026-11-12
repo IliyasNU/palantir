@@ -251,9 +251,32 @@ every request with an existing token are refused at once. An admin cannot suspen
 request leaves no entry. Claiming a ticket is not a management action and is not recorded.
 
 `GET /events/{id}/action-log` (organizer or admin) returns the event's entries newest first, each with
-`actor_id` and `actor_name`. Optional filters: `date_from`, `date_to`, `action` (a type or prefix such as
-`check_in`; `_` and `%` are literal), `limit` (default 200, at most 500) and `offset`.
+`actor_id` and `actor_name`. Optional filters: `date_from`, `date_to`, `action` (an exact type such as
+`event.published`, or the group before its dot such as `check_in`; `ticket` does not select `ticket_type.*`, and
+`_` and `%` are literal), `limit` (default 200, at most 500) and `offset`.
 `GET /admin/action-log` (admin) reads the whole platform's history with the same filters plus `event_id`.
+
+#### Suspension contract for later phases
+
+Checkout, promo codes, analytics and any other new code follow these rules, so that a suspended event behaves the
+same everywhere:
+
+- **Is it suspended?** `events.suspended_at IS NOT NULL` (`suspended: true` in event responses). `status` is not
+  touched and there is no suspended status value, so always test `suspended_at`, never `status`.
+- **Public lists and reads** filter `suspended_at IS NULL` in the query, or call `is_visible(event, user)` from
+  `app/dependencies/events.py` for one event (a suspended event is `404 EVENT_NOT_FOUND` for everyone except its
+  organizer and admins).
+- **Every path that sells or issues** (free claims today; orders, promo codes and the like later) calls
+  `ensure_not_suspended(event)` from `app/dependencies/events.py` on the event row read under `lock_event`, and
+  keeps `suspended_at IS NULL` in its conditional `UPDATE`. The check gives `409 EVENT_SUSPENDED`; the `UPDATE`
+  condition is what stops a request that raced the suspension. The free claim takes its row lock with the seat
+  `UPDATE` itself and calls the same check before it and after a lost race.
+- **Check-in is unaffected**: the check-in routes never read `suspended_at`, so tickets issued before the
+  suspension still admit.
+- **Admin routes**: `POST /admin/events/{id}/suspend` (with a `reason`) and `POST /admin/events/{id}/reactivate`;
+  `POST /admin/users/{id}/suspend` and `POST /admin/users/{id}/reactivate`. Both are idempotent.
+- **Platform actions** that belong to no event are written with `record_action(db, event_id=None, ...)` into
+  `action_logs`, in the transaction of the change. There is no separate admin table.
 
 ## Not built yet
 

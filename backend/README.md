@@ -190,13 +190,18 @@ Tickets issued before the suspension stay readable and still check in.
 
 Event responses include `suspended`. Action log entries include `actor_name`, and `event_id`
 is `null` for platform actions (`user.suspended`, `user.reactivated`). The `action` filter
-matches a type or a prefix: `action=check_in` returns `check_in.created` and `check_in.undone`,
-and `action=ticket_type` returns only ticket type changes. The recorded actions are listed in
+matches an exact type or the group before its dot: `action=check_in` returns `check_in.created` and
+`check_in.undone`, `action=ticket_type` returns only ticket type changes, and `action=ticket` returns
+only `ticket.*`, never `ticket_type.*`. The recorded actions are listed in
 [`../docs/architecture.md`](../docs/architecture.md#admin-suspension-and-the-full-event-timeline).
 
 Verified on 11 November 2026 on the Compose image `postgres:16-alpine` (16.15, ICU `und`,
 UTF8) in an isolated project: 423 unit tests and 42 PostgreSQL e2e tests passed, with
 `alembic current` at `0005 (head)`.
+
+Verified again on 12 November 2026 after the action filter fix and the shared `ensure_not_suspended`
+check, on a disposable local PostgreSQL 16.15 (ICU `und`, UTF8): 455 unit tests and 43 PostgreSQL e2e
+tests passed, with `alembic heads` at `0005 (head)`.
 
 ## Admin accounts
 
