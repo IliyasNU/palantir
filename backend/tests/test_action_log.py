@@ -242,6 +242,63 @@ def test_filter_by_action_type_or_prefix(client, actors, busy_event):
     assert too_long.status_code == 422
 
 
+@pytest.fixture()
+def mixed_event(client, actors, new_event):
+    """One event whose history holds ticket.cancelled, ticket_type.created and check_in.created."""
+    event = new_event(actors.owner)
+    root = f"/events/{event['id']}"
+    ticket = client.post(f"{root}/tickets", headers=actors.visitor).json()
+    assert scan(client, event["id"], ticket["qr_payload"], actors.owner).status_code == 200
+    returned = client.post(f"{root}/tickets", headers=actors.staff).json()
+    assert client.post(f"/tickets/{returned['id']}/cancel", headers=actors.staff).status_code == 200
+    assert actions(client, event["id"], actors.owner) == [
+        "event.created", "ticket_type.created", "event.published", "check_in.created", "ticket.cancelled",
+    ]
+    return event
+
+
+# A group is the text before a dot, never a raw prefix: "ticket" is not "ticket_type" and "check" is not "check_in".
+ACTION_GROUPS = [
+    ("ticket", ["ticket.cancelled"]),
+    ("ticket_type", ["ticket_type.created"]),
+    ("ticket.cancelled", ["ticket.cancelled"]),
+    ("check", []),
+    ("check_in", ["check_in.created"]),
+    # A trailing dot behaves like no dot.
+    ("ticket.", ["ticket.cancelled"]),
+    ("ticket_type.", ["ticket_type.created"]),
+    ("check.", []),
+    # Neither a longer name, a part of a name, nor a lone dot is a group.
+    ("ticket_typ", []),
+    ("ticket.cancel", []),
+    ("ticket.cancelled.", ["ticket.cancelled"]),
+    ("ticket..", []),
+    ("ticket_", []),
+    ("ticket%", []),
+    (".", []),
+]
+
+
+@pytest.mark.parametrize(("action", "expected"), ACTION_GROUPS)
+def test_action_filter_matches_a_whole_action_or_group_on_the_event_timeline(
+    client, actors, mixed_event, action, expected
+):
+    assert actions(client, mixed_event["id"], actors.owner, action=action) == expected
+
+
+@pytest.mark.parametrize(("action", "expected"), ACTION_GROUPS)
+def test_action_filter_matches_a_whole_action_or_group_on_the_platform_history(
+    client, actors, mixed_event, action, expected
+):
+    # The only event in this database, so the platform history holds exactly its rows.
+    response = client.get("/admin/action-log", params={"action": action}, headers=actors.admin)
+    assert response.status_code == 200, response.text
+    assert [entry["action"] for entry in response.json()] == expected
+    scoped = client.get("/admin/action-log", params={"action": action, "event_id": mixed_event["id"]},
+                        headers=actors.admin)
+    assert [entry["action"] for entry in scoped.json()] == expected
+
+
 def test_filter_by_date_range(client, actors, busy_event):
     event_id = busy_event["id"]
     now = datetime.now(timezone.utc)

@@ -24,7 +24,14 @@ def action_log_filters(
     date_from: Annotated[Optional[datetime], Query(description="Only actions at or after this time")] = None,
     date_to: Annotated[Optional[datetime], Query(description="Only actions at or before this time")] = None,
     action: Annotated[
-        Optional[str], Query(max_length=80, description="Action type or prefix, for example check_in or event.published")
+        Optional[str],
+        Query(
+            max_length=80,
+            description=(
+                "An exact action type (event.published) or the whole group before its dot (check_in selects "
+                "check_in.created and check_in.undone). Not a raw prefix: ticket does not select ticket_type.*"
+            ),
+        ),
     ] = None,
     limit: Annotated[int, Query(ge=1, le=LOG_PAGE_MAX)] = LOG_PAGE_DEFAULT,
     offset: Annotated[int, Query(ge=0, le=1_000_000)] = 0,

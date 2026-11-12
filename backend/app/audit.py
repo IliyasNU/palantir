@@ -5,7 +5,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models import User
@@ -43,8 +43,11 @@ def read_actions(
     if date_to is not None:
         query = query.where(ActionLog.occurred_at <= date_to)
     if action:
-        # A prefix, so "check_in" selects "check_in.created" and "check_in.undone". "_" and "%" are literal.
-        query = query.where(ActionLog.action.startswith(action, autoescape=True))
+        # The exact action, or the group before a dot: "check_in" selects "check_in.created" and
+        # "check_in.undone", while "ticket" never selects "ticket_type.created" and "check" selects nothing.
+        # A trailing dot changes nothing. "_" and "%" are literal.
+        name = action.removesuffix(".")
+        query = query.where(or_(ActionLog.action == name, ActionLog.action.startswith(name + ".", autoescape=True)))
     query = query.order_by(ActionLog.occurred_at.desc(), ActionLog.id.desc()).limit(limit).offset(offset)
     return [
         ActionLogRead(
