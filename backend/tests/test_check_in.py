@@ -49,7 +49,7 @@ def test_first_scan_checks_in_with_a_complete_receipt(client, db, setup):
     response = scan(client, setup["event"]["id"], setup["ticket"]["qr_payload"], setup["staff"], request_id)
     assert response.status_code == 200, response.text
     receipt = response.json()
-    assert set(receipt) == {"status", "event_id", "ticket_id", "request_id", "checked_in_at"}
+    assert set(receipt) == {"status", "event_id", "ticket_id", "check_in_id", "request_id", "checked_in_at"}
     assert receipt["status"] == "CHECKED_IN"
     assert receipt["event_id"] == setup["event"]["id"]
     assert receipt["ticket_id"] == setup["ticket"]["id"]

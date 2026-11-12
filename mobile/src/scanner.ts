@@ -4,6 +4,14 @@ export type ScanResult =
   | { receipt: Receipt; error?: never }
   | { error: ApiError; receipt?: never };
 
+export function uncertain(error: ApiError): boolean {
+  return ['NETWORK_ERROR', 'SERVER_ERROR'].includes(error.code) || (error.status !== undefined && error.status >= 500);
+}
+
+// The server names this exact request (CHECK_IN_UNDONE) or a final ticket state. Either way no admission
+// from this request is or can become current, so an earlier uncertain attempt is settled as not admitted.
+const SETTLED = ['CHECK_IN_UNDONE', 'TICKET_CANCELLED', 'TICKET_REFUNDED'];
+
 export function createScanSession(send: (token: string, request: ScanRequest) => Promise<Receipt>, newId: () => string) {
   let token = '';
   return {
@@ -30,11 +38,10 @@ export function createScanner(
       const error = problem instanceof ApiError
         ? problem
         : new ApiError('SERVER_ERROR', 'Check-in could not be confirmed.');
-      const uncertain = ['NETWORK_ERROR', 'SERVER_ERROR'].includes(error.code)
-        || (error.status !== undefined && error.status >= 500);
       // После неизвестного результата даже 401/403 не доказывают,
       // что предыдущая попытка не успела записаться в БД.
-      if (uncertain) unresolved = true;
+      if (uncertain(error)) unresolved = true;
+      else if (error.status === 409 && SETTLED.includes(error.code)) unresolved = false;
       return { error };
     } finally {
       busy = false;
@@ -57,6 +64,9 @@ export function createScanner(
     },
     mustResolve(): boolean {
       return busy || unresolved;
+    },
+    canHandOff(requestId: string): boolean {
+      return unresolved && !busy && pending?.request_id === requestId;
     },
     requestId(): string | null {
       return pending?.request_id ?? null;
