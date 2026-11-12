@@ -1,3 +1,5 @@
+import { canOrganize } from '../organizer/model';
+import { organizerText } from '../organizer/strings';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { useAuth } from '../auth/AuthProvider';
 import { authLink, safeReturnTo } from '../auth/returnTo';
@@ -20,6 +22,7 @@ export function Layout() {
             <NavLink className="nav-link" to="/events">События</NavLink>
             {auth.user ? (
               <>
+                {canOrganize(auth.user) && <NavLink className="nav-link" to="/organizer">{organizerText.nav}</NavLink>}
                 <NavLink className="nav-link" to="/tickets">Мои билеты</NavLink>
                 <span className="account-name">{auth.user.full_name}</span>
                 <button className="nav-link nav-link-accent" type="button" onClick={auth.logout}>Выйти</button>
