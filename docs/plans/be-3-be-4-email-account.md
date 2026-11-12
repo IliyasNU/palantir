@@ -1,6 +1,6 @@
 # BE-3 and BE-4: account emails, email verification, password reset and logout
 
-Status: implemented and verified (2026-11-12); not yet in a PR. Owner: Temirlan. Consumer: FE-A3 (Alibi). Deadline: 2026-11-14.
+Status: implemented and verified (2026-11-12); PR #21, stacked on moderation PR #20. Owner: Temirlan. Consumer: FE-A3 (Alibi). Deadline: 2026-11-14.
 
 ## Scope
 
