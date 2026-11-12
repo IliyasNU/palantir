@@ -9,7 +9,7 @@ import { AttendanceCount, AttendeeSearch, PendingUndos, UndoEntry } from '../att
 import { createScanSession, type ScanResult } from '../scanner';
 import { useSession } from '../session';
 import { useLanguage } from '../language';
-import { errorMessage } from '../messages';
+import { errorMessage, localeTag } from '../messages';
 
 export default function ScanScreen() {
   const { id, title, manage } = useLocalSearchParams<{ id: string; title: string; manage?: string }>();
@@ -28,7 +28,7 @@ function EventScanner({ eventId, title, session, canUndo }: {
   session: StaffSession;
   canUndo: boolean;
 }) {
-  const { setSession } = useSession();
+  const { setSession, renew } = useSession();
   const { copy, locale } = useLanguage();
   const { token } = session;
   const [permission, requestPermission, getPermission] = useCameraPermissions();
@@ -51,6 +51,8 @@ function EventScanner({ eventId, title, session, canUndo }: {
   const [loginError, setLoginError] = useState<unknown>(null);
   const [loggingIn, setLoggingIn] = useState(false);
   const loginLock = useRef(false);
+  // The request whose 401 already used the refresh token once; a second 401 asks for the password.
+  const renewedFor = useRef<string | null>(null);
   const scanSession = useMemo(() => createScanSession(
     (currentToken, body) => api.checkIn(currentToken, eventId, body), randomUUID,
   ), [eventId]);
@@ -103,10 +105,38 @@ function EventScanner({ eventId, title, session, canUndo }: {
     setUndone(null);
     void promise.then(value => {
       if (!mounted.current) return;
+      const requestId = scanner.requestId();
+      if (value.error?.status === 401 && requestId && renewedFor.current !== requestId) {
+        renewedFor.current = requestId;
+        void renewAndRepeat(value);
+        return;
+      }
       setResult(value);
       setBusy(false);
       if (value.receipt) refreshAttendance();
     });
+  }
+
+  // The access token expired during a scan. Renew it with the refresh token and repeat the same request
+  // (same QR, same request ID, same account) while the screen keeps saying "wait". If the renewal is not
+  // possible, the 401 is shown with the password form as before.
+  async function renewAndRepeat(expired: ScanResult) {
+    loginLock.current = true;
+    let fresh: Awaited<ReturnType<typeof renew>>;
+    try {
+      fresh = await renew();
+    } finally {
+      loginLock.current = false;
+    }
+    if (!mounted.current) return;
+    let again: Promise<ScanResult> | null = null;
+    if (typeof fresh === 'object') {
+      scanSession.setToken(fresh.token);
+      again = scanner.retry();
+    }
+    if (again) { show(again); return; }
+    setResult(expired);
+    setBusy(false);
   }
 
   function refreshAttendance() {
@@ -138,10 +168,17 @@ function EventScanner({ eventId, title, session, canUndo }: {
     if (result?.receipt?.check_in_id === receipt.check_in_id) setUndone(receipt);
   }
 
+  // Totals, search or an undo answered 401. Continue with the refresh token; only a refused renewal
+  // returns to the sign-in screen.
   function signInAgain() {
     if (scanner.mustResolve() || loginLock.current) return;
-    scanSession.setToken('');
-    setSession(null);
+    void renew().then(fresh => {
+      if (!mounted.current || typeof fresh === 'object') return;
+      if (fresh === 'unavailable') { Alert.alert(copy.signInAgain, copy.errors.NETWORK_ERROR); return; }
+      if (scanner.mustResolve() || loginLock.current) return;
+      scanSession.setToken('');
+      setSession(null);
+    });
   }
 
   function leaveAfterVerification() {
@@ -227,7 +264,7 @@ function EventScanner({ eventId, title, session, canUndo }: {
         <View accessibilityLiveRegion="polite" style={[styles.box, styles.failure]}>
           <Text style={styles.resultTitle}>{copy.undone}</Text>
           <Text>{copy.undoneHint}</Text>
-          <Text>{copy.ticket} #{undone.ticket_id} · {new Date(undone.undone_at).toLocaleTimeString(locale === 'kk' ? 'kk-KZ' : 'ru-RU')}</Text>
+          <Text>{copy.ticket} #{undone.ticket_id} · {new Date(undone.undone_at).toLocaleTimeString(localeTag(locale))}</Text>
           <Button title={copy.nextTicket} onPress={() => { if (scanner.next()) { setResult(null); setUndone(null); } }} />
         </View>
       )}
@@ -239,7 +276,7 @@ function EventScanner({ eventId, title, session, canUndo }: {
           {pending && <Text selectable>{copy.requestId}: {scanner.requestId()}</Text>}
           {error && pending && !retryable && error.status !== 401 && error.status !== 403 &&
             <Text>{copy.askOrganizer}</Text>}
-          {result.receipt && <Text>{copy.ticket} #{result.receipt.ticket_id} · {new Date(result.receipt.checked_in_at).toLocaleTimeString(locale === 'kk' ? 'kk-KZ' : 'ru-RU')}</Text>}
+          {result.receipt && <Text>{copy.ticket} #{result.receipt.ticket_id} · {new Date(result.receipt.checked_in_at).toLocaleTimeString(localeTag(locale))}</Text>}
           {retryable && <Button title={copy.retry} onPress={() => show(scanner.retry())} />}
           {result.error?.status === 401 && <View style={styles.box}>
             <Text>{copy.reauthenticate}</Text>

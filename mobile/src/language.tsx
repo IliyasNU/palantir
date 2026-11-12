@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type PropsWithChildren } from 'react';
-import { Button, View } from 'react-native';
-import { messages, type Locale } from './messages';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { languages, messages, type Locale } from './messages';
 
 const LanguageContext = createContext<{
   locale: Locale;
@@ -17,12 +17,29 @@ export function useLanguage() {
   return { ...language, copy: messages[language.locale] };
 }
 
+// Three compact text buttons: native buttons for three languages do not fit beside the screen title.
 export function LanguagePicker() {
   const { locale, setLocale } = useLanguage();
   return (
-    <View style={{ flexDirection: 'row', gap: 4 }}>
-      <Button title="РУС" accessibilityLabel="Русский" disabled={locale === 'ru'} onPress={() => setLocale('ru')} />
-      <Button title="ҚАЗ" accessibilityLabel="Қазақша" disabled={locale === 'kk'} onPress={() => setLocale('kk')} />
+    <View style={styles.row}>
+      {languages.map(language => {
+        const selected = language.locale === locale;
+        return (
+          <Pressable key={language.locale} accessibilityRole="button" accessibilityLabel={language.name}
+            accessibilityState={{ selected, disabled: selected }} disabled={selected} hitSlop={8}
+            onPress={() => setLocale(language.locale)} style={[styles.option, selected && styles.selected]}>
+            <Text style={[styles.label, selected && styles.selectedLabel]}>{language.short}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  row: { flexDirection: 'row', gap: 4 },
+  option: { paddingHorizontal: 6, paddingVertical: 6, borderRadius: 6 },
+  selected: { backgroundColor: '#163d79' },
+  label: { fontSize: 13, fontWeight: '600', color: '#163d79' },
+  selectedLabel: { color: 'white' },
+});

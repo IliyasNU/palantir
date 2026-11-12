@@ -37,8 +37,44 @@ test('login confirms account identity with the issued token', async () => {
     assert.deepEqual(JSON.parse(String(options?.body)), { email: 'staff@example.com', password: 'test-password' });
     return Response.json({ access_token: 'access', refresh_token: 'refresh', token_type: 'bearer' });
   });
-  assert.deepEqual(await api.login(' staff@example.com ', 'test-password'), { token: 'access', userId: 42 });
-  assert.deepEqual(await api.login('staff@example.com', 'test-password', 42), { token: 'access', userId: 42 });
+  // The refresh token issued with the pair is kept so the session can be renewed without the password.
+  const session = { token: 'access', userId: 42, refreshToken: 'refresh' };
+  assert.deepEqual(await api.login(' staff@example.com ', 'test-password'), session);
+  assert.deepEqual(await api.login('staff@example.com', 'test-password', 42), session);
+  // A server that issues no refresh token still signs in; such a session simply cannot be renewed.
+  const plain = createApi(base, async url => Response.json(url === base + '/auth/me' ? { id: 42 } : { access_token: 'access' }));
+  assert.deepEqual(await plain.login('staff@example.com', 'test-password'), { token: 'access', userId: 42 });
+});
+
+test('refresh exchanges the refresh token and confirms the same account with the new access token', async () => {
+  const calls: string[] = [];
+  const api = createApi(base, async (url, options) => {
+    calls.push(String(url));
+    if (url === base + '/auth/me') {
+      assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer access-2');
+      return Response.json({ id: 42 });
+    }
+    assert.equal(url, base + '/auth/refresh');
+    assert.equal(options?.method, 'POST');
+    assert.equal(new Headers(options?.headers).get('Authorization'), null);
+    assert.deepEqual(JSON.parse(String(options?.body)), { refresh_token: 'refresh-1' });
+    return Response.json({ access_token: 'access-2', refresh_token: 'refresh-2', token_type: 'bearer' });
+  });
+  assert.deepEqual(await api.refresh('refresh-1', 42), { token: 'access-2', userId: 42, refreshToken: 'refresh-2' });
+  assert.deepEqual(calls, [base + '/auth/refresh', base + '/auth/me']);
+  // Another account behind the new token is never accepted as this session.
+  await assert.rejects(api.refresh('refresh-1', 43), code('ACCOUNT_MISMATCH'));
+  // Without a rotated refresh token the current one stays in use.
+  const fixed = createApi(base, async url => Response.json(url === base + '/auth/me' ? { id: 42 } : { access_token: 'access-2' }));
+  assert.deepEqual(await fixed.refresh('refresh-1', 42), { token: 'access-2', userId: 42, refreshToken: 'refresh-1' });
+});
+
+test('a refused or unanswered refresh never yields a session', async () => {
+  await assert.rejects(createApi(base, reply({ detail: 'Token has expired' }, 401)).refresh('old', 42), code('UNAUTHORIZED'));
+  await assert.rejects(createApi(base, reply({ detail: 'This account is disabled' }, 403)).refresh('old', 42), code('FORBIDDEN'));
+  await assert.rejects(createApi(base, reply({}, 200)).refresh('old', 42), code('SERVER_ERROR'));
+  await assert.rejects(createApi(base, reply(null, 503)).refresh('old', 42), code('SERVER_ERROR'));
+  await assert.rejects(createApi(base, async () => { throw new TypeError('offline'); }).refresh('old', 42), code('NETWORK_ERROR'));
 });
 
 test('login does not expose a session for a different or unidentified account', async () => {
