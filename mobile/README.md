@@ -5,10 +5,11 @@ Iliyas's part of Team Palantir's project. Three screens: sign in, choose an even
 ## Current status
 
 - Start the backend in the same integration checkout. Follow the [root setup](../README.md) and [API contract](API.md).
-- Sign-in confirms the staff account through `GET /auth/me`. The token and account ID stay in memory. After restarting the app, sign in again.
-- Only a matching `CHECKED_IN` receipt confirms admission. A lost response or a server error leaves the scan unconfirmed and keeps its QR and request ID in memory for a retry. A retry after a 401 requires the same staff account.
+- Sign-in confirms the staff account through `GET /auth/me`. The tokens and account ID stay in memory. After restarting the app, sign in again.
+- The access token lasts 30 minutes on the server. The app renews it with the refresh token about two minutes before it expires while the app is in front, and again after any 401, so a shift is not interrupted by a password prompt. A renewal is accepted only for the same account. The password is asked again only when the server refuses the refresh token (after 7 days, or for a disabled account).
+- Only a matching `CHECKED_IN` receipt confirms admission. A lost response or a server error leaves the scan unconfirmed and keeps its QR and request ID in memory for a retry. After a 401 the app first renews the session and repeats the same request by itself; if that is refused, the retry asks for the password of the same staff account.
 - A 403 preserves the session. If the event is unavailable or access is denied on the first attempt, return to the event list to reload it. If an earlier attempt is still unconfirmed, ask the organizer to verify it before admitting the attendee.
-- The interface supports Russian and Kazakh through the header buttons. Russian is the default; the choice lasts for the current app session. Switching language leaves the scan and its retry ID intact.
+- The interface supports Russian, Kazakh and English through the header switch (РУС · ҚАЗ · ENG). Russian is the default; the choice lasts for the current app session. Switching language leaves the scan and its retry ID intact.
 - Before signing in, use the connection button to check the real `/health` response, including database readiness. Camera permission is checked again when the app returns from Settings; a camera failure offers a retry.
 - The browser ticket QR and PostgreSQL check-in API passed separate integration checks. On a physical iPhone with Expo Go SDK 58, a staff account signed in, selected its assigned event and scanned a QR generated from a real API ticket. A second scan was rejected and PostgreSQL held one check-in. The web-to-phone QR flow and extended device checks are in the [manual acceptance checklist](../docs/manual-acceptance.md).
 
@@ -58,11 +59,11 @@ npx expo export --platform android --output-dir dist/android
 npx expo export --platform ios --output-dir dist/ios
 ```
 
-The tests cover API requests, health response validation, errors, invalid receipts, repeated camera callbacks, retry IDs, account matching, ticket states, undo retries and localized error handling. Export checks the Android and iOS JavaScript bundles; it does not produce an installable app. Use the checklist below for camera and device behavior.
+The tests cover API requests, health response validation, errors, invalid receipts, repeated camera callbacks, retry IDs, account matching, session renewal, ticket states, undo retries, localized error handling and the same text keys in all three languages. Export checks the Android and iOS JavaScript bundles; it does not produce an installable app. Use the checklist below for camera and device behavior.
 
 ## Run the client against a real API
 
-`tests/live/staff-flow.live.ts` drives the app's own API client, scanner and undo logic over HTTP: staff access, search with Kazakh letter case, camera and manual admission, duplicates, a response lost after the commit, cancelled and refunded tickets, and undo including a lost response followed by a new sign-in. With `LIVE_PSQL_URL` it also compares the result with the `check_ins` and `tickets` rows. It registers accounts and events, so use a disposable test database with migration `0003`.
+`tests/live/staff-flow.live.ts` drives the app's own API client, scanner and undo logic over HTTP: staff access, search with Kazakh letter case, camera and manual admission, duplicates, a response lost after the commit, cancelled and refunded tickets, and undo including a lost response followed by a new sign-in. With `LIVE_PSQL_URL` it also compares the result with the `check_ins` and `tickets` rows. It also renews a session with the real refresh token. It registers accounts and events, so use a disposable test database with migration `0003` or later.
 
 ```bash
 LIVE_API_URL=http://127.0.0.1:8000 \
@@ -92,6 +93,8 @@ Run this with the backend team on a test database. Record the device, backend co
 11. Admit a visitor on a second phone, then tap “Обновить посещаемость” on the first. The total and its time change. Turn the network off and tap it again: the last total stays, marked as outdated.
 12. Scan a cancelled ticket and a refunded ticket. Each shows its own message in RU and KZ and neither admits. Search shows both states without an admission action.
 13. Sign in as the organizer, find an admitted visitor and tap “Отменить вход”. Cancel the dialog first, then confirm. The visitor becomes unadmitted and the total drops. Scan the ticket again: it is admitted again. As assigned staff the action is not shown.
+14. Session renewal (not yet run on a phone). Start the test API with `ACCESS_TOKEN_EXPIRE_MINUTES=3`, sign in and keep the scanner open for five minutes: totals, search and a scan keep working without a password prompt. Then put the app in the background for five minutes, return and scan: the ticket is admitted once, with no sign-in form. Finally disable the account on the server (or wait out the refresh token) and scan: the sign-in form appears and nobody is admitted.
+15. English (not yet run on a phone). Switch РУС → ҚАЗ → ENG on each screen: titles, buttons, results and dates change, the three options fit in the header beside the title on a small phone, and a displayed request ID stays the same.
 
 If replay cannot confirm the result, give the displayed request ID to the organizer. Once the organizer has checked the record, choose “Выйти после сверки с организатором” and confirm to return to the event list. Cancelling the dialog keeps the request on screen. The app does not show admission success from this action.
 
@@ -105,8 +108,9 @@ The operating system can terminate the app, which discards a pending retry ID. D
 - `src/loading.ts`: state of a reloadable value (totals with the last good read).
 - `src/scanner.ts`: scan lock and retry ID.
 - `src/undo.ts`: undo requests kept per account, event and check-in until the server answers.
-- `src/session.tsx`: the current account and login token.
-- `src/language.tsx` and `src/messages.ts`: language choice and Russian/Kazakh screen text.
+- `src/session.tsx`: the current account, its tokens and the renewal timer.
+- `src/renewal.ts`: when to renew an access token and one shared renewal request per session.
+- `src/language.tsx` and `src/messages.ts`: language choice and Russian/Kazakh/English screen text.
 - `tests/`: small API and scanner tests.
 - `tests/live/`: a run of the same client against a real API and database (see below).
 
