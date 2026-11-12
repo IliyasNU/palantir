@@ -8,6 +8,8 @@ import { formatEventDate } from '../events/catalog';
 import { eventStatusLabel, parseEventId, readEventDetails, remainingSeats } from '../events/details';
 import type { EventDetails } from '../events/details';
 import { EventActions } from '../events/EventActions';
+import { ticketTypePrice, ticketTypeUnavailable } from '../ticket-types/model';
+import { useTicketTypeClock } from '../ticket-types/useTicketTypeClock';
 
 type DetailsState =
   | { kind: 'loading' }
@@ -23,6 +25,7 @@ export function EventDetailsPage() {
 }
 
 function EventContent({ id, request, guest }: { id: string | undefined; request: typeof api.request; guest: boolean }) {
+  const { user } = useAuth();
   const eventId = parseEventId(id);
   const returnTo = safeReturnTo(`/events/${id}`);
   const [state, setState] = useState<DetailsState>({ kind: 'loading' });
@@ -53,6 +56,7 @@ function EventContent({ id, request, guest }: { id: string | undefined; request:
   const notFound = eventId === null || state.kind === 'not-found';
   const event = !notFound && state.kind === 'success' ? state.event : null;
   const available = event ? remainingSeats(event.capacity, event.tickets_issued) : null;
+  const salesTime = useTicketTypeClock(event?.ticket_types);
 
   return (
     <Page
@@ -85,8 +89,22 @@ function EventContent({ id, request, guest }: { id: string | undefined; request:
             <dd>{available === null ? 'Доступность неизвестна' : `Осталось мест: ${available}`}</dd>
           </dl>
           {available === 0 && <p role="status">Свободных мест нет.</p>}
+          {event.ticket_types !== undefined && <section className="public-ticket-types" aria-label="Типы билетов">
+            <h2>Типы билетов</h2>
+            {event.ticket_types.length ? <ul>{event.ticket_types.map((type) => {
+              const unavailable = ticketTypeUnavailable(type, salesTime);
+              return <li key={type.id}>
+                <strong>{type.name}</strong> — {ticketTypePrice(type.price_tiyn)} · осталось {type.remaining}
+                {type.description && <p>{type.description}</p>}
+                {unavailable && <p className="field-hint">{unavailable}</p>}
+              </li>;
+            })}</ul> : <p>Доступных типов пока нет.</p>}
+          </section>}
           {/* Do not hide/disable this slot when full: an existing ticket may still be opened. */}
           <EventActions event={event} remainingSeats={available} returnTo={returnTo} />
+          {user && (user.role === 'admin' || user.id === event.organizer_id) && <p>
+            <Link className="text-link" to={`/organizer/events/${event.id}/ticket-types`}>Управлять типами билетов</Link>
+          </p>}
         </article>
       )}
       <div className="event-navigation">

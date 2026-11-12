@@ -7,6 +7,7 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { TicketsPage } from './pages/TicketsPage';
 import { TicketDetailsPage } from './pages/TicketDetailsPage';
+import { TicketTypesPage } from './pages/TicketTypesPage';
 
 export function App() {
   return (
@@ -17,6 +18,7 @@ export function App() {
         <Route path="events/:id" element={<EventDetailsPage />} />
         <Route path="tickets" element={<TicketsPage />} />
         <Route path="tickets/:id" element={<TicketDetailsPage />} />
+        <Route path="organizer/events/:id/ticket-types" element={<TicketTypesPage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
         <Route path="*" element={<NotFoundPage />} />

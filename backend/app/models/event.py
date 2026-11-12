@@ -9,6 +9,7 @@ from app.db.base import Base, utcnow
 
 if TYPE_CHECKING:
     from app.models.user import User
+    from app.models.ticket_type import TicketType
 
 
 class EventStatus(str, enum.Enum):
@@ -43,3 +44,8 @@ class Event(Base):
     )
 
     organizer: Mapped["User"] = relationship(back_populates="events")
+    ticket_types: Mapped[list["TicketType"]] = relationship(lazy="selectin", order_by="TicketType.id")
+
+    @property
+    def public_ticket_types(self) -> list["TicketType"]:
+        return [ticket_type for ticket_type in self.ticket_types if not ticket_type.hidden]

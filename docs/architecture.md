@@ -162,8 +162,9 @@ erDiagram
 
 * Events start as `draft`, become `published` (ticketing and check-in open) and can be `cancelled` (final).
   Publishing is a conditional update, so it can never overwrite a concurrent cancel.
-* Claiming a ticket takes a seat with one atomic `UPDATE events SET tickets_issued = tickets_issued + 1
-  WHERE ... AND tickets_issued < capacity`; the check constraint backs it up. No explicit locks.
+* Claiming a ticket takes an event seat with `UPDATE events SET tickets_issued = tickets_issued + 1
+  WHERE ... AND tickets_issued < capacity`; the check constraint backs it up. P1 reserves the type's
+  seat in the same transaction.
 * Check-in follows `mobile/API.md`. The `check_ins` row is the receipt: resending the same `request_id`
   (same staff, event and QR) returns it, any other reuse is `409 REQUEST_ID_CONFLICT`. A partial unique index on
   `ticket_id` over the rows that are not undone makes a second current admission impossible even when two phones
@@ -204,6 +205,24 @@ erDiagram
   `q` is validated.
 * Values PostgreSQL refuses to store (NUL characters, ids beyond its integer range) return
   `422 INVALID_INPUT` on every endpoint instead of a 500.
+
+### P1 ticket type inventory and action log
+
+`ticket_types` belongs to an event. It holds the current name, description, integer price
+in tiyn, allocation, active ticket count, sales window, order limit and visibility. Every
+ticket refers to one type and retains its existing event and attendee identity. The
+`(event_id, attendee_id)` uniqueness rule still applies across all types.
+
+The original conditional event update takes the event row lock and reserves an event seat.
+A second conditional update reserves the chosen free type's seat in the same transaction.
+A rollback returns both reservations. Cancellation and refund release both counters.
+Management requests also lock the event row before reading or changing allocations, so
+two concurrent requests cannot allocate more seats than the event has.
+
+`action_logs` stores the event, actor, UTC time, action, entity and short description.
+The caller adds the record in the transaction that creates or changes a type. The owner
+and administrators can read the event's history. The API exposes no write operation on
+the history itself.
 
 ## Not built yet
 

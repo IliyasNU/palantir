@@ -3,6 +3,7 @@ from typing import Annotated, Any, Optional
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from app.schemas.common import UTCDateTime, blank_to_none
+from app.schemas.ticket_type import TicketTypeRead
 
 Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=200)]
 Description = Annotated[str, StringConstraints(strip_whitespace=True, max_length=5000)]
@@ -59,6 +60,7 @@ class EventRead(BaseModel):
     tickets_issued: int
     created_at: UTCDateTime
     updated_at: UTCDateTime
+    ticket_types: list[TicketTypeRead] = Field(validation_alias="public_ticket_types")
 
 
 class EventSummary(BaseModel):

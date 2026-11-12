@@ -4,6 +4,7 @@ The QR encodes exactly ``ticket.qr_payload``, the same string the website shows 
 the printed page and the screen are one ticket. Everything is drawn in black on white as vector shapes,
 which survives grayscale printing.
 """
+from dataclasses import dataclass
 from datetime import timedelta, timezone
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from fpdf import FPDF
 from qrcode.constants import ERROR_CORRECT_M
 
 from app.models import Ticket, User
+from app.ticket_type_name import TICKET_TYPE_NAME_DISPLAY_LINES
 
 FONT_PATH = Path(__file__).parent / "assets" / "fonts" / "DejaVuSans.ttf"
 FONT = "DejaVuSans"
@@ -29,6 +31,15 @@ MONTHS = [
     "января", "февраля", "марта", "апреля", "мая", "июня",
     "июля", "августа", "сентября", "октября", "ноября", "декабря",
 ]
+
+
+@dataclass(frozen=True)
+class _TextBlock:
+    text: str
+    font_size: int
+    line_height: float
+    gap: float
+    height: float
 
 
 def qr_matrix(payload: str) -> list[list[bool]]:
@@ -58,19 +69,70 @@ def build_ticket_pdf(ticket: Ticket, attendee: User) -> bytes:
     pdf.set_text_color(0)
     width = pdf.w - 2 * PAGE_MARGIN_MM
 
-    def line(text: str, size: int, gap: float = 3) -> None:
+    def measure(text: str, size: int, gap: float, *, compact: bool = False,
+                max_lines: int | None = None, reserve_lines: bool = False) -> _TextBlock:
         pdf.set_font(FONT, size=size)
-        pdf.multi_cell(width, size * 0.5, text, align="C", new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(gap)
+        height = size * (0.42 if compact else 0.5)
+        if max_lines is not None:
+            text = " ".join(text.split())
+        lines = pdf.multi_cell(width, height, text, align="C", dry_run=True, output="LINES")
+        if max_lines is not None and len(lines) > max_lines:
+            lines = lines[:max_lines]
+            last = lines[-1].rstrip()
+            while pdf.get_string_width(last + "…") > width - 2 * pdf.c_margin:
+                # Prefer a whole word. An oversized single word can be broken.
+                last = last.rsplit(" ", 1)[0] if " " in last else last[:-1]
+            lines[-1] = last + "…"
+            text = "\n".join(lines)
+        line_count = max_lines if reserve_lines and max_lines is not None else len(lines)
+        return _TextBlock(text, size, height, gap, line_count * height + gap)
 
-    line("BiletFlow · Билет", 14, gap=6)
-    line(ticket.event.title, 24, gap=5)
-    line(_event_time(ticket), 14)
-    line(ticket.event.location, 14, gap=8)
+    def draw(blocks: list[_TextBlock]) -> None:
+        for block in blocks:
+            pdf.set_font(FONT, size=block.font_size)
+            pdf.multi_cell(width, block.line_height, block.text, align="C", new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(block.gap)
+
+    def header(compact: bool = False) -> list[_TextBlock]:
+        return [
+            measure("BiletFlow · Билет", 14, 6),
+            measure(ticket.event.title, 20 if compact else 24, 5, max_lines=3 if compact else None),
+            measure(_event_time(ticket), 14, 3),
+            measure(ticket.event.location, 12 if compact else 14, 8, max_lines=2 if compact else None),
+        ]
+
+    def footer(compact: bool = False) -> list[_TextBlock]:
+        blocks = [
+            measure(attendee.full_name, 11 if compact else 16, 1 if compact else 3,
+                    compact=compact, max_lines=1 if compact else None),
+            measure(f"Билет № {ticket.id}", 10 if compact else 12, 1 if compact else 8, compact=compact),
+        ]
+        ticket_type = getattr(ticket, "ticket_type", None)
+        if ticket_type is not None:
+            blocks.append(measure(f"Тип билета: {ticket_type.name}", 11 if compact else 12, 1 if compact else 3,
+                                  compact=compact, max_lines=TICKET_TYPE_NAME_DISPLAY_LINES, reserve_lines=compact))
+        blocks.extend([
+            measure("Покажите этот QR-код на входе. Билет действителен на один вход.",
+                    9 if compact else 11, 1 if compact else 2, compact=compact),
+            measure("Распечатанный билет и билет на экране — один и тот же билет.",
+                    9 if compact else 11, 0, compact=compact),
+        ])
+        return blocks
 
     matrix = qr_matrix(ticket.qr_payload)
     module = QR_SIZE_MM / len(matrix)
     quiet = QUIET_ZONE_MODULES * module
+    qr_block_height = QR_SIZE_MM + 2 * quiet + 6
+    text_height = pdf.h - 2 * PAGE_MARGIN_MM - qr_block_height
+    above, below = header(), footer()
+    if sum(block.height for block in above + below) > text_height:
+        # Keep the QR anchor by compacting the footer first, reserving two type lines.
+        below = footer(compact=True)
+        if sum(block.height for block in above + below) > text_height:
+            # Exceptionally long event fields can crowd the QR even before the type is added.
+            above = header(compact=True)
+
+    draw(above)
     left = (pdf.w - QR_SIZE_MM) / 2
     top = pdf.get_y() + quiet
     pdf.set_fill_color(0)
@@ -88,8 +150,5 @@ def build_ticket_pdf(ticket: Ticket, attendee: User) -> bytes:
                 start = None
     pdf.set_y(top + QR_SIZE_MM + quiet + 6)
 
-    line(attendee.full_name, 16)
-    line(f"Билет № {ticket.id}", 12, gap=8)
-    line("Покажите этот QR-код на входе. Билет действителен на один вход.", 11, gap=2)
-    line("Распечатанный билет и билет на экране — один и тот же билет.", 11)
+    draw(below)
     return bytes(pdf.output())
