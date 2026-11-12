@@ -1,5 +1,7 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { useAuth } from '../auth/AuthProvider';
+import { isAdmin } from '../admin/model';
+import { adminText } from '../admin/strings';
 import { authLink, safeReturnTo } from '../auth/returnTo';
 
 export function Layout() {
@@ -21,6 +23,7 @@ export function Layout() {
             {auth.user ? (
               <>
                 <NavLink className="nav-link" to="/tickets">Мои билеты</NavLink>
+                {isAdmin(auth.user) && <NavLink className="nav-link" to="/admin">{adminText.nav}</NavLink>}
                 <span className="account-name">{auth.user.full_name}</span>
                 <button className="nav-link nav-link-accent" type="button" onClick={auth.logout}>Выйти</button>
               </>
