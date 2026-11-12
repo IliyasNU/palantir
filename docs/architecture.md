@@ -1,5 +1,79 @@
 # Palantir – System Architecture
 
+## P2 demo checkout and activation
+
+P2 adds simulated paid sales (SRS 3.2, 4.5, 4.6). Money is integer tiyn, payment screens and
+successful payment responses are labelled as a simulation. No external provider is contacted.
+
+Data path: `EventActions` selects a paid type → `CheckoutPage` posts contact details and a UUID
+to `routers/orders.py` → the service locks the event, expires old reservations, checks activation,
+suspension, ticket ownership and pending orders → conditional event/type UPDATEs reserve one
+seat → `orders` stores a price/fee snapshot and a 15-minute deadline. `OrdersPage` displays the
+server total, then posts a simulated success or failure. Success inserts the normal `Ticket`,
+marks the order paid and records `order.paid` in one transaction. QR, PDF and check-in reuse the
+existing ticket path. Failure records `order.failed` and releases both counters.
+
+New modules: `models/order.py` and migration `0006` (`down_revision="0005"`), `schemas/order.py`,
+`routers/orders.py`, `routers/paid_sales.py`, `paid_sales.py`, `order_inventory.py`, `demo_fees.py`,
+and `scripts/expire_orders.py`. The web adds `orders/model.ts`, `CheckoutPage`, `OrdersPage` and
+`ActivationPage`. Shared router/navigation and event/type pages receive small links and fields.
+
+The organizer checklist has five steps: a paid type, simulated profile identity and payout
+suffix, per-event terms, and the per-event activation fee. `paid_sales_activations` stores fee
+amount/time, activation time and the independent paid-sales suspension. Full payout references
+are never accepted: `reference_last4` is exactly four ASCII letters/digits. Organizer profile
+steps are owner-only, event steps and summaries are owner/admin, suspension is admin-only, and
+orders are buyer-only (404 for every other account, including admins). `EventRead` adds only
+`paid_sales_available` for the purchase button. All business denials use `api_error`.
+
+The shared lock order is event → order/ticket/type. Cleanup, free claim, checkout, confirmation,
+capacity/type edits and admin suspension serialize through the same event row. Existing
+conditional UPDATEs and event suspension guards remain in place. A pending order occupies
+inventory but has no ticket. Only `pending` can release its seat; replayed cleanup/cancellation
+does nothing. Confirmation rechecks the deadline after acquiring the event lock, so a request
+that waited beyond its deadline cannot issue. Payment converts the reserve without a second
+increment. Event/type counters equal active tickets plus pending reservations.
+
+Expiry runs lazily on inventory and order reads/writes and through `python -m scripts.expire_orders`.
+It needs no worker. Multiple-event cleanup locks IDs in ascending order. A read may therefore
+persist expiry. The table can retain an expired-time pending row until the next access, but
+inventory operations clean it before using availability. A reservation keeps the original
+price and can be paid until its deadline after the type's sales window closes; event and
+paid-sales suspension still refuse payment. Every operation is a database transaction.
+
+The one-ticket constraint remains unconditional. P2 refuses an existing active ticket with
+`ACTIVE_TICKET_EXISTS`, a closed ticket with `CLOSED_TICKET_EXISTS`, and a live reserve with
+`PENDING_ORDER_EXISTS`. Free claims retain HTTP 200 replay for existing tickets of every state.
+They gain only expiry and pending-order coordination before new issuance. One order buys one
+ticket and validates `order_limit >= 1`. Zero-price orders for free claims remain a known
+SRS 4.4 gap. Order contact snapshots do not change account ownership or the existing PDF/check-in identity.
+
+Creation is idempotent on `(buyer_id, request_id)` with a payload-match check. A partial unique
+index also permits at most one pending order per buyer/event. Confirmation is idempotent on
+the order ID: the first terminal outcome wins. Paid orders have a unique ticket FK and a CHECK
+constraint requires exactly paid orders to have a ticket. APIs never create tickets for pending,
+failed, cancelled or expired orders. Financial refunds are outside P2; existing admission-only
+ticket cancellation/refund routes do not rewrite the order or pretend that money was returned.
+
+Fees are coded demo defaults, not new platform settings: activation 500000 tiyn, processing
+300 bps deducted from organizer proceeds. Round half up with `(amount * bps + 5000) // 10000`.
+The buyer's total equals the ticket price. Orders retain the applied rate and rounded fee.
+The summary reports gross paid totals, fees, zero refunds and gross minus fees as estimated payout.
+
+### Hooks for P3 and P5
+
+P3 can validate and consume campaign usage under the event lock before reserving inventory,
+then snapshot discount and campaign IDs on the order. It must preserve creation idempotency
+and never consume usage twice. P5 can extend the order lifecycle for financial refunds and
+connect existing admission-state transitions under the same event lock, recording refund
+amounts and adjusting the organizer summary. P2 does not implement either phase. B4 may send
+a delivery message after a newly paid order commits, with its own deduplication keyed by order ID.
+
+Verification covers unit denials/checklists/rounding/ownership, real PostgreSQL races and
+counter-to-row reconciliation, populated migration and downgrade guards, and browser fixtures
+for both payment outcomes and activation. SQL must confirm PostgreSQL 16, ICU `und`, UTF8.
+This automated evidence is separate from physical phone/printed-ticket acceptance.
+
 Client–server architecture. Two clients talk to one REST API; the API owns the database.
 
 ```mermaid

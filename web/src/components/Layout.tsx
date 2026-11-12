@@ -21,6 +21,7 @@ export function Layout() {
             {auth.user ? (
               <>
                 <NavLink className="nav-link" to="/tickets">Мои билеты</NavLink>
+                <NavLink className="nav-link" to="/orders">Мои заказы</NavLink>
                 <span className="account-name">{auth.user.full_name}</span>
                 <button className="nav-link nav-link-accent" type="button" onClick={auth.logout}>Выйти</button>
               </>
