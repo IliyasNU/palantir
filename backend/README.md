@@ -161,6 +161,48 @@ SQL confirmed provider ICU (`i`), locale `und` and encoding `UTF8`. The PostgreS
 e2e suite passed 38 tests, including case-insensitive Kazakh name search, concurrent
 type claims, and upgrade and downgrade against data from revision `0003`.
 
+## Admin suspension and the event timeline
+
+Revision `0005` follows `0004`. It adds `events.suspended_at` and lets an action log record
+belong to no event. All `/admin` routes need an admin account
+(`python -m scripts.create_admin --email admin@example.com`).
+
+| Method and path | Access | Result |
+| --- | --- | --- |
+| `GET /admin/users?q=&limit=` | Admin | Users whose name or e-mail contains `q`; the newest accounts without `q`. At most 50 |
+| `POST /admin/users/{id}/suspend` | Admin | Body `{"reason": "..."}` (3–300 characters). Disables the account; its tokens stop working at once |
+| `POST /admin/users/{id}/reactivate` | Admin | Enables the account again |
+| `GET /admin/events?q=&suspended=&limit=` | Admin | Events in every status by title; `suspended=true` or `false` narrows the list. At most 50 |
+| `POST /admin/events/{id}/suspend` | Admin | Body `{"reason": "..."}`. Hides the event from the public and stops ticket claims |
+| `POST /admin/events/{id}/reactivate` | Admin | Lifts the suspension; the event returns as it was |
+| `GET /admin/action-log` | Admin | The whole platform's history. Filters as below, plus `event_id` |
+| `GET /events/{id}/action-log` | Event owner or admin | The event's timeline, newest first. Optional `date_from`, `date_to`, `action`, `limit` (default 200, at most 500), `offset` |
+
+Suspending or reactivating twice is a no-op and records nothing more. An admin cannot suspend
+their own account (`409 CANNOT_SUSPEND_SELF`). Unknown ids return `404 USER_NOT_FOUND` or
+`404 EVENT_NOT_FOUND`.
+
+A suspended event behaves like a draft for everyone except its organizer and admins: it is not
+in `GET /events`, and its details, ticket types and claims return `404 EVENT_NOT_FOUND`. Its
+organizer and admins see `suspended: true` in the event and get `409 EVENT_SUSPENDED` when
+claiming. A claim that races the suspension is refused with the same code and takes no seat.
+Tickets issued before the suspension stay readable and still check in.
+
+Event responses include `suspended`. Action log entries include `actor_name`, and `event_id`
+is `null` for platform actions (`user.suspended`, `user.reactivated`). The `action` filter
+matches an exact type or the group before its dot: `action=check_in` returns `check_in.created` and
+`check_in.undone`, `action=ticket_type` returns only ticket type changes, and `action=ticket` returns
+only `ticket.*`, never `ticket_type.*`. The recorded actions are listed in
+[`../docs/architecture.md`](../docs/architecture.md#admin-suspension-and-the-full-event-timeline).
+
+Verified on 11 November 2026 on the Compose image `postgres:16-alpine` (16.15, ICU `und`,
+UTF8) in an isolated project: 423 unit tests and 42 PostgreSQL e2e tests passed, with
+`alembic current` at `0005 (head)`.
+
+Verified again on 12 November 2026 after the action filter fix and the shared `ensure_not_suspended`
+check, on a disposable local PostgreSQL 16.15 (ICU `und`, UTF8): 455 unit tests and 43 PostgreSQL e2e
+tests passed, with `alembic heads` at `0005 (head)`.
+
 ## Admin accounts
 
 Admins cannot register through the API. Create one (or promote an existing user) with:
@@ -199,7 +241,7 @@ docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -
 docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -f work/compose.w2-pg16-icu.yml exec backend alembic current
 ```
 
-Compose applies `alembic upgrade head` before starting the API. On P1, expect `0004 (head)` and `/health` HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
+Compose applies `alembic upgrade head` before starting the API. Expect `0005 (head)` and `/health` HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
 
 Run this SQL **in the database used by the API** and retain the actual output with the tested commit:
 
