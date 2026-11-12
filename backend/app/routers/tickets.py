@@ -7,7 +7,7 @@ import secrets
 from typing import Optional
 
 from fastapi import APIRouter, Response, status
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,9 +17,11 @@ from app.db.base import utcnow
 from app.dependencies.events import can_manage, get_event_or_404, is_visible
 from app.dependencies.roles import is_admin
 from app.errors import api_error
-from app.models import Event, EventStatus, Ticket, TicketStatus, User
+from app.models import Event, EventStatus, Ticket, TicketStatus, TicketType, User
 from app.schemas.ticket import TicketRead
+from app.schemas.ticket_type import TicketClaimRequest
 from app.ticket_pdf import build_ticket_pdf
+from app.ticket_types import select_claim_type
 
 router = APIRouter(tags=["tickets"])
 
@@ -48,11 +50,16 @@ def _ensure_open_for_tickets(event: Event) -> None:
 
 
 @router.post("/events/{event_id}/tickets", response_model=TicketRead, status_code=status.HTTP_201_CREATED)
-def claim_ticket(event_id: int, db: DbSession, current_user: CurrentUser, response: Response):
+def claim_ticket(event_id: int, db: DbSession, current_user: CurrentUser, response: Response,
+                 payload: Optional[TicketClaimRequest] = None):
     """Claim your free ticket (201). Claiming again returns the ticket you already have (200)."""
     event = get_event_or_404(db, event_id)
     if not is_visible(event, current_user):
         raise api_error(status.HTTP_404_NOT_FOUND, "EVENT_NOT_FOUND", "Event not found")
+
+    ticket_type_id = payload.ticket_type_id if payload else None
+    if ticket_type_id is not None and not any(ticket_type.id == ticket_type_id for ticket_type in event.ticket_types):
+        raise api_error(404, "TICKET_TYPE_NOT_FOUND", "Ticket type not found at this event")
 
     existing = _find_ticket(db, event.id, current_user.id)
     if existing is not None:
@@ -80,7 +87,35 @@ def claim_ticket(event_id: int, db: DbSession, current_user: CurrentUser, respon
         _ensure_open_for_tickets(event)
         raise api_error(status.HTTP_409_CONFLICT, "SOLD_OUT", "No tickets left")
 
-    ticket = Ticket(event_id=event.id, attendee_id=current_user.id, qr_payload=new_qr_payload())
+    # The event UPDATE above is unchanged. It serialises inventory writers at this event; recheck the
+    # attendee after taking its lock so a concurrent identical claim returns the existing ticket.
+    existing = _find_ticket(db, event.id, current_user.id)
+    if existing is not None:
+        db.rollback()
+        response.status_code = status.HTTP_200_OK
+        return _find_ticket(db, event.id, current_user.id)
+    ticket_type = select_claim_type(db, event.id, ticket_type_id)
+    now = utcnow()
+    type_seat_taken = db.execute(
+        update(TicketType)
+        .where(
+            TicketType.id == ticket_type.id,
+            TicketType.event_id == event.id,
+            TicketType.hidden.is_(False),
+            TicketType.price_tiyn == 0,
+            TicketType.order_limit >= 1,
+            TicketType.tickets_issued < TicketType.quantity,
+            or_(TicketType.sales_start.is_(None), TicketType.sales_start <= now),
+            or_(TicketType.sales_end.is_(None), TicketType.sales_end > now),
+        )
+        .values(tickets_issued=TicketType.tickets_issued + 1)
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    if not type_seat_taken:
+        db.rollback()  # also return the event seat: both counters are one transaction
+        raise api_error(409, "TICKET_TYPE_SOLD_OUT", "No tickets left for this type")
+    ticket = Ticket(event_id=event.id, attendee_id=current_user.id, ticket_type_id=ticket_type.id,
+                    qr_payload=new_qr_payload())
     db.add(ticket)
     try:
         db.commit()
@@ -181,6 +216,11 @@ def _close_ticket(db: Session, ticket_id: int, user: User, target: TicketStatus,
         update(Event)
         .where(Event.id == ticket.event_id)
         .values(tickets_issued=Event.tickets_issued - 1)
+        .execution_options(synchronize_session=False)
+    )
+    db.execute(
+        update(TicketType).where(TicketType.id == ticket.ticket_type_id)
+        .values(tickets_issued=TicketType.tickets_issued - 1)
         .execution_options(synchronize_session=False)
     )
     db.commit()

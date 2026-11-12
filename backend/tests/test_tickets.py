@@ -179,8 +179,9 @@ def test_database_rejects_overselling(db, login_as, owner, new_event, client):
 def test_database_rejects_a_second_ticket_for_the_same_attendee(db, login_as, owner, new_event, client):
     attendee, headers = login_as("att@example.com")
     event = new_event(owner)
-    claim(client, event["id"], headers)
-    db.add(Ticket(event_id=event["id"], attendee_id=attendee.id, qr_payload="biletflow:ticket:v1:other"))
+    first = claim(client, event["id"], headers).json()
+    db.add(Ticket(event_id=event["id"], attendee_id=attendee.id, ticket_type_id=first["ticket_type_id"],
+                  qr_payload="biletflow:ticket:v1:other"))
     with pytest.raises(IntegrityError):
         db.commit()
     db.rollback()

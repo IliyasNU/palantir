@@ -1,4 +1,6 @@
 import { ApiError, getErrorMessage } from '../api/client.ts';
+import { readTicketTypeSummary, ticketTypeError } from '../ticket-types/model.ts';
+import type { TicketTypeSummary } from '../ticket-types/model.ts';
 
 export type TicketStatus = 'active' | 'cancelled' | 'refunded';
 
@@ -11,6 +13,8 @@ export interface Ticket {
   /** Only an active ticket can be admitted. A server without ticket states sends none: such tickets are active. */
   status: TicketStatus;
   checked_in_at: string | null;
+  ticket_type_id?: number;
+  ticket_type?: TicketTypeSummary;
   event: { id: number; title: string; date: string; location: string; status: string };
 }
 
@@ -45,10 +49,14 @@ export function readTicket(payload: unknown, expectedId?: number, expectedEventI
     || !date(payload.event.date) || typeof payload.event.location !== 'string' || typeof payload.event.status !== 'string') {
     throw invalidTicket();
   }
+  const type = payload.ticket_type === undefined && payload.ticket_type_id === undefined
+    ? undefined : readTicketTypeSummary(payload.ticket_type);
+  if (type !== undefined && payload.ticket_type_id !== type.id) throw invalidTicket();
   return {
     id: payload.id, event_id: payload.event_id, attendee_id: payload.attendee_id,
     qr_payload: payload.qr_payload, created_at: payload.created_at, status: payload.status ?? 'active',
     checked_in_at: payload.checked_in_at,
+    ...(type === undefined ? {} : { ticket_type_id: type.id, ticket_type: type }),
     event: { id: payload.event.id as number, title: payload.event.title, date: payload.event.date,
       location: payload.event.location, status: payload.event.status },
   };
@@ -92,6 +100,7 @@ export function ticketErrorMessage(error: unknown): string {
       case 'TICKET_REFUNDED': return 'Билет возвращён и не даёт права на вход.';
       case 'TICKET_CHECKED_IN': return 'По этому билету уже отмечен вход. Отменить его нельзя.';
     }
+    if (error.code?.startsWith('TICKET_TYPE_') || error.code === 'PAID_TICKETS_NOT_SUPPORTED') return ticketTypeError(error);
   }
   return getErrorMessage(error);
 }
