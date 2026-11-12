@@ -1,13 +1,21 @@
 import { ApiError, getErrorMessage } from '../api/client.ts';
+import type { ValidationIssue } from '../api/client.ts';
 import type { RegistrationInput } from './types.ts';
 
-export function validateRegistration(input: RegistrationInput): void {
-  const issues = [];
-  if (!input.full_name.trim()) issues.push({ field: 'full_name', message: 'Укажите имя.' });
-  if ([...input.password].length < 8) issues.push({ field: 'password', message: 'Пароль должен содержать минимум 8 символов.' });
-  if (new TextEncoder().encode(input.password).length > 72) {
+/** Password rules shared by registration and password reset. */
+export function passwordIssues(password: string): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if ([...password].length < 8) issues.push({ field: 'password', message: 'Пароль должен содержать минимум 8 символов.' });
+  if (new TextEncoder().encode(password).length > 72) {
     issues.push({ field: 'password', message: 'Пароль слишком длинный: максимум 72 байта UTF-8. Сократите его.' });
   }
+  return issues;
+}
+
+export function validateRegistration(input: RegistrationInput): void {
+  const issues: ValidationIssue[] = [];
+  if (!input.full_name.trim()) issues.push({ field: 'full_name', message: 'Укажите имя.' });
+  issues.push(...passwordIssues(input.password));
   if (issues.length) throw new ApiError('Проверьте заполнение формы.', { kind: 'validation', status: 422, issues });
 }
 

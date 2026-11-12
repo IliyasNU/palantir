@@ -24,6 +24,7 @@ function readUser(value: unknown): User {
   return {
     id: user.id as number, email: user.email, full_name: user.full_name,
     role: user.role, is_active: user.is_active, created_at: user.created_at,
+    ...(typeof user.email_verified === 'boolean' ? { email_verified: user.email_verified } : {}),
   };
 }
 
@@ -59,6 +60,12 @@ export function createAuthStore(api: ApiClient) {
     },
     logout: () => clearSession(),
     dismissNotice: () => publish({ ...state, notice: null }),
+    /** The verification link was accepted for this account: hide the reminder without a new sign-in. */
+    markEmailVerified(userId: number) {
+      if (state.user?.id === userId && state.user.email_verified === false) {
+        publish({ ...state, user: { ...state.user, email_verified: true } });
+      }
+    },
 
     async register(input: RegistrationInput, signal?: AbortSignal): Promise<User> {
       return readUser(await api.request('/auth/register', {

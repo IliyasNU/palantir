@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { useAuth } from '../auth/AuthProvider';
 import { authLink, safeReturnTo } from '../auth/returnTo';
+import { VerifyEmailBanner } from './VerifyEmailBanner';
 
 export function Layout() {
   const auth = useAuth();
@@ -41,6 +42,7 @@ export function Layout() {
             <button className="text-button" type="button" onClick={auth.dismissNotice}>Закрыть сообщение</button>
           </div>
         )}
+        <VerifyEmailBanner />
         <Outlet />
       </main>
       <footer className="site-footer">

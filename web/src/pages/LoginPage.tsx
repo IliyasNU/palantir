@@ -5,6 +5,7 @@ import { AuthFormError } from '../components/AuthFormError';
 import { useAuth } from '../auth/AuthProvider';
 import { authLink, safeReturnTo } from '../auth/returnTo';
 import { useSubmission } from '../auth/useSubmission';
+import { accountText } from '../account/strings';
 
 export function LoginPage() {
   const auth = useAuth();
@@ -51,6 +52,7 @@ export function LoginPage() {
                 <button className="button" type="submit" disabled={pending}>{pending ? 'Входим…' : 'Войти'}</button>
               </fieldset>
             </form>
+            <p><Link className="text-link" to="/forgot-password">{accountText.forgot.link}</Link></p>
             <p>Нет аккаунта? <Link className="text-link" to={authLink('/register', returnTo)}>Зарегистрироваться</Link></p>
           </>
         )}
