@@ -13,6 +13,7 @@ class UserRead(BaseModel):
     full_name: str
     role: str
     is_active: bool
+    email_verified: bool
     created_at: UTCDateTime
 
     @field_validator("role", mode="before")

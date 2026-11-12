@@ -127,15 +127,19 @@ erDiagram
   return `{access_token, refresh_token, token_type}`. Access tokens live 30 min, refresh tokens 7 days.
 * `POST /auth/refresh` exchanges a refresh token for a new pair. Tokens carry a `type` claim, so a refresh
   token cannot be used as an access token (and vice versa).
+* `POST /auth/logout` revokes the presented refresh token (`revoked_tokens`); the access token lapses within 30 min.
+* Every token carries `ver` = `users.token_version`. `POST /auth/reset-password` increments it, which ends every
+  session and makes the reset link single-use. Verification and reset links are JWTs with their own `type`.
 * Every protected endpoint depends on `get_current_user` (401 if the token is missing/invalid/expired,
   403 if the account is disabled). `require_roles(...)` in `dependencies/roles.py` adds the role check (403).
 
 | Endpoint | Who |
 |---|---|
 | `GET /health`, `POST /auth/register`, `POST /auth/login`, `POST /auth/token`, `POST /auth/refresh` | anyone |
+| `POST /auth/logout`, `POST /auth/verify-email`, `POST /auth/forgot-password`, `POST /auth/reset-password` | anyone |
 | `GET /events`, `GET /events/{id}` (published or cancelled, not suspended) | anyone |
 | `GET /events/{id}` (draft or suspended) | the event's organizer, or an admin |
-| `GET /auth/me`, `GET /organizer-profiles/{id}` | any logged-in user |
+| `GET /auth/me`, `POST /auth/resend-verification`, `GET /organizer-profiles/{id}` | any logged-in user |
 | `POST /events/{id}/tickets`, `GET /tickets/me`, `GET /tickets/{id}`, `GET /tickets/{id}/pdf` (own) | any logged-in user |
 | `GET /staff/events` | any logged-in user (lists what they may scan; may be `[]`) |
 | `POST /organizer-profiles`, `GET /organizer-profiles/me`, `PUT\|PATCH /organizer-profiles/me` | organizer |
@@ -154,7 +158,8 @@ erDiagram
 ## Design decisions
 
 * **One role per user** (`users.role_id`). Simple to enforce and test; can become many-to-many later.
-* **Stateless JWT.** No server-side revocation yet; "log out" means the client discards its tokens.
+* **Mostly stateless JWT.** Logout revokes one refresh token and a password reset revokes all tokens of the user;
+  an access token is otherwise trusted until it expires.
 * **bcrypt used directly** (not via passlib) – fewer moving parts. Passwords are limited to 72 bytes (bcrypt's limit).
 * **Sync SQLAlchemy.** FastAPI runs the sync endpoints in a thread pool; Alembic stays straightforward.
 * **Timestamps are UTC.** Datetimes without a timezone are interpreted as UTC; responses are always UTC.
