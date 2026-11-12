@@ -1,8 +1,8 @@
+import { canOrganize } from '../organizer/model';
+import { organizerText } from '../organizer/strings';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { useAuth } from '../auth/AuthProvider';
 import { authLink, safeReturnTo } from '../auth/returnTo';
-import { canOrganize } from '../organizer/model';
-import { organizerText } from '../organizer/strings';
 
 export function Layout() {
   const auth = useAuth();
