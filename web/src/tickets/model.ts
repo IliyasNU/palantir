@@ -89,6 +89,8 @@ export function ticketPdfName(ticketId: number): string {
 
 export function ticketErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.status === 401) return 'Сессия завершена. Войдите снова, чтобы открыть билет или получить его.';
+    if (error.status === 403) return 'У вас нет прав для этого действия с билетом.';
     switch (error.code) {
       case 'SOLD_OUT': return 'Свободных билетов больше нет. Уже полученные билеты доступны в разделе «Мои билеты».';
       case 'EVENT_CANCELLED': return 'Событие отменено. Уже полученный билет доступен в разделе «Мои билеты».';

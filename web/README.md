@@ -179,15 +179,27 @@ npm run check:auth
 npm run test:browser
 ```
 
-По умолчанию выполняются только проверки с подменой HTTP и сценарии без записи в базу. Для полного сценария с локальным FastAPI:
+По умолчанию запускаются проверки с HTTP-фикстурами, без подготовки записей в БД. Для live используйте [новую инструкцию проверяемой изоляции](LIVE-TESTS.md): runner сверяет Docker-контейнеры, volume, фактическое подключение FastAPI к PostgreSQL и API origin браузера до первого POST. DATABASE_URL оболочки не служит доказательством.
 
-```powershell
-$env:RUN_LIVE_AUTH = '1'
-npm run test:browser
-Remove-Item Env:RUN_LIVE_AUTH
+Пример для выделенного локального проекта (подставьте свои проверенные API/project/SHA):
+
+```sh
+node scripts/run-live.mjs --api http://localhost:8002 --project biletflow-667-live --backend-ref c5b83a851128c486b1b15cebea94c6df8166308d --mode dev --channel msedge
+node scripts/run-live.mjs --api http://localhost:8002 --project biletflow-667-live --backend-ref c5b83a851128c486b1b15cebea94c6df8166308d --mode production --channel msedge
 ```
 
-Полный сценарий создаёт одного тестового посетителя за запуск. Проверяет регистрацию, блокировку повторной отправки, переход на login с сообщением, неверный пароль, login + `/auth/me`, возврат к событию, logout, потерю сессии после reload и занятый email. Трассировка, видео и скриншоты отключены, чтобы не сохранять пароли и токены; отчёты игнорируются Git.
+Production live всегда строит свежий dist с выбранным API. Порт 8002 приведён только как пример окружения Алиби, не как обязательная настройка команды. Один live-прогон создаёт 5 тестовых аккаунтов, 2 события и 2 билета; существующие данные не удаляются.
+
+Регрессия старого dist на двух локальных HTTP-origin без БД:
+
+```sh
+npx playwright test --config playwright.isolation.config.mjs
+```
+
+Результаты каждого live запуска сохраняются отдельно в игнорируемом Git `test-results/live/`. Для обычной регрессии без перезаписи live-артефактов: `npm run test:browser -- --output test-results/mock-regression`. Не включайте RUN_LIVE_* для неё.
+
+[Историческая приёмка 7 ноября](667-acceptance.md) и [результаты доработки 8 ноября](667-review-2026-11-08.md) разделены. В [LIVE-TESTS.md](LIVE-TESTS.md) указаны ограничения CI, телефона/хостинга, правила публикации безопасных evidence и стыковка с W1.
+
 
 ### Результат проверки FE01 — 28 октября 2026
 
