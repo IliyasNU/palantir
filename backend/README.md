@@ -89,7 +89,12 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `POST /auth/login` | public | JSON `{email, password}` → `{access_token, refresh_token, token_type}` |
 | `POST /auth/token` | public | same, as OAuth2 form (`username` = email); used by the `/docs` "Authorize" button |
 | `POST /auth/refresh` | public | JSON `{refresh_token}` → new token pair |
-| `GET /auth/me` | logged in | current user |
+| `POST /auth/logout` | public | JSON `{refresh_token}` → `204`; that refresh token stops working, other sessions stay |
+| `GET /auth/me` | logged in | current user, including `email_verified` |
+| `POST /auth/verify-email` | public | JSON `{token}` from the verification email → user; `400 INVALID_TOKEN` |
+| `POST /auth/resend-verification` | logged in | `202`; sends a new link unless already verified |
+| `POST /auth/forgot-password` | public | JSON `{email}` → `202` for any address; emails a reset link to an active account |
+| `POST /auth/reset-password` | public | JSON `{token, new_password}` → `204`; ends every session; the link works once; `400 INVALID_TOKEN` |
 | `POST /organizer-profiles` | organizer | one profile per organizer (409 if it exists) |
 | `GET /organizer-profiles/me` | organizer | 404 until created |
 | `PUT` or `PATCH /organizer-profiles/me` | organizer | partial update: only sent fields change |
@@ -114,6 +119,14 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 Send the access token as `Authorization: Bearer <token>`. Use paths exactly as written (no trailing slash).
 Datetimes are ISO 8601; values without a timezone are treated as UTC and responses are always UTC.
 Errors: 401 missing/invalid/expired token · 403 wrong role or not the owner · 404 not found · 409 conflict · 422 validation.
+
+## Email (BE-3)
+
+Registration emails a verification link and `forgot-password` emails a reset link.
+Links open the web app: `FRONTEND_URL/verify-email?token=...` and `FRONTEND_URL/reset-password?token=...`; the page posts the token to the matching endpoint.
+Set `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS` (true) and `EMAIL_FROM` to send real mail.
+Without `SMTP_HOST` the API writes each email, link included, to its log instead; in production it logs only that the email was not sent.
+Emails are sent after the response, so an SMTP failure is logged and never fails the request.
 
 ## Ticket types and action log (P1)
 

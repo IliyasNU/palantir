@@ -11,6 +11,8 @@ from app.schemas.auth import MAX_PASSWORD_BYTES
 
 ACCESS_TOKEN_TYPE = "access"
 REFRESH_TOKEN_TYPE = "refresh"
+VERIFY_EMAIL_TOKEN_TYPE = "verify_email"
+PASSWORD_RESET_TOKEN_TYPE = "password_reset"
 
 
 class TokenError(Exception):
@@ -35,12 +37,13 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 # ----------------------------------------------------------------- tokens
-def _create_token(subject: Union[int, str], token_type: str, expires_delta: timedelta) -> str:
+def _create_token(subject: Union[int, str], token_type: str, expires_delta: timedelta, version: int = 0) -> str:
     settings = get_settings()
     now = datetime.now(timezone.utc)
     payload = {
         "sub": str(subject),
         "type": token_type,
+        "ver": version,
         "iat": now,
         "exp": now + expires_delta,
         "jti": uuid.uuid4().hex,
@@ -48,14 +51,33 @@ def _create_token(subject: Union[int, str], token_type: str, expires_delta: time
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
-def create_access_token(subject: Union[int, str], expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(
+    subject: Union[int, str], expires_delta: Optional[timedelta] = None, version: int = 0
+) -> str:
     delta = expires_delta or timedelta(minutes=get_settings().access_token_expire_minutes)
-    return _create_token(subject, ACCESS_TOKEN_TYPE, delta)
+    return _create_token(subject, ACCESS_TOKEN_TYPE, delta, version)
 
 
-def create_refresh_token(subject: Union[int, str], expires_delta: Optional[timedelta] = None) -> str:
+def create_refresh_token(
+    subject: Union[int, str], expires_delta: Optional[timedelta] = None, version: int = 0
+) -> str:
     delta = expires_delta or timedelta(days=get_settings().refresh_token_expire_days)
-    return _create_token(subject, REFRESH_TOKEN_TYPE, delta)
+    return _create_token(subject, REFRESH_TOKEN_TYPE, delta, version)
+
+
+def create_email_verification_token(subject: Union[int, str]) -> str:
+    return _create_token(subject, VERIFY_EMAIL_TOKEN_TYPE, timedelta(hours=get_settings().email_verify_expire_hours))
+
+
+def create_password_reset_token(subject: Union[int, str], version: int) -> str:
+    delta = timedelta(minutes=get_settings().password_reset_expire_minutes)
+    return _create_token(subject, PASSWORD_RESET_TOKEN_TYPE, delta, version)
+
+
+def ensure_token_version(payload: dict[str, Any], current_version: int) -> None:
+    """Reject a token issued before the user's tokens were revoked. Tokens older than ``ver`` count as 0."""
+    if payload.get("ver", 0) != current_version:
+        raise TokenError("Token has been revoked")
 
 
 def decode_token(token: str, expected_type: str) -> dict[str, Any]:

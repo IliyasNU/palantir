@@ -219,3 +219,26 @@ def test_downgrade_refuses_to_drop_a_suspension_or_a_platform_action(tmp_path, s
     with engine.connect() as connection:
         assert "suspended_at" in {column["name"] for column in inspect(connection).get_columns("events")}
     engine.dispose()
+
+
+def test_existing_users_start_unverified_with_valid_tokens_and_downgrade_to_0005(tmp_path):
+    url = f"sqlite:///{tmp_path / 'migration_0006.db'}"
+    config = alembic_config(url)
+    engine = create_engine(url)
+    command.upgrade(config, "0005")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users (email, full_name, hashed_password, role_id) "
+                "SELECT 'old@example.com', 'Old', 'x', id FROM roles WHERE name = 'attendee'"
+            )
+        )
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        row = connection.execute(text("SELECT email_verified_at, token_version FROM users")).one()
+    assert tuple(row) == (None, 0)  # tokens issued before 0006 carry no `ver`, which counts as 0
+
+    command.downgrade(config, "0005")
+    assert "revoked_tokens" not in inspect(engine).get_table_names()
+    assert "token_version" not in {column["name"] for column in inspect(engine).get_columns("users")}
+    engine.dispose()
