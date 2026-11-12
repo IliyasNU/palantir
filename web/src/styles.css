@@ -47,6 +47,12 @@ p { line-height: 1.7; overflow-wrap: anywhere; }
 .button { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 12px 20px; border-radius: 9px; background: #254e38; color: #fff; font-weight: 600; line-height: 1.4; text-decoration: none; }
 .content-card .button { margin-top: 12px; }
 .button:hover { background: #173c28; }
+.button:disabled { opacity: 0.6; cursor: default; }
+.button-secondary { background: #fff; color: #862d27; border: 1px solid #e6b7ae; }
+.button-secondary:hover { background: #fff2ef; }
+.ticket-action { margin-bottom: 16px; }
+.ticket-action .button { border-width: 0; }
+.ticket-action .button-secondary { border-width: 1px; }
 .text-link { color: #254e38; text-underline-offset: 4px; font-weight: 600; }
 .text-link:hover { text-decoration-thickness: 2px; }
 .site-footer { border-top: 1px solid #dce3d8; }
@@ -95,6 +101,28 @@ button.nav-link { color: inherit; background: transparent; }
 .ticket-actions { margin-top: 24px; }
 .ticket-qr { display: block; width: 320px; max-width: 100%; height: auto; margin-block: 20px; image-rendering: pixelated; }
 .ticket-details { max-width: 590px; }
+.ticket-type-label { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+
+.public-ticket-types { margin-top: 28px; }
+.public-ticket-types ul { padding-left: 20px; }
+.public-ticket-types li { margin-block: 14px; }
+.public-ticket-types li p { margin-block: 4px; }
+.ticket-type-selection { border: 1px solid #dce3d8; border-radius: 9px; padding: 16px; margin-block: 18px; }
+.ticket-type-selection legend { font-weight: 600; }
+.ticket-type-selection label { display: flex; align-items: flex-start; gap: 10px; margin-block: 12px; line-height: 1.6; }
+.ticket-type-selection input { margin-top: 7px; }
+.ticket-type-selection small { display: block; color: #536153; }
+.type-management-summary, .type-editor, .type-audit { margin-bottom: 28px; }
+.type-list { margin-block: 32px; }
+.table-scroll { overflow-x: auto; }
+.ticket-types-table { border-collapse: collapse; width: 100%; background: #fff; }
+.ticket-types-table th, .ticket-types-table td { border-bottom: 1px solid #dce3d8; padding: 14px; text-align: left; vertical-align: top; }
+.ticket-types-table p { margin: 5px 0; }
+.type-editor textarea { font: inherit; width: 100%; padding: 10px 12px; border: 1px solid #839885; border-radius: 8px; resize: vertical; }
+.auth-form .type-checkbox { display: flex; align-items: center; gap: 10px; }
+.auth-form .type-checkbox input { width: auto; min-height: auto; }
+.type-audit li { margin-block: 14px; }
+.type-audit li p { margin-block: 4px; }
 
 @media (max-width: 640px) {
   .container { width: calc(100% - 36px); }

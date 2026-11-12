@@ -49,7 +49,7 @@ erDiagram
     USERS ||--o{ TICKETS : "holds"
     EVENTS ||--o{ EVENT_STAFF : "staffed by"
     USERS ||--o{ EVENT_STAFF : "scans at"
-    TICKETS ||--o| CHECK_INS : "admitted once"
+    TICKETS ||--o{ CHECK_INS : "one current admission, undone ones kept"
 
     ROLES {
         int id PK
@@ -95,6 +95,9 @@ erDiagram
         int attendee_id FK
         string qr_payload UK "biletflow:ticket:v1:<random>"
         datetime created_at
+        string status "active | cancelled | refunded"
+        datetime status_changed_at "null while active"
+        int status_changed_by_id FK "null while active"
     }
     EVENT_STAFF {
         int event_id PK
@@ -103,11 +106,14 @@ erDiagram
     }
     CHECK_INS {
         int id PK
-        int ticket_id FK,UK "one admission per ticket"
+        int ticket_id FK "unique among rows that are not undone"
         int event_id FK
         int staff_id FK
-        uuid request_id UK "idempotency key"
+        uuid request_id UK "idempotency key of the scan"
         datetime checked_in_at
+        datetime undone_at "null for the current admission"
+        int undone_by_id FK
+        uuid undo_request_id UK "idempotency key of the undo"
     }
 ```
 
@@ -130,13 +136,17 @@ erDiagram
 | `GET /events`, `GET /events/{id}` (published or cancelled) | anyone |
 | `GET /events/{id}` (draft) | the event's organizer, or an admin |
 | `GET /auth/me`, `GET /organizer-profiles/{id}` | any logged-in user |
-| `POST /events/{id}/tickets`, `GET /tickets/me`, `GET /tickets/{id}` (own) | any logged-in user |
+| `POST /events/{id}/tickets`, `GET /tickets/me`, `GET /tickets/{id}`, `GET /tickets/{id}/pdf` (own) | any logged-in user |
 | `GET /staff/events` | any logged-in user (lists what they may scan; may be `[]`) |
 | `POST /organizer-profiles`, `GET /organizer-profiles/me`, `PUT\|PATCH /organizer-profiles/me` | organizer |
 | `POST /events`, `GET /events/mine` | organizer |
 | `PUT\|PATCH /events/{id}`, `POST /events/{id}/publish`, `POST /events/{id}/cancel` | the event's organizer, or an admin |
 | `GET\|POST /events/{id}/staff`, `DELETE /events/{id}/staff/{user_id}` | the event's organizer, or an admin |
 | `POST /events/{id}/check-in` | the event's assigned staff, its organizer, or an admin |
+| `POST /events/{id}/check-ins/{check_in_id}/undo` | the event's organizer, or an admin |
+| `POST /tickets/{id}/cancel` | the ticket's attendee, the event's organizer, or an admin |
+| `POST /tickets/{id}/refund` | the event's organizer, or an admin |
+| `GET /events/{id}/attendance`, `GET /events/{id}/attendees?q=` | the event's assigned staff, its organizer, or an admin |
 
 ## Design decisions
 
@@ -152,19 +162,67 @@ erDiagram
 
 * Events start as `draft`, become `published` (ticketing and check-in open) and can be `cancelled` (final).
   Publishing is a conditional update, so it can never overwrite a concurrent cancel.
-* Claiming a ticket takes a seat with one atomic `UPDATE events SET tickets_issued = tickets_issued + 1
-  WHERE ... AND tickets_issued < capacity`; the check constraint backs it up. No explicit locks.
+* Claiming a ticket takes an event seat with `UPDATE events SET tickets_issued = tickets_issued + 1
+  WHERE ... AND tickets_issued < capacity`; the check constraint backs it up. P1 reserves the type's
+  seat in the same transaction.
 * Check-in follows `mobile/API.md`. The `check_ins` row is the receipt: resending the same `request_id`
-  (same staff, event and QR) returns it, any other reuse is `409 REQUEST_ID_CONFLICT`. The unique `ticket_id`
-  makes a second admission impossible even when two phones scan at once. Access is checked on every request,
-  retries included, so revoked staff get `403`.
+  (same staff, event and QR) returns it, any other reuse is `409 REQUEST_ID_CONFLICT`. A partial unique index on
+  `ticket_id` over the rows that are not undone makes a second current admission impossible even when two phones
+  scan at once. Access is checked on every request, retries included, so revoked staff get `403`.
+* A ticket is `active`, `cancelled` or `refunded` (migration `0003`). The last two are final and never admit:
+  check-in answers `409 TICKET_CANCELLED` or `409 TICKET_REFUNDED`. They describe one ticket; `EVENT_CANCELLED`
+  describes the whole event and is reported first. Closing a ticket gives its seat back
+  (`tickets_issued - 1`), so `tickets_issued` counts active tickets. The ticket keeps its id and `qr_payload`, and
+  the attendee's claim keeps returning that closed ticket. A ticket with a current admission cannot be closed
+  (`409 TICKET_CHECKED_IN`) until the check-in is undone, so `checked_in` never exceeds `tickets_issued`.
+  Tickets are free: `refunded` records the admission state only and no payment is processed.
+* `GET /tickets/{id}/pdf` returns the printable ticket: one A4 page drawn with `fpdf2`, the QR built by `qrcode`
+  from exactly `ticket.qr_payload` with error correction M and a four-module quiet zone, as on the website. The code
+  is black vector rectangles that overlap slightly, because some renderers otherwise leave a white hairline between
+  rows and the code stops scanning. Text uses the bundled DejaVu Sans (`app/assets/fonts`, licence beside it), which
+  has the Russian and Kazakh letters. The event time is printed in UTC+5 with the offset shown. A closed ticket or a
+  ticket of a cancelled event is not printed (`409`). The response is `private, no-store`.
+* Undo (`POST /events/{id}/check-ins/{check_in_id}/undo`, organizer or admin) keeps the `check_ins` row and sets
+  `undone_at`, `undone_by_id` and `undo_request_id`. The undo has its own `request_id`, so a retry returns the same
+  `UNDONE` receipt. The undone check-in's own `request_id` then answers `409 CHECK_IN_UNDONE`: it cannot admit
+  again and is never replayed as a success. A new scan with a new `request_id` admits the ticket again as a new
+  row. Check-in, undo, cancel and refund lock the event row first and then the ticket row, so they serialise per
+  ticket without deadlocks.
 * Check-in holds the event row `FOR SHARE` until it commits, so a cancel or publish waits for scans in flight and a scan
   never mixes an old event status with newer staff access. Parallel scans do not block each other.
 * New endpoints report errors as `{"detail": {"code": "...", "message": "..."}}`. Codes: `EVENT_NOT_FOUND`,
   `EVENT_NOT_PUBLISHED`, `EVENT_CANCELLED`, `SOLD_OUT`, `CAPACITY_BELOW_ISSUED`, `TICKET_NOT_FOUND`,
-  `USER_NOT_FOUND`, `STAFF_CHANGED`, `FORBIDDEN`, `INVALID_TICKET`, `ALREADY_CHECKED_IN`, `REQUEST_ID_CONFLICT`.
+  `USER_NOT_FOUND`, `STAFF_CHANGED`, `FORBIDDEN`, `INVALID_TICKET`, `ALREADY_CHECKED_IN`, `REQUEST_ID_CONFLICT`,
+  `QUERY_TOO_SHORT`, `TICKET_CANCELLED`, `TICKET_REFUNDED`, `TICKET_CHECKED_IN`, `CHECK_IN_UNDONE`,
+  `CHECK_IN_NOT_FOUND`, `CHECK_IN_ALREADY_UNDONE`, `UNDO_NOT_ALLOWED`.
+* `GET /events/{id}/attendance` returns `capacity` and `tickets_issued` from the event row and `checked_in` as a
+  `COUNT` of its `check_ins` that are not undone, all read in one statement. `GET /events/{id}/attendees?q=` searches the event's ticket
+  holders by name or e-mail (case-insensitive substring, `q` at least 3 characters after trimming, `%`/`_` literal,
+  at most 20 results ordered by name). Each result carries the ticket `status`, the
+  current `check_in_id` (or `null`) and the exact `qr_payload`, so manual admission goes through the same check-in
+  endpoint; there is no second write path. E-mails are masked to at most two leading characters,
+  always hiding at least one, plus a fixed `***` and the domain (`ab@x.kz` → `a***@x.kz`). Access is checked before
+  `q` is validated.
 * Values PostgreSQL refuses to store (NUL characters, ids beyond its integer range) return
   `422 INVALID_INPUT` on every endpoint instead of a 500.
+
+### P1 ticket type inventory and action log
+
+`ticket_types` belongs to an event. It holds the current name, description, integer price
+in tiyn, allocation, active ticket count, sales window, order limit and visibility. Every
+ticket refers to one type and retains its existing event and attendee identity. The
+`(event_id, attendee_id)` uniqueness rule still applies across all types.
+
+The original conditional event update takes the event row lock and reserves an event seat.
+A second conditional update reserves the chosen free type's seat in the same transaction.
+A rollback returns both reservations. Cancellation and refund release both counters.
+Management requests also lock the event row before reading or changing allocations, so
+two concurrent requests cannot allocate more seats than the event has.
+
+`action_logs` stores the event, actor, UTC time, action, entity and short description.
+The caller adds the record in the transaction that creates or changes a type. The owner
+and administrators can read the event's history. The API exposes no write operation on
+the history itself.
 
 ## Not built yet
 

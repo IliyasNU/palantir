@@ -108,7 +108,8 @@ def test_staff_sees_assigned_published_events_only(client, login_as, owner, new_
 
     body = client.get("/staff/events", headers=staff).json()
     assert [event["id"] for event in body] == [sooner["id"], later["id"]]
-    assert set(body[0]) == {"id", "title", "date", "location", "status"}
+    assert set(body[0]) == {"id", "title", "date", "location", "status", "can_manage"}
+    assert [event["can_manage"] for event in body] == [False, False]
 
 
 def test_removed_staff_loses_the_event(client, login_as, owner, new_event):

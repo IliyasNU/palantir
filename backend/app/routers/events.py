@@ -11,6 +11,7 @@ from app.dependencies.roles import OrganizerUser
 from app.errors import api_error
 from app.models import Event, EventStatus
 from app.schemas.event import EventCreate, EventRead, EventUpdate
+from app.ticket_types import create_default_type, lock_event, resize_default_or_check_allocation
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -33,6 +34,8 @@ def create_event(payload: EventCreate, db: DbSession, current_user: OrganizerUse
     """Create a draft event owned by the logged-in organizer."""
     event = Event(organizer_id=current_user.id, **payload.model_dump())
     db.add(event)
+    db.flush()
+    create_default_type(db, event, current_user.id)
     db.commit()
     db.refresh(event)
     return event
@@ -61,8 +64,12 @@ def update_event(event_id: int, payload: EventUpdate, db: DbSession, current_use
     event = get_event_or_404(db, event_id)
     ensure_can_manage(event, current_user)
     changes = payload.model_dump(exclude_unset=True)
+    if "capacity" in changes:
+        event = lock_event(db, event_id)
     if changes.get("capacity", event.capacity) < event.tickets_issued:
         raise _capacity_below_issued()
+    if "capacity" in changes:
+        resize_default_or_check_allocation(db, event, changes["capacity"], current_user.id)
     for field, value in changes.items():
         setattr(event, field, value)
     try:

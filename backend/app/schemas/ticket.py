@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.schemas.common import UTCDateTime
 from app.schemas.event import EventSummary
+from app.schemas.ticket_type import TicketTypeSummary
 
 
 class TicketRead(BaseModel):
@@ -12,7 +13,10 @@ class TicketRead(BaseModel):
     id: int
     event_id: int
     attendee_id: int
+    ticket_type_id: int
+    ticket_type: TicketTypeSummary
     qr_payload: str  # encode exactly this string into the QR code
     created_at: UTCDateTime
-    checked_in_at: Optional[UTCDateTime]
+    status: str  # active | cancelled | refunded; only an active ticket can be admitted
+    checked_in_at: Optional[UTCDateTime]  # the current admission; null again after an undo
     event: EventSummary

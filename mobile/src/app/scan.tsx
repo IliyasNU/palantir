@@ -1,29 +1,50 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, BackHandler, Button, Linking, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { randomUUID } from 'expo-crypto';
-import { Redirect, Stack, router, useIsFocused, useLocalSearchParams } from 'expo-router';
+import { Redirect, Stack, router, useIsFocused, useLocalSearchParams, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { api } from '../api';
+import { api, type StaffSession, type UndoReceipt } from '../api';
+import { AttendanceCount, AttendeeSearch, PendingUndos, UndoEntry } from '../attendance';
 import { createScanSession, type ScanResult } from '../scanner';
 import { useSession } from '../session';
 import { useLanguage } from '../language';
 import { errorMessage } from '../messages';
 
 export default function ScanScreen() {
-  const { id, title } = useLocalSearchParams<{ id: string; title: string }>();
+  const { id, title, manage } = useLocalSearchParams<{ id: string; title: string; manage?: string }>();
   const eventId = Number(id);
-  const { session, setSession } = useSession();
+  const { session } = useSession();
+  if (!session?.token) return <Redirect href="/" />;
+  if (!Number.isSafeInteger(eventId) || eventId < 1) return <Redirect href="/events" />;
+  // `manage` only decides whether the undo action is offered. The server checks the permission on every undo.
+  return <EventScanner key={`${session.userId}:${eventId}`} eventId={eventId} title={title} session={session}
+    canUndo={manage === '1'} />;
+}
+
+function EventScanner({ eventId, title, session, canUndo }: {
+  eventId: number;
+  title?: string;
+  session: StaffSession;
+  canUndo: boolean;
+}) {
+  const { setSession } = useSession();
   const { copy, locale } = useLanguage();
-  const token = session?.token;
+  const { token } = session;
   const [permission, requestPermission, getPermission] = useCameraPermissions();
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [undone, setUndone] = useState<UndoReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [cameraError, setCameraError] = useState(false);
   const [checkingCamera, setCheckingCamera] = useState(false);
   const cameraLock = useRef(false);
+  const [inputMode, setInputMode] = useState({ lookupOpen: false });
+  const currentMode = useRef(inputMode);
+  const { lookupOpen } = inputMode;
+  const [attendanceRevision, setAttendanceRevision] = useState(0);
   const [active, setActive] = useState(AppState.currentState === 'active');
   const focused = useIsFocused();
+  const navigation = useNavigation();
   const mounted = useRef(true);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -35,7 +56,7 @@ export default function ScanScreen() {
   ), [eventId]);
   const scanner = scanSession.scanner;
 
-  useEffect(() => { scanSession.setToken(token || ''); }, [scanSession, token]);
+  useEffect(() => { scanSession.setToken(token); }, [scanSession, token]);
 
   useEffect(() => {
     mounted.current = true;
@@ -79,13 +100,71 @@ export default function ScanScreen() {
     if (!promise) return;
     setBusy(true);
     setResult(null);
+    setUndone(null);
     void promise.then(value => {
-      if (mounted.current) { setResult(value); setBusy(false); }
+      if (!mounted.current) return;
+      setResult(value);
+      setBusy(false);
+      if (value.receipt) refreshAttendance();
     });
   }
 
+  function refreshAttendance() {
+    setAttendanceRevision(revision => revision + 1);
+  }
+
+  function changeLookup(open: boolean) {
+    if (scanner.requestId() || loginLock.current || currentMode.current.lookupOpen === open) return;
+    // Invalidate queued callbacks immediately, even if the same mode is reopened.
+    const nextMode = { lookupOpen: open };
+    currentMode.current = nextMode;
+    setInputMode(nextMode);
+  }
+
+  function submitTicket(payload: string) {
+    if (inputMode !== currentMode.current || !mounted.current || !navigation.isFocused()
+      || AppState.currentState !== 'active' || loginLock.current) return;
+    show(scanner.scan(payload));
+  }
+
+  // Whether a confirmation that was shown earlier may still act: same screen, in front, nothing being sent.
+  function canAct() {
+    return mounted.current && navigation.isFocused() && AppState.currentState === 'active' && !loginLock.current;
+  }
+
+  function entryUndone(receipt: UndoReceipt) {
+    if (!mounted.current) return;
+    refreshAttendance();
+    if (result?.receipt?.check_in_id === receipt.check_in_id) setUndone(receipt);
+  }
+
+  function signInAgain() {
+    if (scanner.mustResolve() || loginLock.current) return;
+    scanSession.setToken('');
+    setSession(null);
+  }
+
+  function leaveAfterVerification() {
+    const requestId = scanner.requestId();
+    if (!requestId || loginLock.current || !scanner.canHandOff(requestId)) return;
+
+    Alert.alert(copy.handoffTitle, copy.handoffHint(requestId), [
+      { text: copy.stayOnScan, style: 'cancel' },
+      {
+        text: copy.handoffConfirm,
+        onPress: () => {
+          if (mounted.current && navigation.isFocused() && AppState.currentState === 'active'
+            && !loginLock.current && scanner.canHandOff(requestId)) {
+            // Keep the request locked until this scanner screen is dismissed.
+            router.dismissTo('/events');
+          }
+        },
+      },
+    ]);
+  }
+
   async function reauthenticate() {
-    if (!session || loginLock.current || !loginEmail.trim() || !loginPassword) return;
+    if (loginLock.current || !loginEmail.trim() || !loginPassword) return;
     loginLock.current = true;
     setLoggingIn(true);
     setLoginError(null);
@@ -103,9 +182,7 @@ export default function ScanScreen() {
     }
   }
 
-  if (!token) return <Redirect href="/" />;
-  if (!Number.isInteger(eventId) || eventId < 1) return <Redirect href="/events" />;
-  const canScan = permission?.granted && focused && active && !busy && !loggingIn && !result && !cameraError && !checkingCamera;
+  const canScan = !lookupOpen && permission?.granted && focused && active && !busy && !loggingIn && !result && !cameraError && !checkingCamera;
   const mustStay = busy || scanner.mustResolve() || loggingIn;
   const error = result?.error;
   const pending = scanner.mustResolve();
@@ -118,9 +195,20 @@ export default function ScanScreen() {
     <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ headerBackVisible: !mustStay, gestureEnabled: !mustStay }} />
       <Text style={styles.title}>{title || copy.selectedEvent}</Text>
-      <Text style={styles.hint}>{copy.scanHint}</Text>
-      {(!permission || checkingCamera) && <Text>{copy.checkingPermission}</Text>}
-      {permission && !permission.granted && (
+      {focused && active && <AttendanceCount token={token} eventId={eventId} revision={attendanceRevision}
+        locked={mustStay || error?.status === 401} onSignInAgain={signInAgain} />}
+      {focused && active && <PendingUndos token={token} userId={session.userId} eventId={eventId} locked={mustStay}
+        canAct={canAct} onUndone={entryUndone} onChanged={refreshAttendance} onSignInAgain={signInAgain} />}
+      {lookupOpen ? (
+        <AttendeeSearch token={token} userId={session.userId} eventId={eventId} locked={!focused || !active || mustStay || result !== null}
+          canUndo={canUndo} canAct={canAct} onClose={() => changeLookup(false)} onSignInAgain={signInAgain}
+          onMark={submitTicket} onChanged={refreshAttendance} />
+      ) : (
+        !result && !mustStay && <Button title={copy.findManually} onPress={() => changeLookup(true)} />
+      )}
+      {!lookupOpen && <Text style={styles.hint}>{copy.scanHint}</Text>}
+      {!lookupOpen && (!permission || checkingCamera) && <Text>{copy.checkingPermission}</Text>}
+      {!lookupOpen && permission && !permission.granted && (
         <View style={styles.box}>
           <Text>{copy.needCamera}</Text>
           <Button title={permission.canAskAgain ? copy.allowCamera : copy.openSettings} disabled={checkingCamera}
@@ -128,16 +216,22 @@ export default function ScanScreen() {
         </View>
       )}
       {canScan && (
-        <CameraView style={styles.camera} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-          onBarcodeScanned={({ data }) => { if (data) show(scanner.scan(data)); }}
-          onMountError={() => setCameraError(true)} />
+        <ScanCamera onScan={submitTicket} onError={() => setCameraError(true)} />
       )}
-      {cameraError && <View style={styles.box}>
+      {!lookupOpen && cameraError && <View style={styles.box}>
         <Text accessibilityRole="alert" style={styles.error}>{copy.cameraError}</Text>
         <Button title={copy.retryCamera} disabled={checkingCamera} onPress={() => { void cameraPermission(true); }} />
       </View>}
       {busy && <View style={styles.box}><Text>{copy.checking}</Text><Text>{copy.wait}</Text></View>}
-      {result && (
+      {result && undone && (
+        <View accessibilityLiveRegion="polite" style={[styles.box, styles.failure]}>
+          <Text style={styles.resultTitle}>{copy.undone}</Text>
+          <Text>{copy.undoneHint}</Text>
+          <Text>{copy.ticket} #{undone.ticket_id} · {new Date(undone.undone_at).toLocaleTimeString(locale === 'kk' ? 'kk-KZ' : 'ru-RU')}</Text>
+          <Button title={copy.nextTicket} onPress={() => { if (scanner.next()) { setResult(null); setUndone(null); } }} />
+        </View>
+      )}
+      {result && !undone && (
         <View accessibilityLiveRegion="polite" style={[styles.box, result.receipt ? styles.success : styles.failure]}>
           <Text style={styles.resultTitle}>{result.receipt ? copy.admitted : copy.rejected}</Text>
           <Text>{result.receipt ? copy.confirmed : errorMessage(result.error, locale)}</Text>
@@ -162,14 +256,32 @@ export default function ScanScreen() {
             <Text>{copy.noAccess}</Text>
             {pending && <Button title={copy.retryAccess} onPress={() => show(scanner.retry())} />}
           </View>}
+          {error && pending && !busy && <Button title={copy.handoffTitle} disabled={loggingIn}
+            onPress={leaveAfterVerification} />}
           {backToEvents && <Button title={copy.backToEvents} onPress={() => router.dismissTo('/events')} />}
           {!pending && !backToEvents && error?.status !== 401 &&
             <Button title={copy.nextTicket} onPress={() => { if (scanner.next()) setResult(null); }} />}
+          {canUndo && result.receipt?.check_in_id !== undefined && <UndoEntry key={result.receipt.check_in_id}
+            token={token} userId={session.userId} eventId={eventId}
+            checkInId={result.receipt.check_in_id} name={`${copy.ticket} #${result.receipt.ticket_id}`}
+            canAct={canAct} onUndone={entryUndone} />}
         </View>
       )}
     </ScrollView>
     </SafeAreaView>
   );
+}
+
+function ScanCamera({ onScan, onError }: { onScan: (payload: string) => void; onError: () => void }) {
+  const attached = useRef(false);
+  useLayoutEffect(() => {
+    attached.current = true;
+    return () => { attached.current = false; };
+  }, []);
+
+  return <CameraView style={styles.camera} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+    onBarcodeScanned={({ data }) => { if (attached.current) onScan(data); }}
+    onMountError={() => { if (attached.current) onError(); }} />;
 }
 
 const styles = StyleSheet.create({

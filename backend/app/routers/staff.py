@@ -8,11 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.dependencies.auth import CurrentUser
 from app.dependencies.db import DbSession
-from app.dependencies.events import ensure_can_manage, get_event_or_404
+from app.dependencies.events import can_manage, ensure_can_manage, get_event_or_404
 from app.dependencies.roles import is_admin
 from app.errors import api_error
 from app.models import Event, EventStaff, EventStatus, User
-from app.schemas.event import EventSummary
+from app.schemas.event import StaffEventRead
 from app.schemas.staff import StaffAssign, StaffRead
 
 router = APIRouter(tags=["staff"])
@@ -70,11 +70,17 @@ def remove_staff(event_id: int, user_id: int, db: DbSession, current_user: Curre
     db.commit()
 
 
-@router.get("/staff/events", response_model=list[EventSummary])
+@router.get("/staff/events", response_model=list[StaffEventRead])
 def list_scannable_events(db: DbSession, current_user: CurrentUser):
     """Published events the caller may check tickets in at: assigned, owned, or any for an admin. May be []."""
     query = select(Event).where(Event.status == EventStatus.PUBLISHED.value)
     if not is_admin(current_user):
         assigned = select(EventStaff.event_id).where(EventStaff.user_id == current_user.id)
         query = query.where(or_(Event.organizer_id == current_user.id, Event.id.in_(assigned)))
-    return db.scalars(query.order_by(Event.date, Event.id)).all()
+    return [
+        StaffEventRead(
+            id=event.id, title=event.title, date=event.date, location=event.location, status=event.status,
+            can_manage=can_manage(event, current_user),
+        )
+        for event in db.scalars(query.order_by(Event.date, Event.id))
+    ]

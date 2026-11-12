@@ -1,4 +1,6 @@
 import { ApiError } from '../api/client.ts';
+import { readTicketTypes } from '../ticket-types/model.ts';
+import type { TicketType } from '../ticket-types/model.ts';
 
 export type EventStatus = 'draft' | 'published' | 'cancelled';
 
@@ -15,6 +17,8 @@ export interface EventDetails {
   tickets_issued: number | null;
   created_at: string;
   updated_at: string;
+  /** Absent only when talking to a backend predating ticket types. */
+  ticket_types?: TicketType[];
 }
 
 export function parseEventId(value: string | undefined): number | null {
@@ -60,6 +64,7 @@ export function readEventDetails(payload: unknown, expectedId: number): EventDet
     tickets_issued: integer(event.tickets_issued, 0),
     created_at: event.created_at,
     updated_at: event.updated_at,
+    ...(event.ticket_types === undefined ? {} : { ticket_types: readTicketTypes(event.ticket_types, expectedId) }),
   };
 }
 

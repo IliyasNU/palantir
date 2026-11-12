@@ -20,6 +20,7 @@ jobs:
         env:
           POSTGRES_USER: biletflow_test
           POSTGRES_DB: biletflow_test
+          POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=icu --icu-locale=und"
           POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-test-only
         ports: ['127.0.0.1:5432:5432']
         options: >-
@@ -49,6 +50,33 @@ jobs:
         run: |
           python -c "import os,secrets; open(os.environ['GITHUB_ENV'],'a').write('JWT_SECRET_KEY='+secrets.token_hex(64)+'\n')"
           pip install -r backend/requirements-dev.txt
+      - name: Verify PostgreSQL 16 ICU settings
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+
+          expected = {
+              "major": 16,
+              "provider": "i",
+              "locale": "und",
+              "encoding": "UTF8",
+              "kazakh_casefold_ok": True,
+          }
+          query = text("""
+              SELECT current_setting('server_version_num')::integer / 10000 AS major,
+                     datlocprovider::text AS provider, daticulocale AS locale,
+                     pg_encoding_to_char(encoding) AS encoding,
+                     lower('ӘЛИЯ') = 'әлия' AS kazakh_casefold_ok
+              FROM pg_database
+              WHERE datname = current_database()
+          """)
+          with create_engine(os.environ["DATABASE_URL"]).connect() as connection:
+              actual = dict(connection.execute(query).mappings().one())
+          if actual != expected:
+              raise SystemExit(f"Unsupported W2 test database configuration: {actual}")
+          print("PostgreSQL 16, ICU und, UTF8 and Kazakh case folding verified")
+          PY
       - name: Backend unit tests
         working-directory: backend
         run: pytest -q tests
