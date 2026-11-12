@@ -15,7 +15,7 @@ from app.audit import record_action
 from app.dependencies.auth import CurrentUser
 from app.dependencies.db import DbSession
 from app.db.base import utcnow
-from app.dependencies.events import can_manage, get_event_or_404, is_visible
+from app.dependencies.events import can_manage, ensure_not_suspended, get_event_or_404, is_visible
 from app.dependencies.roles import is_admin
 from app.errors import api_error
 from app.models import Event, EventStatus, Ticket, TicketStatus, TicketType, User
@@ -49,8 +49,7 @@ def _ensure_open_for_tickets(event: Event) -> None:
     if event.status == EventStatus.CANCELLED.value:
         raise api_error(status.HTTP_409_CONFLICT, "EVENT_CANCELLED", "Event is cancelled")
     # Reached by the event's own managers, and by a claim that raced a suspension: everyone else gets 404.
-    if event.suspended_at is not None:
-        raise api_error(status.HTTP_409_CONFLICT, "EVENT_SUSPENDED", "Ticket sales for this event are suspended")
+    ensure_not_suspended(event)
 
 
 @router.post("/events/{event_id}/tickets", response_model=TicketRead, status_code=status.HTTP_201_CREATED)

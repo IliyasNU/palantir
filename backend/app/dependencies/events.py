@@ -45,3 +45,14 @@ def is_visible(event: Event, user: Optional[User]) -> bool:
     if event.status == EventStatus.DRAFT.value or event.suspended_at is not None:
         return user is not None and can_manage(event, user)
     return True
+
+
+def ensure_not_suspended(event: Event) -> None:
+    """Refuse to sell or issue anything at a suspended event: ``409 EVENT_SUSPENDED``.
+
+    The shared check of every sales and issuing path (free claims now; checkout, promo codes and the like later).
+    Call it on the event row read under ``lock_event`` and keep ``suspended_at IS NULL`` in the path's
+    conditional ``UPDATE``: see "Suspension contract for later phases" in docs/architecture.md.
+    """
+    if event.suspended_at is not None:
+        raise api_error(status.HTTP_409_CONFLICT, "EVENT_SUSPENDED", "Ticket sales for this event are suspended")
