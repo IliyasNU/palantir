@@ -26,7 +26,10 @@ function EventsList({ token, userId }: { token: string; userId: number }) {
   const [events, setEvents] = useState<StaffEvent[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(true);
+  const [loadedToken, setLoadedToken] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
+  // A new token invalidates the old assignments immediately, before the reload effect runs.
+  const loading = busy || loadedToken !== token;
   // Events where this account still has an undo without a definite answer.
   const unconfirmed = new Set(useUndoStore().pending(userId).map(entry => entry.eventId));
 
@@ -49,7 +52,7 @@ function EventsList({ token, userId }: { token: string; userId: number }) {
         }
         setError(problem);
       })
-      .finally(() => { if (active && !renewed) setBusy(false); });
+      .finally(() => { if (active && !renewed) { setLoadedToken(token); setBusy(false); } });
     return () => { active = false; };
   }, [token, reload, setSession, renew]);
 
@@ -57,20 +60,20 @@ function EventsList({ token, userId }: { token: string; userId: number }) {
     <SafeAreaView edges={['bottom']} style={styles.page}>
       <Text style={styles.hint}>{copy.eventsHint}</Text>
       <View style={styles.actions}>
-        <Button title={copy.refresh} disabled={busy} onPress={() => {
+        <Button title={copy.refresh} disabled={loading} onPress={() => {
           setBusy(true); setError(null); setEvents([]); setReload(value => value + 1);
         }} />
         <Button title={copy.signOut} onPress={() => setSession(null)} />
       </View>
-      {busy && <ActivityIndicator accessibilityLabel={copy.loadingEvents} />}
-      {error !== null && <Text accessibilityRole="alert" style={styles.error}>{errorMessage(error, locale)}</Text>}
-      <FlatList data={events} keyExtractor={item => String(item.id)}
-        ListEmptyComponent={!busy && error === null ? <Text>{copy.noEvents}</Text> : undefined}
+      {loading && <ActivityIndicator accessibilityLabel={copy.loadingEvents} />}
+      {!loading && error !== null && <Text accessibilityRole="alert" style={styles.error}>{errorMessage(error, locale)}</Text>}
+      <FlatList data={loading ? [] : events} keyExtractor={item => String(item.id)}
+        ListEmptyComponent={!loading && error === null ? <Text>{copy.noEvents}</Text> : undefined}
         renderItem={({ item }) => (
           <Pressable accessibilityRole="button" accessibilityLabel={`${copy.scanTickets}: ${item.title}`} style={styles.event}
-            disabled={busy} accessibilityState={{ disabled: busy }}
+            disabled={loading} accessibilityState={{ disabled: loading }}
             onPress={() => {
-              if (!busy) {
+              if (!loading) {
                 router.push({ pathname: '/scan', params: {
                   id: String(item.id), title: item.title, manage: item.can_manage === true ? '1' : '0',
                 } });
