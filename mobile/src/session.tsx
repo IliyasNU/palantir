@@ -1,11 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 import { AppState } from 'react-native';
 import { api, type StaffSession } from './api';
-import { createRenewer, renewalTime, tokenExpiry } from './renewal';
+import { createRenewer, renewCurrentSession, renewalTime, tokenExpiry, type RenewResult } from './renewal';
 
 // A renewed session for the same account, or why there is none: `rejected` needs a password sign-in,
 // `unavailable` had no definite answer and may be tried again.
-export type RenewResult = StaffSession | 'rejected' | 'unavailable';
+export type { RenewResult } from './renewal';
 
 const SessionContext = createContext<{
   session: StaffSession | null;
@@ -25,15 +25,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
   }, []);
 
   const renew = useCallback(async (): Promise<RenewResult> => {
-    const before = current.current;
-    const result = await renewer(before);
-    if ('unavailable' in result) return 'unavailable';
-    // Signed out or another account signed in while the request was running: its answer no longer applies.
-    if ('rejected' in result || current.current?.userId !== before?.userId) return 'rejected';
-    // A parallel caller already stored this renewal.
-    if (current.current?.token !== before?.token) return current.current!;
-    setSession(result.session);
-    return result.session;
+    return renewCurrentSession(() => current.current, setSession, renewer);
   }, [renewer, setSession]);
 
   // Access tokens are short-lived. Renew shortly before the expiry while the app is in front, so a shift at

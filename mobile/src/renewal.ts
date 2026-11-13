@@ -46,6 +46,27 @@ export type Renewal =
   // No definite answer (no network, server error): the same refresh token can be tried again.
   | { unavailable: ApiError };
 
+export type RenewResult = StaffSession | 'rejected' | 'unavailable';
+
+// Apply a renewal to the session that is still on screen when its answer arrives.
+export async function renewCurrentSession(
+  current: () => StaffSession | null,
+  setSession: (session: StaffSession) => void,
+  renew: (session: StaffSession | null) => Promise<Renewal>,
+): Promise<RenewResult> {
+  const before = current();
+  const result = await renew(before);
+  const latest = current();
+  // Check ownership before interpreting even an error. A late 401 for the old refresh token must not
+  // sign out a newer password login of the same account; a different account must never get its token.
+  if (!latest || latest.userId !== before?.userId) return 'rejected';
+  if (latest !== before) return latest;
+  if ('unavailable' in result) return 'unavailable';
+  if ('rejected' in result) return 'rejected';
+  setSession(result.session);
+  return result.session;
+}
+
 // Renews a session with its refresh token. Parallel calls for the same session share one request, so the
 // scanner, the totals and the timer never spend the refresh token twice at once.
 export function createRenewer(refresh: (refreshToken: string, userId: number) => Promise<StaffSession>) {
