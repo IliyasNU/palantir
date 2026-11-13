@@ -1,10 +1,11 @@
 import { ApiError } from '../api';
 import { authErrorMessage } from '../auth/formErrors';
-
-const labels: Record<string, string> = { email: 'Email', full_name: 'Имя', password: 'Пароль' };
+import { useT } from '../i18n';
 
 export function AuthFormError({ error, mode }: { error: unknown; mode: 'login' | 'register' }) {
+  const t = useT();
   if (!error) return null;
+  const labels: Record<string, string> = { email: t.auth.email, full_name: t.auth.name, password: t.auth.password };
   return (
     <div className="notice notice-error" role="alert" id="form-error">
       <p>{authErrorMessage(error, mode)}</p>

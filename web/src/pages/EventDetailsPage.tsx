@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useT } from '../i18n';
 import { Link, useParams } from 'react-router';
 import { api, ApiError, getErrorMessage } from '../api';
 import { Page } from '../components/Page';
@@ -25,6 +26,7 @@ export function EventDetailsPage() {
 }
 
 function EventContent({ id, request, guest }: { id: string | undefined; request: typeof api.request; guest: boolean }) {
+  const t = useT();
   const { user } = useAuth();
   const eventId = parseEventId(id);
   const returnTo = safeReturnTo(`/events/${id}`);
@@ -60,56 +62,56 @@ function EventContent({ id, request, guest }: { id: string | undefined; request:
 
   return (
     <Page
-      eyebrow={`Событие · ${id ?? ''}`}
-      title={event?.title ?? (notFound ? 'Событие не найдено' : 'Подробнее о событии')}
-      description="Дата, место и информация о событии."
+      eyebrow={t.event.eyebrow(id ?? '')}
+      title={event?.title ?? (notFound ? t.event.notFoundTitle : t.event.fallbackTitle)}
+      description={t.event.description}
     >
       {notFound ? (
-        <p role="status">Такого события нет или оно недоступно для просмотра.</p>
+        <p role="status">{t.event.notFound}</p>
       ) : state.kind === 'loading' ? (
-        <p role="status">Загружаем событие…</p>
+        <p role="status">{t.event.loading}</p>
       ) : state.kind === 'error' ? (
         <div className="notice notice-error event-details-error" role="alert">
-          <h2>Не удалось загрузить событие</h2>
+          <h2>{t.event.loadFailed}</h2>
           <p>{state.message}</p>
-          <button className="button" type="button" onClick={retry}>Повторить</button>
+          <button className="button" type="button" onClick={retry}>{t.common.retry}</button>
         </div>
       ) : event && (
         <article className="content-card event-details">
-          {event.status === 'cancelled' && <div className="notice notice-error" role="status">Событие отменено. Новые билеты недоступны.</div>}
-          {event.status === 'draft' && <div className="notice" role="status">Событие ещё не опубликовано.</div>}
-          <h2>О событии</h2>
-          <p className="event-description">{event.description?.trim() ? event.description : 'Описание пока не добавлено.'}</p>
+          {event.status === 'cancelled' && <div className="notice notice-error" role="status">{t.event.cancelled}</div>}
+          {event.status === 'draft' && <div className="notice" role="status">{t.event.draft}</div>}
+          <h2>{t.event.about}</h2>
+          <p className="event-description">{event.description?.trim() ? event.description : t.event.noDescription}</p>
           <dl className="event-facts">
-            <dt>Когда</dt>
-            <dd><time dateTime={event.date}>{formatEventDate(event.date)}</time><span className="field-hint"> — ваше местное время</span></dd>
-            <dt>Где</dt><dd>{event.location}</dd>
-            <dt>Статус</dt><dd>{eventStatusLabel(event.status)}</dd>
-            <dt>Доступность</dt>
-            <dd>{available === null ? 'Доступность неизвестна' : `Осталось мест: ${available}`}</dd>
+            <dt>{t.catalog.when}</dt>
+            <dd><time dateTime={event.date}>{formatEventDate(event.date)}</time><span className="field-hint">{t.event.localTime}</span></dd>
+            <dt>{t.catalog.where}</dt><dd>{event.location}</dd>
+            <dt>{t.event.status}</dt><dd>{eventStatusLabel(event.status)}</dd>
+            <dt>{t.event.availability}</dt>
+            <dd>{available === null ? t.event.availabilityUnknown : t.event.seatsLeft(available)}</dd>
           </dl>
-          {available === 0 && <p role="status">Свободных мест нет.</p>}
-          {event.ticket_types !== undefined && <section className="public-ticket-types" aria-label="Типы билетов">
-            <h2>Типы билетов</h2>
+          {available === 0 && <p role="status">{t.event.soldOut}</p>}
+          {event.ticket_types !== undefined && <section className="public-ticket-types" aria-label={t.event.ticketTypes}>
+            <h2>{t.event.ticketTypes}</h2>
             {event.ticket_types.length ? <ul>{event.ticket_types.map((type) => {
               const unavailable = ticketTypeUnavailable(type, salesTime);
               return <li key={type.id}>
-                <strong>{type.name}</strong> — {ticketTypePrice(type.price_tiyn)} · осталось {type.remaining}
+                <strong>{type.name}</strong>{t.event.typeLine(ticketTypePrice(type.price_tiyn), type.remaining)}
                 {type.description && <p>{type.description}</p>}
                 {unavailable && <p className="field-hint">{unavailable}</p>}
               </li>;
-            })}</ul> : <p>Доступных типов пока нет.</p>}
+            })}</ul> : <p>{t.event.noTypes}</p>}
           </section>}
           {/* Do not hide/disable this slot when full: an existing ticket may still be opened. */}
           <EventActions event={event} remainingSeats={available} returnTo={returnTo} />
           {user && (user.role === 'admin' || user.id === event.organizer_id) && <p>
-            <Link className="text-link" to={`/organizer/events/${event.id}/ticket-types`}>Управлять типами билетов</Link>
+            <Link className="text-link" to={`/organizer/events/${event.id}/ticket-types`}>{t.event.manageTypes}</Link>
           </p>}
         </article>
       )}
       <div className="event-navigation">
-        <Link className="button" to="/events">Вернуться к событиям</Link>
-        {guest && eventId !== null && <p><Link className="text-link" to={authLink('/login', returnTo)}>Войти и вернуться к этому событию</Link></p>}
+        <Link className="button" to="/events">{t.event.backToEvents}</Link>
+        {guest && eventId !== null && <p><Link className="text-link" to={authLink('/login', returnTo)}>{t.event.loginAndReturn}</Link></p>}
       </div>
     </Page>
   );

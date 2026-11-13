@@ -1,4 +1,5 @@
 import { ApiError, getErrorMessage } from '../api/client.ts';
+import { current } from '../i18n/index.ts';
 import { readTicketTypeSummary, ticketTypeError } from '../ticket-types/model.ts';
 import type { TicketTypeSummary } from '../ticket-types/model.ts';
 
@@ -31,7 +32,7 @@ function ticketStatus(value: unknown): value is TicketStatus {
   return value === 'active' || value === 'cancelled' || value === 'refunded';
 }
 function invalidTicket(): ApiError {
-  return new ApiError('Сервер вернул некорректный билет. Попробуйте позже.', { kind: 'response' });
+  return new ApiError(current().tickets.malformed, { kind: 'response' });
 }
 
 /** Validate the server response; encode qr_payload unchanged, without a client prefix. */
@@ -77,9 +78,9 @@ export function ticketState(ticket: Ticket) {
     printable: open,
     /** The holder can give the ticket up before entering. */
     cancellable: ticket.status === 'active' && ticket.checked_in_at === null,
-    label: ticket.status === 'cancelled' ? 'Билет отменён' : ticket.status === 'refunded' ? 'Билет возвращён'
-      : ticket.event.status === 'cancelled' ? 'Событие отменено' : ticket.checked_in_at ? 'Билет уже использован'
-        : ticket.event.status === 'published' ? 'Билет готов к входу' : 'Вход по билету сейчас недоступен',
+    label: ticket.status === 'cancelled' ? current().tickets.labelCancelled : ticket.status === 'refunded' ? current().tickets.labelRefunded
+      : ticket.event.status === 'cancelled' ? current().tickets.labelEventCancelled : ticket.checked_in_at ? current().tickets.labelUsed
+        : ticket.event.status === 'published' ? current().tickets.labelReady : current().tickets.labelUnavailable,
   };
 }
 
@@ -89,16 +90,16 @@ export function ticketPdfName(ticketId: number): string {
 
 export function ticketErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401) return 'Сессия завершена. Войдите снова, чтобы открыть билет или получить его.';
-    if (error.status === 403) return 'У вас нет прав для этого действия с билетом.';
+    if (error.status === 401) return current().tickets.sessionEnded;
+    if (error.status === 403) return current().tickets.noRights;
     switch (error.code) {
-      case 'SOLD_OUT': return 'Свободных билетов больше нет. Уже полученные билеты доступны в разделе «Мои билеты».';
-      case 'EVENT_CANCELLED': return 'Событие отменено. Уже полученный билет доступен в разделе «Мои билеты».';
-      case 'EVENT_NOT_PUBLISHED': return 'Событие ещё не опубликовано. Получить билет пока нельзя.';
-      case 'TICKET_NOT_FOUND': return 'Билет не найден или принадлежит другому посетителю.';
-      case 'TICKET_CANCELLED': return 'Билет отменён и не даёт права на вход.';
-      case 'TICKET_REFUNDED': return 'Билет возвращён и не даёт права на вход.';
-      case 'TICKET_CHECKED_IN': return 'По этому билету уже отмечен вход. Отменить его нельзя.';
+      case 'SOLD_OUT': return current().tickets.soldOut;
+      case 'EVENT_CANCELLED': return current().tickets.eventCancelled;
+      case 'EVENT_NOT_PUBLISHED': return current().tickets.eventNotPublished;
+      case 'TICKET_NOT_FOUND': return current().tickets.notFoundOrForeign;
+      case 'TICKET_CANCELLED': return current().tickets.cancelledError;
+      case 'TICKET_REFUNDED': return current().tickets.refundedError;
+      case 'TICKET_CHECKED_IN': return current().tickets.checkedIn;
     }
     if (error.code?.startsWith('TICKET_TYPE_') || error.code === 'PAID_TICKETS_NOT_SUPPORTED') return ticketTypeError(error);
   }

@@ -1,10 +1,9 @@
 import { ApiError, getErrorMessage } from '../api/client.ts';
+import { current } from '../i18n/index.ts';
 import ticketTypeNamePolicy from '../../../backend/app/assets/ticket-type-name.json' with { type: 'json' };
 
 export { ticketTypeNamePolicy };
 
-const SALES_NOT_STARTED = 'Продажи ещё не начались';
-const SALES_CLOSED = 'Продажи закрыты';
 
 export interface TicketTypeSummary {
   id: number;
@@ -45,7 +44,7 @@ function optionalDate(value: unknown): value is string | null {
   return value === null || (typeof value === 'string' && Number.isFinite(Date.parse(value)));
 }
 function malformed(): ApiError {
-  return new ApiError('Сервер вернул некорректный тип билета. Попробуйте позже.', { kind: 'response' });
+  return new ApiError(current().ticketTypes.malformed, { kind: 'response' });
 }
 
 export function readTicketTypeSummary(payload: unknown): TicketTypeSummary {
@@ -74,16 +73,16 @@ export function readTicketTypes(payload: unknown, eventId: number): TicketType[]
 
 /** Money is received as integer tiyn; this is display-only, never a checkout calculation. */
 export function ticketTypePrice(priceTiyn: number): string {
-  if (priceTiyn === 0) return 'Бесплатно';
+  if (priceTiyn === 0) return current().ticketTypes.free;
   return `${new Intl.NumberFormat('ru-KZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(priceTiyn / 100)} ₸`;
 }
 
 export function ticketTypeUnavailable(type: TicketType, now = Date.now()): string | null {
-  if (type.hidden) return 'Тип скрыт';
-  if (type.price_tiyn > 0) return 'Платные продажи пока недоступны';
-  if (type.sales_start !== null && Date.parse(type.sales_start) > now) return SALES_NOT_STARTED;
-  if (type.sales_end !== null && Date.parse(type.sales_end) <= now) return SALES_CLOSED;
-  if (type.remaining === 0) return 'Билетов этого типа нет';
+  if (type.hidden) return current().ticketTypes.hidden;
+  if (type.price_tiyn > 0) return current().ticketTypes.paidUnavailable;
+  if (type.sales_start !== null && Date.parse(type.sales_start) > now) return current().ticketTypes.salesNotStarted;
+  if (type.sales_end !== null && Date.parse(type.sales_end) <= now) return current().ticketTypes.salesClosed;
+  if (type.remaining === 0) return current().ticketTypes.none;
   return null;
 }
 
@@ -106,23 +105,23 @@ export function ticketTypeDraft(type: TicketType): TicketTypeDraft {
 export function ticketTypePayload(draft: TicketTypeDraft, original?: TicketType) {
   const fail = (message: string): never => { throw new ApiError(message, { kind: 'validation' }); };
   const number = (value: string, minimum: number, label: string) => {
-    if (!/^\d+$/.test(value) || !integer(Number(value), minimum)) return fail(`${label}: нужно целое число от ${minimum}.`);
+    if (!/^\d+$/.test(value) || !integer(Number(value), minimum)) return fail(current().ticketTypes.integer(label, minimum));
     return Number(value);
   };
   const date = (value: string) => {
     if (!value) return null;
-    if (!Number.isFinite(Date.parse(value))) return fail('Проверьте начало и конец продаж.');
+    if (!Number.isFinite(Date.parse(value))) return fail(current().ticketTypes.checkWindow);
     return new Date(value).toISOString();
   };
   const name = draft.name.trim();
-  if (!name) fail('Укажите название типа билета.');
-  if ([...name].length > ticketTypeNamePolicy.maxLength) fail(`Название типа должно быть не длиннее ${ticketTypeNamePolicy.maxLength} символов.`);
+  if (!name) fail(current().ticketTypes.nameRequired);
+  if ([...name].length > ticketTypeNamePolicy.maxLength) fail(current().ticketTypes.nameTooLong(ticketTypeNamePolicy.maxLength));
   const salesStart = original && draft.sales_start === localDate(original.sales_start) ? original.sales_start : date(draft.sales_start);
   const salesEnd = original && draft.sales_end === localDate(original.sales_end) ? original.sales_end : date(draft.sales_end);
-  if (salesStart && salesEnd && Date.parse(salesEnd) <= Date.parse(salesStart)) fail('Конец продаж должен быть позже начала.');
+  if (salesStart && salesEnd && Date.parse(salesEnd) <= Date.parse(salesStart)) fail(current().ticketTypes.windowOrder);
   const payload = { name, description: draft.description.trim() || null,
-    price_tiyn: number(draft.price_tiyn, 0, 'Цена в тиынах'), quantity: number(draft.quantity, 0, 'Количество'),
-    sales_start: salesStart, sales_end: salesEnd, order_limit: number(draft.order_limit, 1, 'Лимит на заказ'), hidden: draft.hidden };
+    price_tiyn: number(draft.price_tiyn, 0, current().ticketTypes.price), quantity: number(draft.quantity, 0, current().ticketTypes.quantity),
+    sales_start: salesStart, sales_end: salesEnd, order_limit: number(draft.order_limit, 1, current().ticketTypes.orderLimit), hidden: draft.hidden };
   if (!original) return payload;
   return Object.fromEntries((Object.keys(payload) as (keyof typeof payload)[])
     .filter((field) => payload[field] !== original[field])
@@ -132,15 +131,15 @@ export function ticketTypePayload(draft: TicketTypeDraft, original?: TicketType)
 export function ticketTypeError(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.code) {
-      case 'TICKET_TYPES_CAPACITY': return 'Сумма количеств типов превышает вместимость события. Уменьшите количество одного из типов.';
-      case 'TICKET_TYPE_BELOW_ISSUED': return 'Количество типа нельзя уменьшить ниже числа действующих билетов.';
-      case 'TICKET_TYPE_NOT_FOUND': return 'Тип билета не найден для этого события.';
-      case 'TICKET_TYPE_REQUIRED': return 'Выберите тип бесплатного билета.';
-      case 'TICKET_TYPE_HIDDEN': return 'Этот тип билета скрыт. Обновите страницу события.';
-      case 'TICKET_TYPE_SALES_NOT_STARTED': return SALES_NOT_STARTED;
-      case 'TICKET_TYPE_SALES_ENDED': return SALES_CLOSED;
-      case 'TICKET_TYPE_SOLD_OUT': return 'Билеты выбранного типа закончились. Выберите другой тип или обновите страницу.';
-      case 'PAID_TICKETS_NOT_SUPPORTED': return 'Платные продажи пока недоступны. Выберите бесплатный тип.';
+      case 'TICKET_TYPES_CAPACITY': return current().ticketTypes.capacity;
+      case 'TICKET_TYPE_BELOW_ISSUED': return current().ticketTypes.belowIssued;
+      case 'TICKET_TYPE_NOT_FOUND': return current().ticketTypes.notFound;
+      case 'TICKET_TYPE_REQUIRED': return current().ticketTypes.required;
+      case 'TICKET_TYPE_HIDDEN': return current().ticketTypes.hiddenError;
+      case 'TICKET_TYPE_SALES_NOT_STARTED': return current().ticketTypes.salesNotStarted;
+      case 'TICKET_TYPE_SALES_ENDED': return current().ticketTypes.salesClosed;
+      case 'TICKET_TYPE_SOLD_OUT': return current().ticketTypes.soldOut;
+      case 'PAID_TICKETS_NOT_SUPPORTED': return current().ticketTypes.paidNotSupported;
     }
   }
   return getErrorMessage(error);

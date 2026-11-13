@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useT } from '../i18n';
 import { ticketQrDataUrl } from './qr';
 
 export function TicketQr({ payload }: { payload: string }) {
+  const t = useT().tickets;
   const [image, setImage] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -12,7 +14,7 @@ export function TicketQr({ payload }: { payload: string }) {
       .catch(() => { if (active) setFailed(true); });
     return () => { active = false; };
   }, [payload]);
-  if (failed) return <p role="alert">Не удалось показать QR-код. Обновите страницу билета и войдите снова.</p>;
-  return image ? <img className="ticket-qr" src={image} alt="QR-код билета для проверки на входе" width={320} height={320} />
-    : <p role="status">Подготавливаем QR-код…</p>;
+  if (failed) return <p role="alert">{t.qrFailed}</p>;
+  return image ? <img className="ticket-qr" src={image} alt={t.qrAlt} width={320} height={320} />
+    : <p role="status">{t.qrPreparing}</p>;
 }
