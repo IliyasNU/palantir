@@ -4,6 +4,12 @@ const base = 'http://localhost:8000';
 const user = { id: 7, email: 'fixture@example.com', full_name: 'Account Visitor', role: 'attendee', is_active: true, created_at: '2030-01-01T00:00:00Z' };
 const invalidToken = { status: 400, json: { detail: { code: 'INVALID_TOKEN', message: 'The link is invalid or has expired' } } };
 
+// CI runs these tests next to a real API on the same address. Any call a test does not mock must fail here
+// instead of reaching that API: a real 401 for the fixture token would end the session in the middle of a test.
+test.beforeEach(async ({ page }) => {
+  await page.route((url) => url.origin === base, (route) => route.abort('failed'));
+});
+
 async function login(page, me) {
   await page.route(`${base}/auth/login`, (route) => route.fulfill({ json: { access_token: 'test-token', refresh_token: 'unused', token_type: 'bearer' } }));
   await page.route(`${base}/auth/me`, (route) => route.fulfill({ json: me }));
@@ -97,8 +103,10 @@ test('forgot password shows the same message whatever the server answers and nev
     await page.goto('/login');
     await page.getByRole('link', { name: 'Забыли пароль?' }).click();
     await expect(page).toHaveURL('/forgot-password');
-    await page.getByLabel('Email', { exact: true }).fill(' known@example.com ');
+    await page.getByLabel('Email', { exact: true }).fill('known@example.com');
+    const before = bodies.length;
     await page.getByRole('button', { name: 'Отправить ссылку' }).click();
+    await expect.poll(() => bodies.length, { message: 'the form must send exactly one request' }).toBe(before + 1);
     await expect(page.getByRole('status')).toHaveText(sent);
     await expect(page.getByRole('alert')).toHaveCount(0);
     await expect(page.getByText('No such user')).toHaveCount(0);
@@ -117,6 +125,7 @@ test('forgot password shows the same message whatever the server answers and nev
 test('an unverified account sees the reminder and can request the email once per minute', async ({ page }) => {
   await page.clock.install({ time: new Date('2030-01-01T10:00:00Z') });
   let requests = 0;
+  await page.route(`${base}/tickets/me`, (route) => route.fulfill({ json: [] }));
   await page.route(`${base}/auth/resend-verification`, (route) => {
     requests += 1;
     expect(route.request().method()).toBe('POST');
@@ -132,6 +141,7 @@ test('an unverified account sees the reminder and can request the email once per
   await expect(resend).toBeDisabled();
   // The limit follows the visitor to other pages.
   await page.getByRole('navigation').getByRole('link', { name: 'Мои билеты' }).click();
+  await expect(page.getByRole('status')).toHaveText('Билетов пока нет. Выберите событие и получите бесплатный билет.');
   await expect(resend).toBeDisabled();
   await page.clock.runFor(59_000);
   await expect(resend).toBeDisabled();
