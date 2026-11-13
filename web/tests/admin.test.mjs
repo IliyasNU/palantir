@@ -4,7 +4,9 @@ import { ApiError } from '../src/api/client.ts';
 import { safeReturnTo } from '../src/auth/returnTo.ts';
 import { LOG_PAGE, actionLogPath, adminError, adminPath, isAdmin, readActionLogEntry, readAdminEvent, readAdminUser, readList, roleLabel,
   suspensionReason } from '../src/admin/model.ts';
-import { adminText } from '../src/admin/strings.ts';
+import { messages } from '../src/i18n/messages.ts';
+
+const adminText = messages.ru.admin;
 
 process.env.TZ = 'Asia/Almaty'; // UTC+5
 

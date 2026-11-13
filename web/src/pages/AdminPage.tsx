@@ -9,12 +9,12 @@ import { eventStatusLabel } from '../events/details';
 import { LOG_PAGE, SEARCH_LIMIT, actionLogPath, adminError, adminPath, isAdmin, readActionLogEntry, readAdminEvent, readAdminUser,
   readList, roleLabel, suspensionReason } from '../admin/model';
 import type { ActionLogEntry, AdminEvent, AdminUser, LogFilters } from '../admin/model';
-import { adminText as text } from '../admin/strings';
+import { dateLocale, useT } from '../i18n';
 
 const readUsers = (payload: unknown) => readList(payload, readAdminUser);
 const readEvents = (payload: unknown) => readList(payload, readAdminEvent);
 const readLog = (payload: unknown) => readList(payload, readActionLogEntry);
-const dateTime = (value: string) => new Date(value).toLocaleString('ru-RU', { dateStyle: 'medium', timeStyle: 'short' });
+const dateTime = (value: string) => new Date(value).toLocaleString(dateLocale(), { dateStyle: 'medium', timeStyle: 'short' });
 
 /** Loads one admin list. A new path or a retry replaces the previous answer; a stale answer is dropped. */
 function useAdminList<T>(path: string | null, read: (payload: unknown) => T[]) {
@@ -45,6 +45,7 @@ function useAdminList<T>(path: string | null, read: (payload: unknown) => T[]) {
 }
 
 function ListState({ loading, error, empty, emptyText, retry }: { loading: boolean; error: string | null; empty: boolean; emptyText: string; retry: () => void }) {
+  const text = useT().admin;
   if (loading) return <p role="status">{text.searching}</p>;
   if (error !== null) {
     return <div className="notice notice-error" role="alert">
@@ -62,6 +63,7 @@ function SuspendControl({ suspended, subject, onSuspend, onReactivate }: {
   onSuspend: (reason: string, signal: AbortSignal) => Promise<void>;
   onReactivate: (signal: AbortSignal) => Promise<void>;
 }) {
+  const text = useT().admin;
   const { pending, error, submit } = useSubmission();
   const [asking, setAsking] = useState(false);
   const inputId = `reason-${subject.replace(/\W+/g, '-')}`;
@@ -105,6 +107,7 @@ function Table({ label, columns, children }: { label: string; columns: readonly 
 }
 
 function Users() {
+  const text = useT().admin;
   const { user, request } = useAuth();
   const [query, setQuery] = useState('');
   const [role, setRole] = useState('');
@@ -155,6 +158,7 @@ function Users() {
 }
 
 function Events() {
+  const text = useT().admin;
   const { request } = useAuth();
   const [query, setQuery] = useState('');
   const [suspended, setSuspended] = useState('');
@@ -205,6 +209,7 @@ function Events() {
 const noFilters: LogFilters = { action: '', eventId: '', from: '', to: '' };
 
 function ActionLog() {
+  const text = useT().admin;
   const [filters, setFilters] = useState<LogFilters>(noFilters);
   const [offset, setOffset] = useState(0);
   const [problem, setProblem] = useState<string | null>(null);
@@ -266,6 +271,7 @@ function ActionLog() {
 const sections = { users: Users, events: Events, 'action-log': ActionLog } as const;
 
 export function AdminPage() {
+  const text = useT().admin;
   const { user } = useAuth();
   const { section = 'users' } = useParams();
   const Section = Object.hasOwn(sections, section) ? sections[section as keyof typeof sections] : null;

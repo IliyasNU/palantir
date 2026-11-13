@@ -1,4 +1,5 @@
 import { ApiError } from '../api/client.ts';
+import { current } from '../i18n/index.ts';
 import type { ApiRequestOptions, createApiClient } from '../api/client.ts';
 import type { LoginInput, RegistrationInput, TokenPair, User } from './types.ts';
 
@@ -10,7 +11,7 @@ export interface AuthState {
 }
 
 function invalidResponse(): ApiError {
-  return new ApiError('Не удалось подтвердить данные аккаунта. Попробуйте войти ещё раз.', { kind: 'response' });
+  return new ApiError(current().auth.invalidAccount, { kind: 'response' });
 }
 
 function readUser(value: unknown): User {
@@ -93,7 +94,7 @@ export function createAuthStore(api: ApiClient) {
         }
         const user = readUser(await api.request('/auth/me', { token: tokens.access_token, signal }));
         ensureCurrent(version, signal);
-        if (!user.is_active) throw new ApiError('Этот аккаунт отключён.', { kind: 'http', status: 403 });
+        if (!user.is_active) throw new ApiError(current().auth.disabled, { kind: 'http', status: 403 });
         accessToken = tokens.access_token;
         // refresh_token is deliberately discarded. No persistence and no automatic refresh.
         publish({ user, status: 'authenticated', notice: null });
@@ -108,7 +109,7 @@ export function createAuthStore(api: ApiClient) {
     async request<T = unknown>(path: string, options: Omit<ApiRequestOptions, 'token'> = {}): Promise<T> {
       if (!accessToken) {
         clearSession('expired');
-        throw new ApiError('Войдите в аккаунт для продолжения.', { kind: 'http', status: 401 });
+        throw new ApiError(current().auth.signInToContinue, { kind: 'http', status: 401 });
       }
       const version = generation;
       const controller = new AbortController();

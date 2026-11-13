@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { current, useT } from '../i18n';
 import { Link } from 'react-router';
 import { api, ApiError, getErrorMessage } from '../api';
 import { Page } from '../components/Page';
@@ -11,6 +12,7 @@ type CatalogState =
   | { kind: 'success'; events: CatalogEvent[] };
 
 export function EventsPage() {
+  const t = useT();
   const [state, setState] = useState<CatalogState>({ kind: 'loading' });
   const [query, setQuery] = useState('');
   const [attempt, setAttempt] = useState(0);
@@ -26,7 +28,7 @@ export function EventsPage() {
         if (!controller.signal.aborted) setState({
           kind: 'error',
           message: error instanceof ApiError && error.status === 405
-            ? 'Каталог недоступен на подключённом сервере (HTTP 405). Обратитесь к команде сервиса.'
+            ? current().catalog.unavailable
             : getErrorMessage(error),
         });
       });
@@ -42,55 +44,55 @@ export function EventsPage() {
 
   return (
     <Page
-      eyebrow="Афиша BiletFlow"
-      title="Найдите повод быть вместе."
-      description="Концерты, встречи и новые впечатления — всё начинается с события."
+      eyebrow={t.catalog.eyebrow}
+      title={t.catalog.title}
+      description={t.catalog.description}
     >
-      <div className="catalog-search" role="search" aria-label="Поиск событий">
-        <label htmlFor="event-search">Поиск по названию</label>
+      <div className="catalog-search" role="search" aria-label={t.catalog.searchLabel}>
+        <label htmlFor="event-search">{t.catalog.searchField}</label>
         <div className="catalog-search-controls">
           <input
             id="event-search"
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Название события"
+            placeholder={t.catalog.searchPlaceholder}
           />
-          {query && <button className="text-button" type="button" onClick={() => setQuery('')}>Сбросить поиск</button>}
+          {query && <button className="text-button" type="button" onClick={() => setQuery('')}>{t.catalog.reset}</button>}
         </div>
       </div>
-      {state.kind === 'loading' && <p role="status">Загружаем события…</p>}
+      {state.kind === 'loading' && <p role="status">{t.catalog.loading}</p>}
       {state.kind === 'error' && (
         <div className="notice notice-error catalog-state" role="alert">
-          <h2>Не удалось загрузить события</h2>
+          <h2>{t.catalog.loadFailed}</h2>
           <p>{state.message}</p>
-          <button className="button" type="button" onClick={retry}>Повторить</button>
+          <button className="button" type="button" onClick={retry}>{t.common.retry}</button>
         </div>
       )}
       {state.kind === 'success' && (
         state.events.length === 0 ? (
           <div className="content-card" role="status">
-            <h2>Событий пока нет</h2>
-            <p>Опубликованные события появятся здесь.</p>
+            <h2>{t.catalog.emptyTitle}</h2>
+            <p>{t.catalog.emptyText}</p>
           </div>
         ) : visibleEvents.length === 0 ? (
           <div className="content-card" role="status">
-            <h2>Ничего не найдено</h2>
-            <p>По этому названию совпадений нет. Попробуйте другой запрос или сбросьте поиск.</p>
+            <h2>{t.catalog.noMatchTitle}</h2>
+            <p>{t.catalog.noMatchText}</p>
           </div>
         ) : (
           <>
-            <p className="catalog-count" role="status">Найдено событий: {visibleEvents.length}</p>
-            <p className="field-hint catalog-time-hint">Дата и время указаны в вашем местном часовом поясе.</p>
-            <ul className="event-grid" aria-label="События">
+            <p className="catalog-count" role="status">{t.catalog.found(visibleEvents.length)}</p>
+            <p className="field-hint catalog-time-hint">{t.catalog.timeHint}</p>
+            <ul className="event-grid" aria-label={t.catalog.listLabel}>
               {visibleEvents.map((event) => (
                 <li key={event.id}>
                   <article className="content-card event-card">
                     <h2><Link className="text-link" to={`/events/${event.id}`}>{event.title}</Link></h2>
                     <dl>
-                      <dt>Когда</dt>
+                      <dt>{t.catalog.when}</dt>
                       <dd><time dateTime={event.date}>{formatEventDate(event.date)}</time></dd>
-                      <dt>Где</dt>
+                      <dt>{t.catalog.where}</dt>
                       <dd>{event.location}</dd>
                     </dl>
                   </article>

@@ -1,4 +1,5 @@
 import { ApiError } from '../api/client.ts';
+import { current, dateLocale } from '../i18n/index.ts';
 
 /** Fields used by the catalog from the backend's EventRead response. */
 export interface CatalogEvent {
@@ -24,7 +25,7 @@ export function readCatalog(payload: unknown): CatalogEvent[] {
 }
 
 function invalidCatalog(): ApiError {
-  return new ApiError('Сервер вернул некорректный список событий. Попробуйте позже.', { kind: 'response' });
+  return new ApiError(current().catalog.malformed, { kind: 'response' });
 }
 
 export function filterEventsByTitle(events: CatalogEvent[], query: string): CatalogEvent[] {
@@ -34,5 +35,5 @@ export function filterEventsByTitle(events: CatalogEvent[], query: string): Cata
 
 export function formatEventDate(date: string): string {
   // No timeZone override: display the server instant in the browser's local time.
-  return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'long', timeStyle: 'short' }).format(new Date(date));
+  return new Intl.DateTimeFormat(dateLocale(), { dateStyle: 'long', timeStyle: 'short' }).format(new Date(date));
 }

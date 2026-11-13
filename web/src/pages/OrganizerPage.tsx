@@ -7,12 +7,13 @@ import { formatEventDate } from '../events/catalog';
 import { eventStatusLabel } from '../events/details';
 import { canOrganize, organizerError, readManagedEvents } from '../organizer/model';
 import type { ManagedEvent } from '../organizer/model';
-import { organizerText as text } from '../organizer/strings';
+import { useT } from '../i18n';
 
 type State = { kind: 'loading' } | { kind: 'ready'; events: ManagedEvent[] } | { kind: 'error'; message: string };
 
 /** Sign-in prompt or refusal shared by the organizer screens. Null when the account may continue. */
 export function OrganizerGate({ allowed, returnTo }: { allowed: boolean; returnTo: string }) {
+  const text = useT().organizer;
   const { user } = useAuth();
   if (!user) {
     return <div className="content-card narrow-card">
@@ -28,6 +29,7 @@ export function OrganizerGate({ allowed, returnTo }: { allowed: boolean; returnT
 }
 
 export function OrganizerPage() {
+  const text = useT().organizer;
   const { user, request } = useAuth();
   const allowed = canOrganize(user);
   const [state, setState] = useState<State>({ kind: 'loading' });

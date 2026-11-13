@@ -3,7 +3,9 @@ import test from 'node:test';
 import { ApiError } from '../src/api/client.ts';
 import { safeReturnTo } from '../src/auth/returnTo.ts';
 import { canManageEvents, canOrganize, emptyEventDraft, eventDraft, eventPayload, localInputValue, organizerError, readManagedEvent, readManagedEvents } from '../src/organizer/model.ts';
-import { organizerText } from '../src/organizer/strings.ts';
+import { messages } from '../src/i18n/messages.ts';
+
+const organizerText = messages.ru.organizer;
 
 process.env.TZ = 'Asia/Almaty'; // UTC+5 without daylight saving: local 17:00 is 12:00 UTC
 

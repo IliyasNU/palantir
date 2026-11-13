@@ -2,7 +2,7 @@ import { ApiError, getErrorMessage } from '../api/client.ts';
 import type { User } from '../auth/types.ts';
 import { readEventDetails } from '../events/details.ts';
 import type { EventDetails } from '../events/details.ts';
-import { adminText as text } from './strings.ts';
+import { current } from '../i18n/index.ts';
 
 export const SEARCH_LIMIT = 50; // the API's maximum for user and event search
 export const LOG_PAGE = 50;
@@ -38,7 +38,7 @@ export function isAdmin(user: Pick<User, 'role'> | null): boolean {
   return user?.role === 'admin';
 }
 
-const malformed = () => new ApiError('Сервер вернул некорректные данные. Попробуйте позже.', { kind: 'response' });
+const malformed = () => new ApiError(current().api.badResponse, { kind: 'response' });
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const id = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 const time = (value: unknown): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value));
@@ -75,8 +75,8 @@ export function adminPath(path: string, params: Record<string, string | number |
   for (const [key, value] of Object.entries(params)) {
     if (value !== null && value !== undefined && value !== '') query.set(key, String(value));
   }
-  const text = query.toString();
-  return text ? `${path}?${text}` : path;
+  const search = query.toString();
+  return search ? `${path}?${search}` : path;
 }
 
 /** The trimmed reason, checked against the API's limits before the request. */
@@ -84,7 +84,7 @@ export function suspensionReason(value: string): string {
   const reason = value.trim();
   const length = [...reason].length;
   if (length < 3 || length > 300) {
-    throw new ApiError(text.reasonInvalid, { kind: 'validation', status: 422, code: FORM });
+    throw new ApiError(current().admin.reasonInvalid, { kind: 'validation', status: 422, code: FORM });
   }
   return reason;
 }
@@ -100,16 +100,16 @@ export interface LogFilters {
 /** Query of GET /admin/action-log for one page; local times become UTC. */
 export function actionLogPath(filters: LogFilters, offset: number): string {
   const eventId = filters.eventId.trim();
-  if (eventId && !/^[1-9]\d{0,9}$/.test(eventId)) throw new ApiError(text.log.eventIdInvalid, { kind: 'validation', status: 422, code: FORM });
+  if (eventId && !/^[1-9]\d{0,9}$/.test(eventId)) throw new ApiError(current().admin.log.eventIdInvalid, { kind: 'validation', status: 422, code: FORM });
   const instant = (value: string) => {
     if (!value) return undefined;
     const parsed = Date.parse(value);
-    if (!Number.isFinite(parsed)) throw new ApiError(text.log.periodInvalid, { kind: 'validation', status: 422, code: FORM });
+    if (!Number.isFinite(parsed)) throw new ApiError(current().admin.log.periodInvalid, { kind: 'validation', status: 422, code: FORM });
     return new Date(parsed).toISOString();
   };
   const from = instant(filters.from);
   const to = instant(filters.to);
-  if (from && to && from > to) throw new ApiError(text.log.periodInvalid, { kind: 'validation', status: 422, code: FORM });
+  if (from && to && from > to) throw new ApiError(current().admin.log.periodInvalid, { kind: 'validation', status: 422, code: FORM });
   return adminPath('/admin/action-log', { action: filters.action.trim(), event_id: eventId, date_from: from, date_to: to, limit: LOG_PAGE, offset });
 }
 
@@ -117,17 +117,18 @@ export function actionLogPath(filters: LogFilters, offset: number): string {
 export function adminError(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.code) {
-      case 'USER_NOT_FOUND': return text.errors.USER_NOT_FOUND;
-      case 'EVENT_NOT_FOUND': return text.errors.EVENT_NOT_FOUND;
-      case 'CANNOT_SUSPEND_SELF': return text.errors.CANNOT_SUSPEND_SELF;
+      case 'USER_NOT_FOUND': return current().admin.errors.USER_NOT_FOUND;
+      case 'EVENT_NOT_FOUND': return current().admin.errors.EVENT_NOT_FOUND;
+      case 'CANNOT_SUSPEND_SELF': return current().admin.errors.CANNOT_SUSPEND_SELF;
     }
     if (error.code === FORM) return error.message;
-    if (error.status === 403) return text.errors.forbidden;
-    if (error.status === 422) return text.errors.invalid;
+    if (error.status === 403) return current().admin.errors.forbidden;
+    if (error.status === 422) return current().admin.errors.invalid;
   }
   return getErrorMessage(error);
 }
 
 export function roleLabel(role: string): string {
-  return Object.hasOwn(text.roles, role) ? text.roles[role as keyof typeof text.roles] : role;
+  const roles = current().admin.roles;
+  return Object.hasOwn(roles, role) ? roles[role as keyof typeof roles] : role;
 }

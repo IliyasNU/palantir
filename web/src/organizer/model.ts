@@ -3,7 +3,7 @@ import type { ValidationIssue } from '../api/client.ts';
 import type { User } from '../auth/types.ts';
 import { readEventDetails } from '../events/details.ts';
 import type { EventDetails } from '../events/details.ts';
-import { organizerText as text } from './strings.ts';
+import { current } from '../i18n/index.ts';
 
 /** An event as its organizer or an admin sees it. */
 export interface ManagedEvent extends EventDetails {
@@ -38,7 +38,7 @@ export function readManagedEvent(payload: unknown, expectedId: number): ManagedE
 }
 
 export function readManagedEvents(payload: unknown): ManagedEvent[] {
-  const fail = () => new ApiError('Сервер вернул некорректный список событий. Попробуйте позже.', { kind: 'response' });
+  const fail = () => new ApiError(current().catalog.malformed, { kind: 'response' });
   if (!Array.isArray(payload)) throw fail();
   return payload.map((item: unknown) => {
     const id = typeof item === 'object' && item !== null && 'id' in item ? item.id : undefined;
@@ -80,17 +80,17 @@ export function eventPayload(draft: EventDraft, original?: EventDetails): Partia
   const location = draft.location.trim();
   const description = draft.description.trim();
   const length = (value: string) => [...value].length;
-  if (length(title) < 3 || length(title) > 200) issues.push({ field: 'title', message: text.validation.title });
-  if (length(description) > 5000) issues.push({ field: 'description', message: text.validation.description });
+  if (length(title) < 3 || length(title) > 200) issues.push({ field: 'title', message: current().organizer.validation.title });
+  if (length(description) > 5000) issues.push({ field: 'description', message: current().organizer.validation.description });
   const sameDate = original !== undefined && draft.date === localInputValue(original.date);
   const time = Date.parse(draft.date);
-  if (!sameDate && (!draft.date || !Number.isFinite(time))) issues.push({ field: 'date', message: text.validation.date });
-  if (length(location) < 2 || length(location) > 255) issues.push({ field: 'location', message: text.validation.location });
+  if (!sameDate && (!draft.date || !Number.isFinite(time))) issues.push({ field: 'date', message: current().organizer.validation.date });
+  if (length(location) < 2 || length(location) > 255) issues.push({ field: 'location', message: current().organizer.validation.location });
   const capacity = /^\d{1,7}$/.test(draft.capacity.trim()) ? Number(draft.capacity.trim()) : Number.NaN;
   if (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > 1_000_000) {
-    issues.push({ field: 'capacity', message: text.validation.capacity });
+    issues.push({ field: 'capacity', message: current().organizer.validation.capacity });
   }
-  if (issues.length) throw new ApiError(text.validation.form, { kind: 'validation', status: 422, issues });
+  if (issues.length) throw new ApiError(current().organizer.validation.form, { kind: 'validation', status: 422, issues });
 
   const payload: EventPayload = { title, description: description || null,
     date: sameDate ? original.date : new Date(time).toISOString(), location, capacity };
@@ -107,14 +107,14 @@ export function eventPayload(draft: EventDraft, original?: EventDetails): Partia
 /** Message for an event management failure, by the API's error code where it has one. */
 export function organizerError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.kind === 'validation' && error.issues.length === 0) return text.validation.form;
+    if (error.kind === 'validation' && error.issues.length === 0) return current().organizer.validation.form;
     switch (error.code) {
-      case 'CAPACITY_BELOW_ISSUED': return text.errors.CAPACITY_BELOW_ISSUED;
-      case 'TICKET_TYPES_CAPACITY': return text.errors.TICKET_TYPES_CAPACITY;
-      case 'EVENT_CANCELLED': return text.errors.EVENT_CANCELLED;
-      case 'EVENT_NOT_FOUND': return text.errors.EVENT_NOT_FOUND;
+      case 'CAPACITY_BELOW_ISSUED': return current().organizer.errors.CAPACITY_BELOW_ISSUED;
+      case 'TICKET_TYPES_CAPACITY': return current().organizer.errors.TICKET_TYPES_CAPACITY;
+      case 'EVENT_CANCELLED': return current().organizer.errors.EVENT_CANCELLED;
+      case 'EVENT_NOT_FOUND': return current().organizer.errors.EVENT_NOT_FOUND;
     }
-    if (error.status === 403) return text.errors.forbidden;
+    if (error.status === 403) return current().organizer.errors.forbidden;
   }
   return getErrorMessage(error);
 }

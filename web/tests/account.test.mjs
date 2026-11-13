@@ -4,7 +4,9 @@ import { createApiClient, ApiError } from '../src/api/client.ts';
 import { createAuthStore } from '../src/auth/store.ts';
 import { passwordIssues, validateRegistration } from '../src/auth/formErrors.ts';
 import { RESEND_INTERVAL_MS, forgotPasswordAnswered, isInvalidLink, linkErrorMessage, resendWaitMs, validateNewPassword } from '../src/account/model.ts';
-import { accountText } from '../src/account/strings.ts';
+import { messages } from '../src/i18n/messages.ts';
+
+const accountText = messages.ru.account;
 
 const user = { id: 1, email: 'test@example.com', full_name: 'Test Visitor', role: 'attendee', is_active: true, created_at: '2026-10-28T00:00:00Z' };
 const invalidToken = new ApiError('The link is invalid or has expired', { kind: 'http', status: 400, code: 'INVALID_TOKEN' });

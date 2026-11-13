@@ -5,10 +5,11 @@ import { AuthFormError } from '../components/AuthFormError';
 import { useAuth } from '../auth/AuthProvider';
 import { authLink, safeReturnTo } from '../auth/returnTo';
 import { useSubmission } from '../auth/useSubmission';
-import { accountText } from '../account/strings';
+import { useT } from '../i18n';
 
 export function LoginPage() {
   const auth = useAuth();
+  const t = useT();
   const { pending, error, submit } = useSubmission();
   const [params] = useSearchParams();
   const location = useLocation();
@@ -32,28 +33,28 @@ export function LoginPage() {
   }
   return (
     <Page
-      eyebrow="Ваш аккаунт"
-      title="Вход в BiletFlow"
-      description="Рады видеть вас снова."
+      eyebrow={t.auth.eyebrow}
+      title={t.auth.loginTitle}
+      description={t.auth.loginDescription}
     >
       <div className="content-card narrow-card">
         {auth.user ? (
-          <><p>Вы уже вошли как {auth.user.full_name}.</p><Link className="button" to={returnTo}>Продолжить</Link></>
+          <><p>{t.auth.alreadyIn(auth.user.full_name)}</p><Link className="button" to={returnTo}>{t.auth.proceed}</Link></>
         ) : (
           <>
-            {location.state?.registered === true && <div className="notice notice-success" role="status">Аккаунт создан. Войдите с вашим email и паролем.</div>}
+            {location.state?.registered === true && <div className="notice notice-success" role="status">{t.auth.registered}</div>}
             <form className="auth-form" onSubmit={onSubmit} aria-busy={pending} aria-describedby={error ? 'form-error' : undefined}>
               <AuthFormError error={error} mode="login" />
               <fieldset disabled={pending}>
-                <label htmlFor="login-email">Email</label>
+                <label htmlFor="login-email">{t.auth.email}</label>
                 <input id="login-email" name="email" type="email" autoComplete="username" required />
-                <label htmlFor="login-password">Пароль</label>
+                <label htmlFor="login-password">{t.auth.password}</label>
                 <input id="login-password" name="password" type="password" autoComplete="current-password" required maxLength={256} />
-                <button className="button" type="submit" disabled={pending}>{pending ? 'Входим…' : 'Войти'}</button>
+                <button className="button" type="submit" disabled={pending}>{pending ? t.auth.loginPending : t.auth.loginSubmit}</button>
               </fieldset>
             </form>
-            <p><Link className="text-link" to="/forgot-password">{accountText.forgot.link}</Link></p>
-            <p>Нет аккаунта? <Link className="text-link" to={authLink('/register', returnTo)}>Зарегистрироваться</Link></p>
+            <p><Link className="text-link" to="/forgot-password">{t.account.forgot.link}</Link></p>
+            <p>{t.auth.noAccount} <Link className="text-link" to={authLink('/register', returnTo)}>{t.auth.toRegister}</Link></p>
           </>
         )}
       </div>

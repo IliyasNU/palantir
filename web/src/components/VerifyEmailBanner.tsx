@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getErrorMessage } from '../api';
 import { resendWaitMs } from '../account/model';
-import { accountText as text } from '../account/strings';
+import { useT } from '../i18n';
 import { useAuth } from '../auth/AuthProvider';
 
 // Kept outside the component so the one-per-minute limit survives navigation between pages.
@@ -9,6 +9,7 @@ const lastSent = new Map<number, number>();
 
 /** Reminder for a signed-in account whose email is not verified yet. Not shown when the API omits the flag. */
 export function VerifyEmailBanner() {
+  const text = useT().account;
   const auth = useAuth();
   const user = auth.user?.email_verified === false ? auth.user : null;
   const userId = user?.id ?? null;

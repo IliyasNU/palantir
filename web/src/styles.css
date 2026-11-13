@@ -81,6 +81,9 @@ button.nav-link { color: inherit; background: transparent; }
 .notice-success { color: #254e38; background: #edf6e9; border-color: #b8d2ad; }
 .text-button { background: transparent; border: 0; padding: 6px 0; color: inherit; text-decoration: underline; text-underline-offset: 4px; }
 .session-notice { display: flex; align-items: baseline; flex-wrap: wrap; gap: 12px; }
+.language-switch { display: flex; gap: 4px; }
+.language-option { min-height: 36px; padding: 6px 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.language-option[aria-pressed="true"] { border-color: currentColor; }
 
 .catalog-search { margin-bottom: 28px; }
 .catalog-search label { display: block; font-weight: 600; margin-bottom: 10px; }

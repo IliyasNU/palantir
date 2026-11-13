@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { api } from '../api';
 import { isInvalidLink, linkErrorMessage } from '../account/model';
-import { accountText as text } from '../account/strings';
+import { useT } from '../i18n';
 import { useAuth } from '../auth/AuthProvider';
 import { Page } from '../components/Page';
 
 type State = { step: 'checking' } | { step: 'verified' } | { step: 'failed'; error: unknown };
 
 export function VerifyEmailPage() {
+  const text = useT().account;
   const auth = useAuth();
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';

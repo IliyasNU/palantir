@@ -3,11 +3,12 @@ import type { FormEvent } from 'react';
 import { Link } from 'react-router';
 import { api, getErrorMessage } from '../api';
 import { forgotPasswordAnswered } from '../account/model';
-import { accountText as text } from '../account/strings';
+import { useT } from '../i18n';
 import { useSubmission } from '../auth/useSubmission';
 import { Page } from '../components/Page';
 
 export function ForgotPasswordPage() {
+  const text = useT().account;
   const { pending, error, submit } = useSubmission();
   const [sent, setSent] = useState(false);
 

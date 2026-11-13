@@ -3,11 +3,12 @@ import type { FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { api, ApiError } from '../api';
 import { isInvalidLink, linkErrorMessage, validateNewPassword } from '../account/model';
-import { accountText as text } from '../account/strings';
+import { useT } from '../i18n';
 import { useSubmission } from '../auth/useSubmission';
 import { Page } from '../components/Page';
 
 export function ResetPasswordPage() {
+  const text = useT().account;
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
   const { pending, error, submit } = useSubmission();

@@ -8,7 +8,7 @@ import { Page } from '../components/Page';
 import { eventStatusLabel, parseEventId } from '../events/details';
 import { canManageEvents, canOrganize, emptyEventDraft, eventDraft, eventPayload, organizerError, readManagedEvent } from '../organizer/model';
 import type { EventDraft, ManagedEvent } from '../organizer/model';
-import { organizerText as text } from '../organizer/strings';
+import { useT } from '../i18n';
 import { OrganizerGate } from './OrganizerPage';
 
 type Load = { kind: 'loading' } | { kind: 'ready'; event: ManagedEvent } | { kind: 'notFound' } | { kind: 'error'; message: string };
@@ -26,6 +26,7 @@ function Problem({ error }: { error: unknown }) {
 }
 
 function EventForm({ original, onSaved }: { original?: ManagedEvent; onSaved: (event: ManagedEvent, changed: boolean) => void }) {
+  const text = useT().organizer;
   const { request } = useAuth();
   const { pending, error, submit } = useSubmission();
   const [draft, setDraft] = useState<EventDraft>(() => (original ? eventDraft(original) : emptyEventDraft()));
@@ -70,6 +71,7 @@ function EventForm({ original, onSaved }: { original?: ManagedEvent; onSaved: (e
 }
 
 function StatusActions({ event, onChanged }: { event: ManagedEvent; onChanged: (event: ManagedEvent, notice: string) => void }) {
+  const text = useT().organizer;
   const { request } = useAuth();
   const { pending, error, submit } = useSubmission();
   const [confirming, setConfirming] = useState(false);
@@ -125,6 +127,7 @@ export function EventEditorPage() {
 }
 
 function EventEditor({ id }: { id: string | undefined }) {
+  const text = useT().organizer;
   const creating = id === undefined;
   const eventId = creating ? null : parseEventId(id);
   const { user, request } = useAuth();

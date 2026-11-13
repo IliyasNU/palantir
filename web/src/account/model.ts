@@ -1,11 +1,11 @@
 import { ApiError, getErrorMessage } from '../api/client.ts';
 import { passwordIssues } from '../auth/formErrors.ts';
-import { accountText } from './strings.ts';
+import { current } from '../i18n/index.ts';
 
 /** The same password rules as registration, checked before the request is sent. */
 export function validateNewPassword(password: string): void {
   const issues = passwordIssues(password);
-  if (issues.length) throw new ApiError(accountText.reset.checkForm, { kind: 'validation', status: 422, issues });
+  if (issues.length) throw new ApiError(current().account.reset.checkForm, { kind: 'validation', status: 422, issues });
 }
 
 /** True for the API's answer to a verification or reset link that is invalid, expired or already used. */
@@ -14,8 +14,8 @@ export function isInvalidLink(error: unknown): boolean {
 }
 
 export function linkErrorMessage(error: unknown): string {
-  if (isInvalidLink(error)) return accountText.invalidLink;
-  if (error instanceof ApiError && error.status === 422) return accountText.reset.checkForm;
+  if (isInvalidLink(error)) return current().account.invalidLink;
+  if (error instanceof ApiError && error.status === 422) return current().account.reset.checkForm;
   return getErrorMessage(error);
 }
 
