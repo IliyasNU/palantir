@@ -1,13 +1,13 @@
 # Mobile device acceptance
 
-Use the same test API and isolated PostgreSQL database for the visitor website and both phones. The earlier iPhone check with an API-issued QR displayed as a PNG is useful baseline evidence. This checklist records the website-to-phone run, the attendance screens, and the physical Android result on the candidate being reviewed.
+Use the same test API and isolated PostgreSQL database for the visitor website and both phones. The [device results](DEVICE-RESULTS.md) record the user-reported iPhone checks and the scenarios that remain unverified. This checklist covers the complete website-to-phone run, attendance screens and physical Android acceptance on the candidate being reviewed.
 
 ## Set up the run
 
 1. Record the full Git SHA for mobile, web, and backend, the device model and OS, the Expo Go or build version, and the date. If the components come from separate checkouts, record each SHA separately.
 2. Follow the [root setup](../README.md) and the [PostgreSQL locale setup](../backend/README.md#w2-postgresql-16-locale-and-acceptance). Record the PostgreSQL version, migration head, UTF-8 and ICU locale, and a successful `GET /health`. Verify the phone can reach that same API. For a local run, set `EXPO_PUBLIC_API_URL` to the computer’s reachable LAN address and start Expo with `npx expo start --go --lan` from `mobile/`.
 3. Publish a test event and assign a staff account. Prepare separate attendee accounts and fresh tickets through the website, with enough capacity for the timing samples. Keep an account without an assignment and a second event for permission and wrong-event checks.
-4. For ticket states and undo, the backend must include migration `0003` ([PR #10](https://github.com/IliyasNU/palantir/pull/10)); `alembic current` then prints `0003 (head)`. Prepare two more tickets: cancel one with `POST /tickets/{id}/cancel` as its attendee and mark the other refunded with `POST /tickets/{id}/refund` as the organizer. Sign in on the phone once as assigned staff and once as the event's organizer.
+4. Ticket states and undo were introduced by migration `0003`. Apply all migrations: the current PR #26 candidate reports `0004 (head)`. Prepare two more tickets: cancel one with `POST /tickets/{id}/cancel` as its attendee and mark the other refunded with `POST /tickets/{id}/refund` as the organizer. Sign in on the phone once as assigned staff and once as the event's organizer.
 
 ## Verify the admission flow
 
@@ -25,13 +25,15 @@ Use the same test API and isolated PostgreSQL database for the visitor website a
 | As assigned staff, find an admitted visitor. As the organizer, find the same visitor, tap the undo action, cancel the dialog, then tap it again and confirm. | Staff see no undo action. The organizer's cancelled dialog changes nothing. After confirming, search shows the visitor as not admitted and the total drops by one. The `check_ins` row is still there with `undone_at` set. |
 | As the organizer, scan a fresh ticket and undo it from the result screen. Scan the same ticket again. | The result changes to the undone message. The second scan admits again. Two rows exist for the ticket and one has `undone_at IS NULL`. |
 | As the organizer, start an undo and switch the network off before confirming. Restore it and tap the retry button. | The scanner lists the undo as unconfirmed with its request ID and offers a retry. After the retry the entry is undone once: one row for that admission with `undone_at` set. |
-| Run the test API with `ACCESS_TOKEN_EXPIRE_MINUTES=1`. As the organizer, start an undo with the network off, restore the network, wait two minutes and tap the retry. Tap “Войти снова”, sign in as another account, sign out, then sign in as the organizer. | The retry asks to sign in again. The other account sees no unconfirmed undo. The organizer sees the event marked, opens it, and the retry shows the same request ID and is confirmed. `undo_request_id` in the row equals the ID shown on the phone. |
-| On the website open the ticket and press “Скачать билет в PDF” (needs [PR #11](https://github.com/IliyasNU/palantir/pull/11) and [PR #12](https://github.com/IliyasNU/palantir/pull/12) on the candidate). Print the file on A4 in grayscale at 100% scale, without “fit to page”. Scan the paper, then scan the same ticket on the website. | The paper is admitted. The screen copy is then reported as already used. One current `check_ins` row exists for the ticket. Printing a screenshot only exercises camera readability and does not count for this row. |
+| As the organizer, start an undo with the network off and wait for the unconfirmed result. Return to events and explicitly sign out without restarting the app. Restore the network, sign in as another account, sign out, then sign in as the original organizer and retry. | The other account sees no unconfirmed undo. The organizer sees the event marked, opens it, and the retry shows the same request ID and is confirmed. `undo_request_id` equals the ID on the phone. This checks account isolation; dropping a response after a server commit needs a separate controlled fault-injection run. |
+| Set `ACCESS_TOKEN_EXPIRE_MINUTES=3` on the disposable API, restart it and sign in afresh. Keep the scanner open for five minutes and scan a fresh ticket. Background the app for five minutes, return and scan another fresh ticket. Restore the setting afterwards. | Both scans are confirmed once without a password prompt. A short access-token lifetime alone must not force logout; refused-refresh recovery is a separate check in the README. |
+| On the website open the ticket and press “Скачать билет в PDF”. The PDF route and web download action are included in this candidate. Print the file on A4 in grayscale at 100% scale, without “fit to page”. Scan the paper, then scan the same ticket on the website. | The paper is admitted. The screen copy is then reported as already used. One current `check_ins` row exists for the ticket. Printing a screenshot only exercises camera readability and does not count for this row. |
 
 To confirm the first two rows, run this read-only query on the isolated database with the recorded ticket ID:
 
 ```sql
-SELECT count(*) FROM check_ins WHERE ticket_id = <test_ticket_id>;
+SELECT count(*) FROM check_ins
+WHERE ticket_id = <test_ticket_id> AND undone_at IS NULL;
 ```
 
 An uncertain response may have committed on the server. Keep the visitor waiting and retry the same request or have the organizer verify the record. If the app was restarted, the pending request is gone: use the organizer check before deciding whether the visitor can enter, and do not rescan the ticket to find out, because a rescan of an unadmitted ticket admits it.
@@ -41,7 +43,7 @@ An uncertain response may have committed on the server. Keep the visitor waiting
 The organizer check answers one question: does this ticket have a current admission on the server? The event's organizer or an administrator looks the ticket up in one of these ways:
 
 1. `GET /events/{event_id}/attendees?q=<name or email>` in the API docs at `/docs`, signed in as the organizer.
-2. The read-only `check_ins` query above with the ticket ID, when the organizer has database access on the test setup. On a backend with migration `0003`, add `AND undone_at IS NULL` to count current admissions only.
+2. The read-only `check_ins` query above with the ticket ID, when the organizer has database access on the test setup. It counts current admissions only; omit `AND undone_at IS NULL` when separately checking historical row counts after undo.
 
 Read the answer with these limits in mind:
 
@@ -60,4 +62,4 @@ Record 10 scans of fresh tickets on the intended test network. For each sample, 
 
 For each exercise, log the date, component SHAs, phone model/OS, app version, network, result (`passed`, `failed`, or `pending`), and brief evidence. Use synthetic tickets and redact credentials, tokens and QR payloads. Record iOS and physical Android separately. If no Android phone was available, mark the physical Android result `pending`. Expo bundle exports are recorded under build checks.
 
-Cancelled and refunded tickets and undo need a backend with migration `0003`. If the candidate does not contain it, record those rows as pending with that reason.
+Use the full migration head from the candidate being tested. Record an unavailable or unperformed check as pending with its actual reason; do not treat successful unit tests or JavaScript exports as physical-phone results.
