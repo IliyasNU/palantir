@@ -103,6 +103,8 @@ test('forgot password shows the same message whatever the server answers and nev
     await page.goto('/login');
     await page.getByRole('link', { name: 'Забыли пароль?' }).click();
     await expect(page).toHaveURL('/forgot-password');
+    // The URL changes before React swaps the page, and both pages have an "Email" field: wait for the new one.
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Сброс пароля');
     await page.getByLabel('Email', { exact: true }).fill('known@example.com');
     const before = bodies.length;
     await page.getByRole('button', { name: 'Отправить ссылку' }).click();
