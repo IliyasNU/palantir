@@ -68,6 +68,11 @@ button.nav-link { color: inherit; background: transparent; }
 .auth-form input { width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid #839885; border-radius: 8px; background: #fff; color: #183629; }
 .auth-form input:disabled { background: #f1f3ef; }
 .auth-form .button { border: 0; margin-top: 18px; }
+.auth-form textarea { font: inherit; width: 100%; padding: 10px 12px; border: 1px solid #839885; border-radius: 8px; background: #fff; color: #183629; resize: vertical; }
+.organizer-events { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 20px; }
+.organizer-events > li { padding-top: 20px; border-top: 1px solid #d5ddd2; min-width: 0; }
+.organizer-events h3 { overflow-wrap: anywhere; }
+.organizer-links, .event-status-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px; }
 .field-hint { margin: 0; font-size: 13px; }
 .notice { padding: 16px; margin-bottom: 20px; border: 1px solid; border-radius: 9px; line-height: 1.6; overflow-wrap: anywhere; }
 .notice p { margin: 0; color: inherit; }
