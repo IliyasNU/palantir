@@ -2,12 +2,15 @@ import { Navigate, Route, Routes } from 'react-router';
 import { Layout } from './components/Layout';
 import { EventDetailsPage } from './pages/EventDetailsPage';
 import { EventsPage } from './pages/EventsPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { RegisterPage } from './pages/RegisterPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { TicketsPage } from './pages/TicketsPage';
 import { TicketDetailsPage } from './pages/TicketDetailsPage';
 import { TicketTypesPage } from './pages/TicketTypesPage';
+import { VerifyEmailPage } from './pages/VerifyEmailPage';
 
 export function App() {
   return (
@@ -21,6 +24,9 @@ export function App() {
         <Route path="organizer/events/:id/ticket-types" element={<TicketTypesPage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
+        <Route path="forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="reset-password" element={<ResetPasswordPage />} />
+        <Route path="verify-email" element={<VerifyEmailPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
