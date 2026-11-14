@@ -311,6 +311,67 @@ PDF and check-in. Physical phone/printing and the actual demo database remain un
 One earlier browser run timed out during login in the existing PDF refusal test; it passed in
 the final full run without a test change. These checks are agent verification, not a teammate review.
 
+## Support cases (SRS 4.13)
+
+Revision `0008` adds `support_cases` and `support_messages`. On this branch it follows `0006`; after the
+account e-mail branch merges as `0007`, its `down_revision` becomes `0007`.
+
+An `attendee` case is a request to the organizer of an event; that organizer and admins handle it.
+An `organizer` case is a request to platform support; admins handle it.
+
+| Method and path | Access | Result |
+| --- | --- | --- |
+| `POST /support/cases` | Logged in | Open a case with its first message (201) |
+| `GET /support/cases/mine?status=&limit=&offset=` | Logged in | Cases you opened, latest activity first |
+| `GET /support/cases/{id}` | Requester or handler | The case, its context and whole thread |
+| `GET /support/cases/{id}/messages?after_id=` | Requester or handler | Messages newer than `after_id`, oldest first |
+| `POST /support/cases/{id}/messages` | Requester or handler | Body `{"body": "..."}` (1–4000 characters), 201 |
+| `PATCH /support/cases/{id}` | Handler; requester may only resolve | Body `{"status"?, "assignee_id"?}` |
+| `GET /events/{id}/support-cases?status=&limit=&offset=` | Event owner or admin | Attendee cases of the event |
+| `GET /admin/support-cases?kind=&status=&limit=&offset=` | Admin | Every case; `kind=organizer` is the platform queue |
+
+Opening a case:
+
+```json
+{
+  "kind": "attendee",
+  "category": "ticket_delivery",
+  "subject": "Ticket did not arrive",
+  "message": "I registered yesterday but cannot find my ticket.",
+  "ticket_id": 21
+}
+```
+
+- `kind` is `attendee` (default) or `organizer`. Only organizers can open an `organizer` case.
+- `category` for an attendee case: `ticket_delivery`, `payment`, `refund`, `seating`, `event_information`,
+  `check_in`, `account`, `technical`. For an organizer case: `account`, `activation`, `payment`, `technical`.
+  Anything else is `422 CATEGORY_NOT_ALLOWED`.
+- Send the id of the page the request was opened from: `event_id`, `order_id` or `ticket_id`. The API fills in
+  the rest (a ticket brings its event and order, an order its event and ticket). An attendee case needs at least
+  one (`422 CONTEXT_REQUIRED`). Someone else's ticket or order is `404 TICKET_NOT_FOUND` / `404 ORDER_NOT_FOUND`,
+  a hidden or unknown event `404 EVENT_NOT_FOUND`, and ids that do not belong together `422 CONTEXT_MISMATCH`.
+- An organizer case may carry only one of the organizer's own events.
+
+A case response contains `id`, `kind`, `category`, `subject`, `status`, `requester` (`id`, `full_name`,
+`masked_email`), `assignee` (`id`, `full_name`, or `null`), `event_id`, `event_title`, `order_id`, `ticket_id`,
+`created_at`, `updated_at`, `last_message_at` and `last_message_by` (`requester` or `staff`). The single-case
+response adds `viewer_side` (which side you write as), `can_manage` (whether you may assign it and set any
+status), `context` (`event`, `order`, `ticket` summaries or `null`) and `messages`. Each message has `id`,
+`author_id`, `author_name`, `author_side`, `body` and `created_at`.
+
+Statuses are `open`, `in_progress`, `waiting_for_customer` and `resolved`. A handler sets any of them and may
+assign the case to a handler of that case (`422 INVALID_ASSIGNEE` otherwise); `"assignee_id": null` removes the
+assignment. The requester may only send `{"status": "resolved"}`; anything else is `403 FORBIDDEN`. When the
+requester replies, a case that was `waiting_for_customer` becomes `in_progress` and a `resolved` case becomes
+`open`. Repeating a change does nothing.
+
+Anyone who is neither the requester nor a handler gets `404 CASE_NOT_FOUND` on every case route. For a screen
+that refreshes periodically, poll `GET /support/cases/{id}/messages?after_id=<last id you have>`; in lists,
+`last_message_by` different from your own side means there is a reply you have not answered.
+
+Opening a case, each status change and each assignment are written to the action log (`support_case.*`), for the
+case's event or as a platform action. Message text is never copied there. E-mail notifications are not sent yet.
+
 ## Admin accounts
 
 Admins cannot register through the API. Create one (or promote an existing user) with:
