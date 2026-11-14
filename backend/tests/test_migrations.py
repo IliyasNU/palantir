@@ -219,3 +219,40 @@ def test_downgrade_refuses_to_drop_a_suspension_or_a_platform_action(tmp_path, s
     with engine.connect() as connection:
         assert "suspended_at" in {column["name"] for column in inspect(connection).get_columns("events")}
     engine.dispose()
+
+
+SUPPORT_CASE = (
+    "INSERT INTO support_cases (kind, requester_id, event_id, ticket_id, category, subject, last_message_by) "
+    "VALUES ('{kind}', 2, {event_id}, 2, 'check_in', 'Could not enter', 'requester')"
+)
+
+
+def test_0008_adds_support_cases_to_existing_data_and_refuses_to_drop_them(tmp_path):
+    config, engine = _database_with_a_checked_in_ticket(tmp_path, "migration_0008.db")
+    command.upgrade(config, "0006")
+    assert "support_cases" not in inspect(engine).get_table_names()
+
+    command.upgrade(config, "head")
+    assert {"support_cases", "support_messages"} <= set(inspect(engine).get_table_names())
+    assert schema_drift(engine) == []
+    with engine.begin() as connection:
+        connection.execute(text(SUPPORT_CASE.format(kind="attendee", event_id=1)))
+        connection.execute(text(
+            "INSERT INTO support_messages (case_id, author_id, author_side, body) VALUES (1, 2, 'requester', 'Help')"
+        ))
+        status, tickets = connection.execute(text(
+            "SELECT (SELECT status FROM support_cases), (SELECT count(*) FROM tickets)"
+        )).one()
+    assert (status, tickets) == ("open", 2)  # the default status applies and the older data is untouched
+    # An attendee case without an event has no handlers, so the database refuses it.
+    with pytest.raises(Exception, match="attendee_case_has_event|CHECK"), engine.begin() as connection:
+        connection.execute(text(SUPPORT_CASE.format(kind="attendee", event_id="NULL")))
+
+    with pytest.raises(RuntimeError, match="Cannot downgrade below 0008"):
+        command.downgrade(config, "0006")
+    with engine.begin() as connection:
+        connection.execute(text("DELETE FROM support_messages"))
+        connection.execute(text("DELETE FROM support_cases"))
+    command.downgrade(config, "0006")
+    assert not ({"support_cases", "support_messages"} & set(inspect(engine).get_table_names()))
+    engine.dispose()

@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.routers import attendance, check_ins, events, health, organizer_profiles, staff, tickets
 from app.routers import admin, ticket_types
 from app.routers import orders, paid_sales
+from app.routers import support
 
 settings = get_settings()
 
@@ -79,3 +80,4 @@ app.include_router(ticket_types.router)
 app.include_router(admin.router)
 app.include_router(orders.router)
 app.include_router(paid_sales.router)
+app.include_router(support.router)
