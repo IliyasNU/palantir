@@ -19,7 +19,10 @@ export interface EventActionsProps {
 export function EventActions(props: EventActionsProps) {
   const { user } = useAuth();
   return user ? <VisitorActions key={`${user.id}:${props.event.id}`} {...props} />
-    : <p><Link className="button" to={authLink('/login', props.returnTo)}>Войти, чтобы получить билет</Link></p>;
+    : <p><Link className="button" to={authLink('/login', props.returnTo)}>
+      {props.event.status === 'published' && props.remainingSeats !== 0
+        ? 'Войти, чтобы получить билет' : 'Войти и проверить мои билеты'}
+    </Link></p>;
 }
 
 function VisitorActions({ event, remainingSeats }: EventActionsProps) {
