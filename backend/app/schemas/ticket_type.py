@@ -93,9 +93,10 @@ class ActionLogRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    event_id: int
+    event_id: Optional[int]  # null for platform actions that belong to no event
     occurred_at: UTCDateTime
     actor_id: int
+    actor_name: str
     action: str
     entity_type: str
     entity_id: int

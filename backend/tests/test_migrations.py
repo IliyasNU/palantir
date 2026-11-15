@@ -164,3 +164,58 @@ def test_downgrade_refuses_to_reinterpret_closed_tickets_or_undone_check_ins(tmp
     with engine.connect() as connection:
         assert "status" in {column["name"] for column in inspect(connection).get_columns("tickets")}
     engine.dispose()
+
+
+def _log_row(connection, event_id):
+    connection.execute(
+        text(
+            "INSERT INTO action_logs (event_id, actor_id, action, entity_type, entity_id, description) "
+            "VALUES (:event_id, 1, 'user.suspended', 'user', 2, 'test')"
+        ),
+        {"event_id": event_id},
+    )
+
+
+def test_0005_keeps_existing_events_unsuspended_and_existing_history_attached(tmp_path):
+    config, engine = _database_with_a_checked_in_ticket(tmp_path, "migration_0005.db")
+    command.upgrade(config, "0004")
+    with engine.begin() as connection:
+        _log_row(connection, 1)
+    with pytest.raises(Exception, match="NOT NULL"), engine.begin() as connection:
+        _log_row(connection, None)  # revision 0004 cannot hold a platform action
+
+    command.upgrade(config, "head")
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT suspended_at FROM events")).scalar_one() is None
+        assert connection.execute(text("SELECT event_id FROM action_logs")).scalar_one() == 1
+        _log_row(connection, None)
+        connection.execute(text("DELETE FROM action_logs WHERE event_id IS NULL"))
+    assert schema_drift(engine) == []
+
+    command.downgrade(config, "0004")  # nothing suspended and no platform action: the data fits 0004 again
+    with engine.connect() as connection:
+        assert "suspended_at" not in {column["name"] for column in inspect(connection).get_columns("events")}
+        assert connection.execute(text("SELECT event_id FROM action_logs")).scalar_one() == 1
+    with pytest.raises(Exception, match="NOT NULL"), engine.begin() as connection:
+        _log_row(connection, None)
+    engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "UPDATE events SET suspended_at = '2030-01-01'",
+        "INSERT INTO action_logs (event_id, actor_id, action, entity_type, entity_id, description) "
+        "VALUES (NULL, 1, 'user.suspended', 'user', 2, 'test')",
+    ],
+)
+def test_downgrade_refuses_to_drop_a_suspension_or_a_platform_action(tmp_path, statement):
+    config, engine = _database_with_a_checked_in_ticket(tmp_path, "migration_0005_refuse.db")
+    command.upgrade(config, "head")
+    with engine.begin() as connection:
+        connection.execute(text(statement))
+    with pytest.raises(RuntimeError, match="Cannot downgrade below 0005"):
+        command.downgrade(config, "0004")
+    with engine.connect() as connection:
+        assert "suspended_at" in {column["name"] for column in inspect(connection).get_columns("events")}
+    engine.dispose()

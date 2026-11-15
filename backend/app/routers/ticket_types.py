@@ -2,12 +2,13 @@
 from fastapi import APIRouter, status
 from sqlalchemy import select
 
-from app.audit import record_action
+from app.audit import read_actions, record_action
+from app.dependencies.action_log import LogFilters
 from app.dependencies.auth import CurrentUser, OptionalUser
 from app.dependencies.db import DbSession
 from app.dependencies.events import ensure_can_manage, get_event_or_404, is_visible
 from app.errors import api_error
-from app.models import ActionLog, TicketType
+from app.models import TicketType
 from app.schemas.common import to_utc
 from app.schemas.ticket_type import ActionLogRead, TicketTypeCreate, TicketTypeRead, TicketTypeUpdate
 from app.ticket_types import check_allocation, lock_event
@@ -88,8 +89,11 @@ def update_ticket_type(event_id: int, type_id: int, payload: TicketTypeUpdate, d
 
 
 @router.get("/events/{event_id}/action-log", response_model=list[ActionLogRead])
-def read_action_log(event_id: int, db: DbSession, current_user: CurrentUser):
+def read_action_log(event_id: int, db: DbSession, current_user: CurrentUser, filters: LogFilters):
+    """The event's timeline, newest first (its organizer or an admin). Optional date, action and paging filters."""
     event = get_event_or_404(db, event_id)
     ensure_can_manage(event, current_user)
-    return db.scalars(select(ActionLog).where(ActionLog.event_id == event_id)
-                      .order_by(ActionLog.occurred_at.desc(), ActionLog.id.desc())).all()
+    return read_actions(
+        db, event_id=event.id, date_from=filters.date_from, date_to=filters.date_to, action=filters.action,
+        limit=filters.limit, offset=filters.offset,
+    )
