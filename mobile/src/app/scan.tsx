@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { api, type StaffSession, type UndoReceipt } from '../api';
 import { AttendanceCount, AttendeeSearch, PendingUndos, UndoEntry } from '../attendance';
 import { createScanSession, type ScanResult } from '../scanner';
+import { AdmittedDetails } from '../door';
 import { useSession } from '../session';
 import { useLanguage } from '../language';
 import { errorMessage, localeTag } from '../messages';
@@ -277,6 +278,7 @@ function EventScanner({ eventId, title, session, canUndo }: {
           {error && pending && !retryable && error.status !== 401 && error.status !== 403 &&
             <Text>{copy.askOrganizer}</Text>}
           {result.receipt && <Text>{copy.ticket} #{result.receipt.ticket_id} · {new Date(result.receipt.checked_in_at).toLocaleTimeString(localeTag(locale))}</Text>}
+          {result.receipt && <AdmittedDetails key={result.receipt.ticket_id} token={token} eventId={eventId} ticketId={result.receipt.ticket_id} />}
           {retryable && <Button title={copy.retry} onPress={() => show(scanner.retry())} />}
           {result.error?.status === 401 && <View style={styles.box}>
             <Text>{copy.reauthenticate}</Text>

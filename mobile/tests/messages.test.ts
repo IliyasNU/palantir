@@ -45,3 +45,11 @@ test('Russian, Kazakh and English define the same screen text and error codes', 
   assert.notEqual(messages.en.admitted, messages.ru.admitted);
   assert.notEqual(messages.en.errors.INVALID_TICKET, messages.kk.errors.INVALID_TICKET);
 });
+
+test('a campaign QR is explained as not a ticket in every language', () => {
+  for (const locale of ['ru', 'kk', 'en'] as const) {
+    const error = new ApiError('CAMPAIGN_QR_NOT_A_TICKET', 'x', 422);
+    assert.equal(errorMessage(error, locale), messages[locale].errors.CAMPAIGN_QR_NOT_A_TICKET);
+    assert.notEqual(messages[locale].errors.CAMPAIGN_QR_NOT_A_TICKET, messages[locale].errors.INVALID_TICKET);
+  }
+});

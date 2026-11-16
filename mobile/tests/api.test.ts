@@ -116,6 +116,7 @@ test('HTTP errors distinguish duplicate, invalid ticket and access problems', as
     [409, 'EVENT_NOT_PUBLISHED', 'EVENT_NOT_PUBLISHED'],
     [409, 'REQUEST_ID_CONFLICT', 'REQUEST_ID_CONFLICT'],
     [422, 'INVALID_INPUT', 'INVALID_INPUT'],
+    [422, 'CAMPAIGN_QR_NOT_A_TICKET', 'CAMPAIGN_QR_NOT_A_TICKET'],
     [401, '', 'UNAUTHORIZED'],
     [403, '', 'FORBIDDEN'],
     [501, '', 'SERVER_ERROR'],
@@ -198,4 +199,23 @@ test('configuration requires a reachable backend address instead of phone localh
   }
   assert.equal(apiAddress('http://192.168.1.100:8000/'), 'http://192.168.1.100:8000');
   assert.equal(apiAddress('https://example.com/api/'), 'https://example.com/api');
+});
+
+test('door details are extra information: valid rows only, at most twenty ids, in one request', async () => {
+  const calls: string[] = [];
+  const client = (body: unknown) => createApi('https://api.example.test', async url => {
+    calls.push(String(url));
+    return new Response(JSON.stringify(body), { status: 200 });
+  });
+  const rows = [{ ticket_id: 3, full_name: 'Айгерим', ticket_type: 'Партер', seat_label: 'C-7' },
+    { ticket_id: 5, full_name: 'Ерлан', ticket_type: null, seat_label: null }];
+  assert.deepEqual(await client(rows).doorDetails('token', 9, [5, 3, 3]), rows);
+  assert.equal(calls[0], 'https://api.example.test/events/9/door-details?ticket_id=5&ticket_id=3');
+  assert.deepEqual(await client([]).doorDetails('token', 9, []), []);
+  assert.equal(calls.length, 1); // nothing is asked for an empty list
+  await client([]).doorDetails('token', 9, Array.from({ length: 30 }, (_, index) => index + 1));
+  assert.equal(new URL(calls[1]).searchParams.getAll('ticket_id').length, 20);
+  for (const broken of [[{ ...rows[0], ticket_id: 99 }], [{ ...rows[0], full_name: null }], [{ ...rows[0], seat_label: 7 }], 'nothing']) {
+    await assert.rejects(client(broken).doorDetails('token', 9, [3, 5]), (error: unknown) => error instanceof ApiError && error.code === 'SERVER_ERROR');
+  }
 });

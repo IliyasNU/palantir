@@ -70,6 +70,7 @@ function EventsList({ token, userId }: { token: string; userId: number }) {
       <FlatList data={loading ? [] : events} keyExtractor={item => String(item.id)}
         ListEmptyComponent={!loading && error === null ? <Text>{copy.noEvents}</Text> : undefined}
         renderItem={({ item }) => (
+          <View>
           <Pressable accessibilityRole="button" accessibilityLabel={`${copy.scanTickets}: ${item.title}`} style={styles.event}
             disabled={loading} accessibilityState={{ disabled: loading }}
             onPress={() => {
@@ -85,6 +86,12 @@ function EventsList({ token, userId }: { token: string; userId: number }) {
             {unconfirmed.has(item.id) && <Text accessibilityRole="alert" style={styles.error}>{copy.eventUndoPending}</Text>}
             <Text style={styles.link}>{copy.scanTickets} →</Text>
           </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={`${copy.offlineOpen}: ${item.title}`} style={styles.offline}
+            disabled={loading} accessibilityState={{ disabled: loading }}
+            onPress={() => { if (!loading) router.push({ pathname: '/offline', params: { id: String(item.id), title: item.title } }); }}>
+            <Text style={styles.link}>{copy.offlineOpen} →</Text>
+          </Pressable>
+          </View>
         )} />
     </SafeAreaView>
   );
@@ -97,5 +104,6 @@ const styles = StyleSheet.create({
   event: { padding: 18, marginBottom: 14, borderRadius: 10, backgroundColor: 'white', borderWidth: 1, borderColor: '#cbd5e1', gap: 6 },
   title: { fontSize: 19, fontWeight: '600' },
   link: { color: '#163d79', fontWeight: '600', marginTop: 8 },
+  offline: { marginTop: -8, marginBottom: 18, paddingHorizontal: 18, paddingBottom: 8 },
   error: { color: '#9f1c25', marginBottom: 20 },
 });

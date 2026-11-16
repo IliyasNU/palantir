@@ -6,6 +6,7 @@ import { useLanguage } from './language';
 import { emptyLoad, loadFailed, loadSucceeded, loadView } from './loading';
 import { errorMessage, localeTag } from './messages';
 import { createUndoStore } from './undo';
+import { DoorLines, useDoorDetails } from './door';
 
 type EventAccess = {
   token: string;
@@ -133,9 +134,28 @@ function AttendeeResults({ token, userId, eventId, term, canUndo, canAct, onMark
   }
   if (!result.data.length) return <Text accessibilityLiveRegion="polite">{copy.noAttendees}</Text>;
 
-  return result.data.map(item => <View key={item.ticket_id} style={styles.attendee}>
+  return <AttendeeRows rows={result.data} token={token} userId={userId} eventId={eventId} canUndo={canUndo} canAct={canAct}
+    onMark={payload => { if (attached.current) onMark(payload); }} onUndone={onUndone} />;
+}
+
+// The found tickets, each with its ticket type and seat read in one extra request for the whole list.
+function AttendeeRows({ rows, token, userId, eventId, canUndo, canAct, onMark, onUndone }: {
+  rows: Attendee[];
+  token: string;
+  userId: number;
+  eventId: number;
+  canUndo: boolean;
+  canAct: () => boolean;
+  onMark: (payload: string) => void;
+  onUndone: () => void;
+}) {
+  const { copy, locale } = useLanguage();
+  const details = useDoorDetails(token, eventId, rows.map(item => item.ticket_id));
+
+  return rows.map(item => <View key={item.ticket_id} style={styles.attendee}>
     <Text style={styles.count}>{item.full_name}</Text>
     <Text>{item.masked_email}</Text>
+    <DoorLines details={details.get(item.ticket_id)} withName={false} />
     {item.status === 'cancelled' ? <Text style={styles.error}>{copy.ticketCancelled}</Text>
       : item.status === 'refunded' ? <Text style={styles.error}>{copy.ticketRefunded}</Text>
         : item.checked_in_at !== null ? <>
@@ -144,7 +164,7 @@ function AttendeeResults({ token, userId, eventId, term, canUndo, canAct, onMark
             checkInId={item.check_in_id} name={item.full_name} canAct={canAct} onUndone={onUndone} />}
         </> : (
           <Button title={copy.markEntry} accessibilityLabel={`${copy.markEntry} · ${item.full_name}`}
-            onPress={() => { if (attached.current) onMark(item.qr_payload); }} />
+            onPress={() => onMark(item.qr_payload)} />
         )}
   </View>);
 }

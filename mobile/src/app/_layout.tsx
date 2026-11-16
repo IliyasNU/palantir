@@ -25,6 +25,7 @@ function Navigation() {
         <Stack.Screen name="index" options={{ title: 'BiletFlow Staff' }} />
         <Stack.Screen name="events" options={{ title: copy.eventsTitle, headerBackVisible: false }} />
         <Stack.Screen name="scan" options={{ title: copy.scanTitle }} />
+        <Stack.Screen name="offline" options={{ title: copy.offlineTitle }} />
       </Stack>
     </>
   );

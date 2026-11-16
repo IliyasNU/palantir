@@ -30,7 +30,19 @@ export type Attendee = {
   qr_payload: string;
 };
 
+// What the door shows next to a ticket number: the holder, the ticket type and the seat (if the ticket has one).
+export type DoorDetails = { ticket_id: number; full_name: string; ticket_type: string | null; seat_label: string | null };
+
 export type ScanRequest = { qr_payload: string; request_id: string };
+export type OfflineScanRequest = { client_scan_id: string; qr_payload: string; scanned_at: string };
+export type OfflineScanResult = {
+  client_scan_id: string;
+  result: 'accepted' | 'conflict' | 'rejected';
+  code?: string;
+  ticket_id?: number;
+  checked_in_at?: string;
+  conflict?: { checked_in_at: string; staff_name: string };
+};
 export type Receipt = {
   status: 'CHECKED_IN';
   event_id: number;
@@ -161,6 +173,9 @@ function httpError(status: number, body: unknown) {
     return new ApiError('NOT_AVAILABLE', 'This API route is unavailable on the configured server.', status);
   }
   if (status === 422) {
+    if (code === 'CAMPAIGN_QR_NOT_A_TICKET') {
+      return new ApiError(code, 'This QR is a promo campaign link, not a ticket. Ask for the ticket QR.', status);
+    }
     if (code === 'QUERY_TOO_SHORT') {
       return new ApiError(code, 'Enter at least three characters to search for an attendee.', status);
     }
@@ -264,6 +279,20 @@ export function createApi(baseUrl: string, fetcher: typeof fetch = fetch, timeou
       }
       return rows;
     },
+    // Name, ticket type and seat for up to 20 tickets of the event. Extra information only: admission is decided
+    // by the check-in receipt, never by this answer.
+    async doorDetails(token: string, eventId: number, ticketIds: readonly number[]): Promise<DoorDetails[]> {
+      const ids = [...new Set(ticketIds)].filter(value => id(value)).slice(0, 20);
+      if (!ids.length) return [];
+      const data = await request(`/events/${eventId}/door-details?${ids.map(value => `ticket_id=${value}`).join('&')}`, token);
+      const text = (value: unknown): value is string | null => value === null || typeof value === 'string';
+      if (!Array.isArray(data) || !data.every(item => object(item) && id(item.ticket_id) && ids.includes(item.ticket_id)
+        && typeof item.full_name === 'string' && text(item.ticket_type) && text(item.seat_label))) {
+        throw new ApiError('SERVER_ERROR', 'The server returned invalid door details.');
+      }
+      return (data as Record<string, unknown>[]).map(item => ({ ticket_id: item.ticket_id as number, full_name: item.full_name as string,
+        ticket_type: item.ticket_type as string | null, seat_label: item.seat_label as string | null }));
+    },
     async checkIn(token: string, eventId: number, body: ScanRequest): Promise<Receipt> {
       const data = await request(`/events/${eventId}/check-in`, token, body);
       // A 2xx status alone is not proof of admission.
@@ -274,6 +303,26 @@ export function createApi(baseUrl: string, fetcher: typeof fetch = fetch, timeou
         throw new ApiError('SERVER_ERROR', 'The server did not confirm this check-in. Do not admit the attendee yet.');
       }
       return data as Receipt;
+    },
+    // Bonus 15: scans queued offline. Every scan must be answered, in order, with its own id; anything else is
+    // treated as no answer, so the queue is kept and the same batch can be sent again.
+    async syncScans(token: string, eventId: number, scans: readonly OfflineScanRequest[]): Promise<OfflineScanResult[]> {
+      const data = await request(`/events/${eventId}/check-in/sync`, token, { scans });
+      const results = object(data) && data.event_id === eventId && Array.isArray(data.results) ? data.results : null;
+      const valid = results !== null && results.length === scans.length && results.every((item, index) => object(item)
+        && item.client_scan_id === scans[index].client_scan_id
+        && (item.result === 'accepted' ? id(item.ticket_id) && time(item.checked_in_at)
+          : (item.result === 'conflict' || item.result === 'rejected') && typeof item.code === 'string')
+        && (item.conflict === undefined || item.conflict === null
+          || (object(item.conflict) && time(item.conflict.checked_in_at) && typeof item.conflict.staff_name === 'string')));
+      if (!valid) throw new ApiError('SERVER_ERROR', 'The server did not confirm the offline scans. Keep the queue and retry.');
+      return (results as Record<string, unknown>[]).map(item => ({
+        client_scan_id: item.client_scan_id as string, result: item.result as OfflineScanResult['result'],
+        ...(typeof item.code === 'string' ? { code: item.code } : {}),
+        ...(id(item.ticket_id) ? { ticket_id: item.ticket_id } : {}),
+        ...(time(item.checked_in_at) ? { checked_in_at: item.checked_in_at } : {}),
+        ...(object(item.conflict) ? { conflict: { checked_in_at: item.conflict.checked_in_at as string, staff_name: item.conflict.staff_name as string } } : {}),
+      }));
     },
     async undoCheckIn(token: string, eventId: number, checkInId: number, requestId: string): Promise<UndoReceipt> {
       const data = await request(`/events/${eventId}/check-ins/${checkInId}/undo`, token, { request_id: requestId });
