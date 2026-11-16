@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
+from app import notifications
 from app.audit import record_action
 from app.db.base import utcnow
 from app.dependencies.auth import CurrentUser, OptionalUser
@@ -13,6 +14,7 @@ from app.errors import api_error
 from app.models import Event, EventStatus
 from app.schemas.common import to_utc
 from app.schemas.event import EventCreate, EventRead, EventUpdate
+from app.ticket_pdf import venue_time
 from app.ticket_types import create_default_type, lock_event, resize_default_or_check_allocation
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -38,6 +40,18 @@ def _describe_changes(event: Event, changes: dict) -> str:
         elif old != new:
             parts.append(f"capacity: {old} -> {new}" if field == "capacity" else f"{field}: changed")
     return "; ".join(parts)
+
+
+def _holder_changes(event: Event, changes: dict) -> list[str]:
+    """The edits a ticket holder must hear about: name, time and place."""
+    lines = []
+    if "title" in changes and changes["title"] != event.title:
+        lines.append(f"Новое название: {changes['title']}")
+    if "date" in changes and to_utc(changes["date"]) != to_utc(event.date):
+        lines.append(f"Новое время: {venue_time(changes['date'])}")
+    if "location" in changes and changes["location"] != event.location:
+        lines.append(f"Новое место: {changes['location']}")
+    return lines
 
 
 @router.get("", response_model=list[EventRead])
@@ -95,11 +109,14 @@ def update_event(event_id: int, payload: EventUpdate, db: DbSession, current_use
     if "capacity" in changes:
         resize_default_or_check_allocation(db, event, changes["capacity"], current_user.id)
     described = _describe_changes(event, changes)
+    holder_changes = _holder_changes(event, changes) if event.status == EventStatus.PUBLISHED.value else []
     for field, value in changes.items():
         setattr(event, field, value)
     if described:
         record_action(db, event_id=event.id, actor_id=current_user.id, action="event.updated", entity_type="event",
                       entity_id=event.id, description=described)
+    if holder_changes:
+        notifications.event_updated(db, event.id, event.title, holder_changes)
     try:
         db.commit()
     except IntegrityError:  # a ticket was issued between the check above and the commit
@@ -143,6 +160,7 @@ def cancel_event(event_id: int, db: DbSession, current_user: CurrentUser):
         event.status = EventStatus.CANCELLED.value
         record_action(db, event_id=event.id, actor_id=current_user.id, action="event.cancelled", entity_type="event",
                       entity_id=event.id, description="Cancelled the event")
+        notifications.event_cancelled(db, event.id, event.title)
     db.commit()
     db.refresh(event)
     return event

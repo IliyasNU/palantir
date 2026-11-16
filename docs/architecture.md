@@ -155,6 +155,15 @@ erDiagram
 | `GET /admin/users`, `POST /admin/users/{id}/suspend\|reactivate` | admin |
 | `GET /admin/events`, `POST /admin/events/{id}/suspend\|reactivate`, `GET /admin/action-log` | admin |
 
+## Notifications
+
+`app/notifications.py` writes a `notifications` row in the same transaction as the change it reports and queues
+the email on the SQLAlchemy session. An `after_commit` listener hands the queue to one worker thread, which keeps emails in commit order; an
+`after_rollback` listener discards it. The ticket PDF is rendered in the worker from its own session, so the claim
+does not hold the event row lock while the PDF is drawn. Only a claim that creates a ticket calls `ticket_issued`,
+so a repeated claim never emails twice. Queued emails are lost if the process stops before sending; the
+notification rows remain.
+
 ## Design decisions
 
 * **One role per user** (`users.role_id`). Simple to enforce and test; can become many-to-many later.

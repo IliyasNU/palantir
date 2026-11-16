@@ -61,3 +61,16 @@ Results on 2026-11-12: 466 SQLite tests and 43 PostgreSQL 16 e2e tests passed; `
 
 - No rate limit on `forgot-password` and `resend-verification`.
 - Refresh tokens are not rotated, so logout revokes only the latest refresh token of that session.
+
+## 13 Nov plan: follow-up, BE-3a, Mailpit, BE-3b
+
+Source: "BiletFlow — Temirlan: tasks and deadlines" (13 Nov).
+The backend requirements document it cites was not available, so the task notes are the spec.
+
+- #21 follow-up (done, in #21): `429 TOO_MANY_REQUESTS` with `Retry-After: 60` on `forgot-password` (per address, registered or not, so it reveals no account) and `resend-verification` (per account); README states logout ends only the presented refresh token.
+- BE-3a (done): `notifications` table (`0007`), `notify(...)` inside the caller's transaction, email after commit from one worker thread, `GET /notifications/me`, `POST /notifications/{id}/read`.
+- Mailpit (done): Compose profile `mail`, inbox at <http://localhost:8025>.
+- BE-3b (done): ticket email with the PDF after a free claim (new tickets only); event updated (title, date or location) and event cancelled emails to active ticket holders.
+- BE-3c (open): order paid with the ticket PDF and payment failed, one email per order; two days after #15 merges.
+
+Verification on 2026-11-16: 481 SQLite tests and 47 PostgreSQL 16 e2e tests passed; `0007` upgrades, downgrades and re-applies; the Compose stack with `--profile mail` delivered the verification, ticket (with PDF), event updated and event cancelled emails to Mailpit in order; with Mailpit stopped, registration and a claim still returned `201` and kept the in-app notification.

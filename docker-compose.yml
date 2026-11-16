@@ -41,6 +41,7 @@ services:
       # Empty SMTP_HOST: emails, links included, go to the backend log.
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       EMAIL_FROM: ${EMAIL_FROM:-BiletFlow <no-reply@biletflow.local>}
@@ -53,6 +54,15 @@ services:
       - ./backend:/app
     # Dev command: migrate, then run with auto-reload.
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  # Demo inbox: `docker compose --profile mail up` with SMTP_HOST=mailpit, SMTP_PORT=1025, SMTP_STARTTLS=false.
+  # Every email the API sends appears at http://localhost:8025; nothing leaves the machine.
+  mailpit:
+    image: axllent/mailpit:v1.27.0
+    profiles: [mail]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
 
 volumes:
   postgres_data:

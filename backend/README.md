@@ -127,11 +127,39 @@ Links open the web app: `FRONTEND_URL/verify-email?token=...` and `FRONTEND_URL/
 Set `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS` (true) and `EMAIL_FROM` to send real mail.
 Without `SMTP_HOST` the API writes each email, link included, to its log instead; in production it logs only that the email was not sent.
 Emails are sent after the response, so an SMTP failure is logged and never fails the request.
+
+To see every email in a local inbox (the defense demo), start Mailpit with the `mail` Compose profile:
+
+```bash
+# from the repository root
+SMTP_HOST=mailpit SMTP_PORT=1025 SMTP_STARTTLS=false docker compose --profile mail up --build
+```
+
+The inbox is at <http://localhost:8025>; Mailpit keeps the messages and delivers nothing outside the machine.
 `forgot-password` and `resend-verification` accept one request a minute and then answer `429 TOO_MANY_REQUESTS` with `Retry-After: 60`.
 The reset limit is keyed by the address, registered or not, so it reveals no accounts; the verification limit is per account.
 
 Logout ends only the session whose refresh token it receives: other devices stay signed in, and the access token of that session keeps working until it expires (30 minutes).
 To end every session, reset the password.
+
+## Notifications (BE-3a, BE-3b)
+
+Revision `0007` adds `notifications`. Each notification is shown in the app and emailed to the user.
+`notify(...)` in `app/notifications.py` adds the row inside the caller's transaction; the email is sent from a worker thread only after that transaction commits, so a rolled-back change sends nothing.
+If the mail server is down the email is logged as failed and the notification stays in the app.
+
+| Kind | When | Email |
+| --- | --- | --- |
+| `ticket.issued` | a free claim creates a ticket (`201`); a repeated claim (`200`) sends nothing | with the ticket PDF attached |
+| `event.updated` | a published event's title, date or location changes | to every holder of an active ticket |
+| `event.cancelled` | a published event is cancelled; cancelling again sends nothing | to every holder of an active ticket |
+
+| Method & path | Access | Notes |
+|---|---|---|
+| `GET /notifications/me?unread=&limit=&offset=` | logged in | yours, newest first; `limit` ≤ 100 (default 50); `unread=true` hides read ones |
+| `POST /notifications/{id}/read` | owner | sets `read_at` once; `404 NOTIFICATION_NOT_FOUND` for someone else's |
+
+A notification has `id`, `kind`, `title`, `body`, `link` (web path such as `/tickets/12` or `/events/3`), `created_at` and `read_at`.
 
 ## Ticket types and action log (P1)
 

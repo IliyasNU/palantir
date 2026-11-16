@@ -5,7 +5,7 @@ the printed page and the screen are one ticket. Everything is drawn in black on 
 which survives grayscale printing.
 """
 from dataclasses import dataclass
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import qrcode
@@ -51,7 +51,11 @@ def qr_matrix(payload: str) -> list[list[bool]]:
 
 
 def _event_time(ticket: Ticket) -> str:
-    moment = ticket.event.date
+    return venue_time(ticket.event.date)
+
+
+def venue_time(moment: datetime) -> str:
+    """The event time as the venue reads it, e.g. "13 ноября 2026, 01:30 (UTC+5)"."""
     if moment.tzinfo is None:  # SQLite returns naive datetimes; they are UTC
         moment = moment.replace(tzinfo=timezone.utc)
     local = moment.astimezone(VENUE_UTC_OFFSET)

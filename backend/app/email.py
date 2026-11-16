@@ -1,20 +1,25 @@
-"""Outgoing email (BE-3). Callers schedule ``send_email`` as a background task so SMTP never blocks a request."""
+"""Outgoing email (BE-3). Callers send it after the response (``BackgroundTasks``) or after commit (``app.notifications``)."""
 import logging
 import smtplib
 from email.message import EmailMessage
+from typing import Optional
 
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 
-def send_email(to: str, subject: str, body: str) -> None:
+Attachment = tuple[str, bytes]  # (filename, PDF bytes)
+
+
+def send_email(to: str, subject: str, body: str, attachment: Optional[Attachment] = None) -> None:
     settings = get_settings()
     if not settings.smtp_host:
         if settings.environment == "production":
             logger.warning("SMTP_HOST is not set; email %r to %s was not sent", subject, to)
         else:
-            logger.warning("Email not sent (no SMTP_HOST)\nTo: %s\nSubject: %s\n\n%s", to, subject, body)
+            attached = f"\n[attachment: {attachment[0]}, {len(attachment[1])} bytes]" if attachment else ""
+            logger.warning("Email not sent (no SMTP_HOST)\nTo: %s\nSubject: %s\n\n%s%s", to, subject, body, attached)
         return
 
     message = EmailMessage()
@@ -22,6 +27,8 @@ def send_email(to: str, subject: str, body: str) -> None:
     message["To"] = to
     message["Subject"] = subject
     message.set_content(body)
+    if attachment:
+        message.add_attachment(attachment[1], maintype="application", subtype="pdf", filename=attachment[0])
     try:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
             if settings.smtp_starttls:
