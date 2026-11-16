@@ -6,7 +6,7 @@ import { api, ApiError, type StaffEvent } from '../api';
 import { useUndoStore } from '../attendance';
 import { useSession } from '../session';
 import { useLanguage } from '../language';
-import { errorMessage } from '../messages';
+import { errorMessage, localeTag } from '../messages';
 
 export default function EventsScreen() {
   const { session } = useSession();
@@ -15,12 +15,13 @@ export default function EventsScreen() {
   if (!session?.token) return <Redirect href="/" />;
   if (!focused) return null;
 
-  // Returning to this screen or changing accounts starts with a fresh list.
-  return <EventsList key={session.token} token={session.token} userId={session.userId} />;
+  // Returning to this screen or changing accounts starts with a fresh list. A renewed token of the same
+  // account only reloads it.
+  return <EventsList key={session.userId} token={session.token} userId={session.userId} />;
 }
 
 function EventsList({ token, userId }: { token: string; userId: number }) {
-  const { setSession } = useSession();
+  const { setSession, renew } = useSession();
   const { copy, locale } = useLanguage();
   const [events, setEvents] = useState<StaffEvent[]>([]);
   const [error, setError] = useState<unknown>(null);
@@ -31,21 +32,26 @@ function EventsList({ token, userId }: { token: string; userId: number }) {
 
   useEffect(() => {
     let active = true;
+    // After a renewal this effect runs again with the new token; the list stays "loading" until then.
+    let renewed = false;
     api.events(token).then(items => {
       if (active) { setEvents(items); setError(null); }
     })
-      .catch(problem => {
+      .catch(async problem => {
         if (!active) return;
         setEvents([]);
         if (problem instanceof ApiError && problem.status === 401) {
-          setSession(null);
-          return;
+          // The access token expired: continue with the refresh token before asking for the password.
+          const fresh = await renew();
+          if (!active) return;
+          if (fresh === 'rejected') { setSession(null); return; }
+          if (fresh !== 'unavailable') { renewed = true; return; }
         }
         setError(problem);
       })
-      .finally(() => { if (active) setBusy(false); });
+      .finally(() => { if (active && !renewed) setBusy(false); });
     return () => { active = false; };
-  }, [token, reload, setSession]);
+  }, [token, reload, setSession, renew]);
 
   return (
     <SafeAreaView edges={['bottom']} style={styles.page}>
@@ -71,7 +77,7 @@ function EventsList({ token, userId }: { token: string; userId: number }) {
               }
             }}>
             <Text style={styles.title}>{item.title}</Text>
-            <Text>{new Date(item.date).toLocaleString(locale === 'kk' ? 'kk-KZ' : 'ru-RU')}</Text>
+            <Text>{new Date(item.date).toLocaleString(localeTag(locale))}</Text>
             <Text>{item.location}</Text>
             {unconfirmed.has(item.id) && <Text accessibilityRole="alert" style={styles.error}>{copy.eventUndoPending}</Text>}
             <Text style={styles.link}>{copy.scanTickets} →</Text>

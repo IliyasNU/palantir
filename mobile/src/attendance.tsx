@@ -4,7 +4,7 @@ import { randomUUID } from 'expo-crypto';
 import { api, ApiError, canSearchAttendees, type Attendance, type Attendee, type UndoReceipt } from './api';
 import { useLanguage } from './language';
 import { emptyLoad, loadFailed, loadSucceeded, loadView } from './loading';
-import { errorMessage, type Locale } from './messages';
+import { errorMessage, localeTag } from './messages';
 import { createUndoStore } from './undo';
 
 type EventAccess = {
@@ -14,8 +14,6 @@ type EventAccess = {
 };
 
 type LoadResult<T> = { data: T } | { error: unknown };
-
-const localeTag = (locale: Locale) => (locale === 'kk' ? 'kk-KZ' : 'ru-RU');
 
 // The parent mounts this only while the scanner screen is focused and the app is active, and remounts the
 // scanner for another account or event. A response that arrives after any of those changes is dropped.
