@@ -82,6 +82,16 @@ def _send_verification(background: BackgroundTasks, user: User) -> None:
     background.add_task(email.send_email, user.email, subject, body)
 
 
+def _throttle(db: DbSession, key: str) -> None:
+    try:
+        service.throttle_email(db, key)
+    except service.TooManyRequestsError:
+        seconds = int(service.EMAIL_INTERVAL.total_seconds())
+        error = api_error(status.HTTP_429_TOO_MANY_REQUESTS, "TOO_MANY_REQUESTS", f"Try again in {seconds} seconds")
+        error.headers = {"Retry-After": str(seconds)}
+        raise error
+
+
 def _invalid_link() -> HTTPException:
     return api_error(status.HTTP_400_BAD_REQUEST, "INVALID_TOKEN", "The link is invalid or has expired")
 
@@ -103,8 +113,9 @@ def verify_email(payload: EmailTokenRequest, db: DbSession):
 
 
 @router.post("/resend-verification", status_code=status.HTTP_202_ACCEPTED)
-def resend_verification(current_user: CurrentUser, background: BackgroundTasks):
-    """Email a new verification link unless the address is already verified."""
+def resend_verification(current_user: CurrentUser, db: DbSession, background: BackgroundTasks):
+    """Email a new verification link unless the address is already verified. Once a minute per account."""
+    _throttle(db, f"verify:{current_user.id}")
     if not current_user.email_verified:
         _send_verification(background, current_user)
     return Response(status_code=status.HTTP_202_ACCEPTED)
@@ -112,7 +123,11 @@ def resend_verification(current_user: CurrentUser, background: BackgroundTasks):
 
 @router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
 def forgot_password(payload: ForgotPasswordRequest, db: DbSession, background: BackgroundTasks):
-    """Email a reset link. The answer is the same for unknown addresses so it reveals no accounts."""
+    """Email a reset link. The answer is the same for unknown addresses so it reveals no accounts.
+
+    The once-a-minute limit is keyed by the address, registered or not, so a 429 reveals nothing either.
+    """
+    _throttle(db, f"reset:{payload.email}")
     found = service.password_reset_token_for(db, payload.email)
     if found is not None:
         user, token = found

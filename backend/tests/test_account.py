@@ -4,10 +4,13 @@ import re
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import update
 
 from app import email
 from app.auth.security import PASSWORD_RESET_TOKEN_TYPE, _create_token, create_email_verification_token
 from app.core.config import get_settings
+from app.db.base import utcnow
+from app.models import EmailThrottle
 from tests.helpers import DEFAULT_PASSWORD
 
 NEW_PASSWORD = "N3w-Passw0rd!"
@@ -66,7 +69,12 @@ def test_verify_email_rejects_bad_tokens(client, outbox):
         assert response.json()["detail"]["code"] == "INVALID_TOKEN"
 
 
-def test_resend_verification_only_while_unverified(client, outbox, create_user):
+def expire_throttles(db):
+    db.execute(update(EmailThrottle).values(requested_at=utcnow() - timedelta(seconds=61)))
+    db.commit()
+
+
+def test_resend_verification_only_while_unverified(client, db, outbox, create_user):
     assert client.post("/auth/resend-verification").status_code == 401
     user = create_user("someone@example.com")
     headers = bearer(login(client, user.email).json())
@@ -76,8 +84,34 @@ def test_resend_verification_only_while_unverified(client, outbox, create_user):
     assert to == user.email
     client.post("/auth/verify-email", json={"token": link_token(body, "/verify-email")})
 
+    expire_throttles(db)
     assert client.post("/auth/resend-verification", headers=headers).status_code == 202
     assert len(outbox) == 1
+
+
+def test_account_emails_are_limited_to_one_a_minute(client, db, outbox, create_user):
+    user = create_user("someone@example.com")
+    other = create_user("other@example.com")
+    headers = bearer(login(client, user.email).json())
+
+    assert client.post("/auth/resend-verification", headers=headers).status_code == 202
+    again = client.post("/auth/resend-verification", headers=headers)
+    assert again.status_code == 429
+    assert again.json()["detail"]["code"] == "TOO_MANY_REQUESTS"
+    assert again.headers["Retry-After"] == "60"
+    # Another account is not affected.
+    assert client.post("/auth/resend-verification", headers=bearer(login(client, other.email).json())).status_code == 202
+
+    # The reset limit is per address and the same for unknown ones, so a 429 reveals no account.
+    for address in (user.email, "nobody@example.com"):
+        assert client.post("/auth/forgot-password", json={"email": address}).status_code == 202
+        assert client.post("/auth/forgot-password", json={"email": address.upper()}).status_code == 429
+    assert len(outbox) == 3
+
+    expire_throttles(db)
+    assert client.post("/auth/forgot-password", json={"email": user.email}).status_code == 202
+    assert client.post("/auth/resend-verification", headers=headers).status_code == 202
+    assert len(outbox) == 5
 
 
 # ------------------------------------------------------------------ password reset

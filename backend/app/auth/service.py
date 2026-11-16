@@ -1,5 +1,5 @@
 """Authentication business logic (kept free of FastAPI so it is easy to test)."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from pydantic import EmailStr, TypeAdapter, ValidationError
@@ -22,7 +22,7 @@ from app.auth.security import (
     verify_password,
 )
 from app.db.base import utcnow
-from app.models import RevokedToken, Role, User
+from app.models import EmailThrottle, RevokedToken, Role, User
 from app.schemas.auth import TokenPair, UserCreate
 
 _email_adapter = TypeAdapter(EmailStr)
@@ -154,3 +154,28 @@ def reset_password(db: Session, token: str, new_password: str) -> None:
     if user.email_verified_at is None:  # the link proved control of the inbox
         user.email_verified_at = utcnow()
     db.commit()
+
+
+EMAIL_INTERVAL = timedelta(seconds=60)
+
+
+class TooManyRequestsError(Exception):
+    pass
+
+
+def throttle_email(db: Session, key: str) -> None:
+    """Allow one request per ``EMAIL_INTERVAL`` for ``key``, or raise TooManyRequestsError.
+
+    The primary key settles concurrent first requests: the losing insert fails and is refused.
+    """
+    now = utcnow()
+    db.execute(delete(EmailThrottle).where(EmailThrottle.requested_at < now - EMAIL_INTERVAL))
+    if db.get(EmailThrottle, key) is not None:
+        db.rollback()
+        raise TooManyRequestsError()
+    db.add(EmailThrottle(key=key, requested_at=now))
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise TooManyRequestsError() from exc

@@ -127,6 +127,11 @@ Links open the web app: `FRONTEND_URL/verify-email?token=...` and `FRONTEND_URL/
 Set `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS` (true) and `EMAIL_FROM` to send real mail.
 Without `SMTP_HOST` the API writes each email, link included, to its log instead; in production it logs only that the email was not sent.
 Emails are sent after the response, so an SMTP failure is logged and never fails the request.
+`forgot-password` and `resend-verification` accept one request a minute and then answer `429 TOO_MANY_REQUESTS` with `Retry-After: 60`.
+The reset limit is keyed by the address, registered or not, so it reveals no accounts; the verification limit is per account.
+
+Logout ends only the session whose refresh token it receives: other devices stay signed in, and the access token of that session keeps working until it expires (30 minutes).
+To end every session, reset the password.
 
 ## Ticket types and action log (P1)
 
