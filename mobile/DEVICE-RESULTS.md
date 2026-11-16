@@ -34,6 +34,9 @@ Staff login and connection to the test API: passed, user-reported. The local API
 | 14 | Unconfirmed undo survives sign-out and is isolated to its original account | pending | No specific device result supplied; a lost-server-response case requires separate fault injection. |
 | 15 | Automatic renewal, background/return and refused refresh | pending | No specific device result supplied. |
 | 16 | RU/KZ/EN screens and small-screen header | pending | No specific device result supplied. |
+| 17 | Campaign QR refused with its own message; a ticket still admits | pending | Added with this branch; not run on a device. |
+| 18 | Name, ticket type and seat after a scan and in manual search | pending | Added with this branch; not run on a device. |
+| 19 | Offline queue, conflict with another phone, repeated sync | pending | Added with this branch; not run on a device. |
 
 ### Scan latency (W7)
 

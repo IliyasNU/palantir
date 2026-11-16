@@ -1,10 +1,11 @@
 # BiletFlow Staff
 
-Iliyas's part of Team Palantir's project. Three screens: sign in, choose an event, scan a ticket. The scan screen also holds the attendance totals, manual search and the undo action. This is a small Expo + TypeScript client, with no offline admission or payment features.
+Iliyas's part of Team Palantir's project. Four screens: sign in, choose an event, scan a ticket, and a demo-grade offline queue. The scan screen also holds the attendance totals, manual search and the undo action. This is a small Expo + TypeScript client with no payment features; a scan made offline admits nobody until the server has answered for it.
 
 ## Current status
 
 - Delivery candidate: [PR #26](https://github.com/IliyasNU/palantir/pull/26), targeting `integration/biletflow-e2e`. The implementation is ready for review; the PR has not been merged. The [device results](DEVICE-RESULTS.md) separate Iliyas's iPhone checks on 13 November 2026 from the remaining Android and extended device checks.
+- Three additions in this branch wait for backend routes that are not in `integration/biletflow-e2e` yet: the offline sync (`POST /events/{id}/check-in/sync`), the door details (`GET /events/{id}/door-details`) and the campaign QR code (`422 CAMPAIGN_QR_NOT_A_TICKET`). Until they land the app stays safe: the offline queue reports that the route is unavailable and keeps its scans, the extra lines after a scan are simply absent, and a campaign QR gets the usual invalid-ticket message.
 - Start the backend in the same integration checkout. Follow the [root setup](../README.md) and [API contract](API.md).
 - Sign-in confirms the staff account through `GET /auth/me`. The tokens and account ID stay in memory. After restarting the app, sign in again.
 - The server's default access-token lifetime is 30 minutes. While the app is in front, it schedules renewal before expiry. Event loading and scanning can recover from a 401 with the refresh token; totals, search and undo offer session recovery. Renewal must belong to the current account, and a late response from an older session cannot clear a newer login. If renewal is refused, sign in again; a network failure does not prove the session is invalid.
@@ -21,6 +22,23 @@ The visitor can claim a ticket and display its QR on the integrated web client. 
 Use the integration backend with the attendance routes in [API.md](API.md) and the [W2 PostgreSQL locale setup](../backend/README.md#w2-postgresql-16-locale-and-acceptance). The scanner shows checked-in visitors out of issued tickets and displays capacity separately. It refreshes on return and after a confirmed check-in or undo. Tap “Обновить посещаемость” to read the totals again, for example after another phone admitted someone. The time of the last successful read is shown; if a refresh fails, the last totals stay with a note that they are outdated.
 
 Open “Найти вручную” to search by name or email using at least three characters. Each match shows a masked email. A fresh ticket can be marked through the same check-in and retry flow as a camera scan. An admitted ticket shows its check-in time. A cancelled or refunded ticket shows its state and cannot be marked. Basic manual admission has user-reported iPhone coverage; the broader language, camera-permission and cross-device attendance checks remain in the device checklist.
+
+## Ticket type and seat at the door
+
+After a confirmed scan the result shows who was admitted, the ticket type and, for a ticket bought for a seated type, the seat («Место: ряд C, место 7»). Manual search shows the same two lines under each name. The app reads them from `GET /events/{id}/door-details` in one request per screen. They are extra information: if the read fails, the lines are simply absent, and admission is still decided only by the check-in receipt.
+
+## Campaign QR
+
+A promo campaign QR is a link to the event page for visitors, never a ticket. Scanning one is refused with its own message (`CAMPAIGN_QR_NOT_A_TICKET`) in Russian, Kazakh and English; other text that is not this event's ticket gets the usual invalid-ticket message.
+
+## Offline scanning (demo grade)
+
+“Сканировать без сети” on the event list opens a separate screen for a venue without a connection. Each scan goes into a queue with its own id and the time it was made; the same ticket is queued once. “Синхронизировать” sends the queue to `POST /events/{id}/check-in/sync` in the order scanned, in batches of 100.
+
+- Nothing on this screen admits by itself. The server decides when the queue arrives: the first valid scan to reach it wins.
+- A ticket that another device admitted first is shown as a conflict with that admission's time and staff member, so the visitor can be checked. Cancelled, refunded and unknown tickets are listed with their reasons.
+- After a lost connection the unanswered scans stay queued with the same ids; syncing again cannot admit anyone twice.
+- The queue lives in memory, like the session and the scan payloads elsewhere in the app: it survives leaving the screen, not closing the app. Sync before closing it.
 
 ## Cancelled and refunded tickets, undo
 
@@ -105,7 +123,7 @@ The operating system can terminate the app, which discards a pending retry ID. D
 
 ## Code map
 
-- `src/app/`: the three screens and Expo Router layout.
+- `src/app/`: the screens and Expo Router layout.
 - `src/api.ts`: HTTP requests and response checks.
 - `src/attendance.tsx`: event totals, manual attendee search and the undo action.
 - `src/loading.ts`: state of a reloadable value (totals with the last good read).
@@ -114,6 +132,8 @@ The operating system can terminate the app, which discards a pending retry ID. D
 - `src/session.tsx`: the current account, its tokens and the renewal timer.
 - `src/renewal.ts`: when to renew an access token and one shared renewal request per session.
 - `src/language.tsx` and `src/messages.ts`: language choice and Russian/Kazakh/English screen text.
+- `src/door.tsx`: name, ticket type and seat next to a confirmed scan and search results (`GET /events/{id}/door-details`).
+- `src/offline.ts`, `src/app/offline.tsx`: the offline scan queue and its screen.
 - `tests/`: small API and scanner tests.
 - `tests/live/`: a run of the same client against a real API and database (see below).
 

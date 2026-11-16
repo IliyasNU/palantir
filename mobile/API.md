@@ -83,6 +83,7 @@ Return the same receipt for an authorized retry of the same request ID, actor, e
 | 409 | `TICKET_REFUNDED` | This ticket was refunded; no entry |
 | 409 | `CHECK_IN_UNDONE` | This request's check-in was undone; scan the ticket again |
 | 404 | `INVALID_TICKET` | Unknown QR or wrong event |
+| 422 | `CAMPAIGN_QR_NOT_A_TICKET` | The QR is a promo campaign link (`…/events/{id}?promo=…`), not a ticket; ask for the ticket QR. Not sent by `integration/biletflow-e2e` yet: there such a QR is `404 INVALID_TICKET` |
 | 404 | `EVENT_NOT_FOUND` | Event missing |
 | 409 | `EVENT_CANCELLED` / `EVENT_NOT_PUBLISHED` | Event unavailable for new check-ins |
 | 409 | `REQUEST_ID_CONFLICT` | Ask the organizer to verify the ticket |
@@ -233,3 +234,38 @@ The record does not survive an app restart, and neither does a pending scan. Aft
 ## Printable ticket
 
 `GET /tickets/{id}/pdf` returns the holder's ticket as one A4 page. Its QR encodes the same `qr_payload` as the website's QR, so the scanner sees one ticket: whichever copy is scanned first is admitted and the other is then `ALREADY_CHECKED_IN`. A cancelled or refunded ticket, or a ticket of a cancelled event, has no PDF. The staff app does not call this route.
+
+## Door details
+
+> Backend status: this route is specified here for the app and is not in `integration/biletflow-e2e` yet.
+
+`GET /events/{event_id}/door-details?ticket_id=3&ticket_id=5` returns, for up to 20 tickets of the event, what the door shows next to a ticket number:
+
+```json
+[{ "ticket_id": 3, "full_name": "Айгерим Сапарова", "ticket_type": "Партер", "seat_label": "C-7" }]
+```
+
+- Same access as check-in: assigned staff, the organizer, an admin (`403 FORBIDDEN`, `404 EVENT_NOT_FOUND` otherwise).
+- `seat_label` is null for a ticket without a seat; ids that are not tickets of this event are left out. `422` without ids or with more than 20.
+- The check-in receipt and the search rows keep their shape. The app reads this after a confirmed scan (one id) and for a page of search results (one request). It is information only and never decides admission.
+
+## Offline scans (demo grade)
+
+> Backend status: this route is specified here for the app and is not in `integration/biletflow-e2e` yet.
+
+`POST /events/{event_id}/check-in/sync` sends the scans a device queued while it had no connection.
+
+```json
+{"scans": [{"client_scan_id": "<uuid from the device>", "qr_payload": "<ticket QR>", "scanned_at": "2030-06-01T10:00:00Z"}]}
+```
+
+- 1 to 100 scans per call, in the order scanned. `client_scan_id` is a canonical lower-case UUID; the server uses it
+  as the check-in's `request_id`, so sending the same batch again after a lost answer admits nobody twice.
+- The answer has one result per scan, in the same order: `accepted` (with `ticket_id`, `check_in_id`,
+  `checked_in_at`), `conflict` (`code: ALREADY_CHECKED_IN` and `conflict: {checked_in_at, staff_name}` of the admission
+  that was first), or `rejected` with the usual code (`INVALID_TICKET`, `TICKET_CANCELLED`, `TICKET_REFUNDED`,
+  `CHECK_IN_UNDONE`, `REQUEST_ID_CONFLICT`, `EVENT_CANCELLED`, `EVENT_NOT_PUBLISHED`, `CAMPAIGN_QR_NOT_A_TICKET`).
+- The first valid scan to reach the server wins; `scanned_at` is informative only.
+- `401`, `403 FORBIDDEN` and `404 EVENT_NOT_FOUND` answer the whole call. The app keeps the queue after any failure.
+- The app's queue (`src/offline.ts`, screen `src/app/offline.tsx`) lives in memory: it survives leaving the screen,
+  not closing the app. A scan on that screen never admits by itself; only the sync result does.
