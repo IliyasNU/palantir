@@ -74,3 +74,13 @@ The backend requirements document it cites was not available, so the task notes 
 - BE-3c (open): order paid with the ticket PDF and payment failed, one email per order; two days after #15 merges.
 
 Verification on 2026-11-16: 481 SQLite tests and 47 PostgreSQL 16 e2e tests passed; `0007` upgrades, downgrades and re-applies; the Compose stack with `--profile mail` delivered the verification, ticket (with PDF), event updated and event cancelled emails to Mailpit in order; with Mailpit stopped, registration and a claim still returned `201` and kept the in-app notification.
+
+## After #15 merges (rehearsed on 2026-11-16)
+
+A local merge of integration + #15 + #27 passed 507 SQLite and 59 PostgreSQL e2e tests after these steps, which go into #21 and #27:
+
+1. Merge `integration/biletflow-e2e` into #21; in `app/main.py` and `app/models/__init__.py` keep both sides of the import and router lists.
+2. Renumber `0006_email_verification_logout.py` to `0007` (down `0006`), and in #27 `0007_notifications.py` to `0008` (down `0007`).
+3. In `tests/test_migrations.py`, the email/logout migration test starts from and downgrades to `0006`.
+4. In `e2e/test_order_migration.py`, compare models with the schema at `head`, then downgrade to `0006` for the order checks.
+5. Retarget #27 to `integration/biletflow-e2e` once #21 merges, and dispatch CI on it.
