@@ -168,3 +168,15 @@ test('auth forms show clear wrong-password and duplicate-email messages', () => 
   assert.match(authErrorMessage(new ApiError('Incorrect email or password', { kind: 'http', status: 401 }), 'login'), /Неверный email или пароль/);
   assert.match(authErrorMessage(new ApiError('Conflict', { kind: 'http', status: 409 }), 'register'), /email уже зарегистрирован/);
 });
+
+test('return destination allows /organizer and rejects unknown routes like /admin', () => {
+  assert.equal(safeReturnTo('/organizer'), '/organizer');
+  assert.equal(safeReturnTo('/admin'), '/events');
+
+  let destination = '/organizer';
+  for (const page of ['/login', '/register', '/login']) {
+    const url = new URL(authLink(page, destination), 'http://localhost:5173');
+    destination = safeReturnTo(url.searchParams.get('returnTo'));
+    assert.equal(destination, '/organizer');
+  }
+});
