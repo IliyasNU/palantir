@@ -103,6 +103,7 @@ function TypeManagement({ eventId, request }: { eventId: number; request: typeof
     <div className="content-card type-management-summary">
       <h2>{event.title}</h2>
       <p><Link to={`/organizer/events/${eventId}/activation`}>Активация и сводка демо-продаж</Link></p>
+      <p><Link to={`/organizer/events/${eventId}/campaigns`}>Промокампании и QR</Link></p>
       <p>Вместимость: {event.capacity ?? 'неизвестна'} · распределено по типам: {allocated}</p>
       <p>Первый бесплатный тип получает всю вместимость события. Чтобы добавить ещё один тип, сначала уменьшите количество первого. Выданные действующие билеты освобождать нельзя.</p>
       <p>Скрытый тип остаётся в списке и в выданных билетах, но недоступен новым посетителям. Количество скрытых типов тоже входит в общую вместимость.</p>

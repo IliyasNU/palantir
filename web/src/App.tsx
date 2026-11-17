@@ -9,6 +9,7 @@ import { TicketsPage } from './pages/TicketsPage';
 import { TicketDetailsPage } from './pages/TicketDetailsPage';
 import { TicketTypesPage } from './pages/TicketTypesPage';
 import { CheckoutPage } from './pages/CheckoutPage';
+import { CampaignsPage } from './pages/CampaignsPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { ActivationPage } from './pages/ActivationPage';
 
@@ -20,6 +21,7 @@ export function App() {
         <Route path="events" element={<EventsPage />} />
         <Route path="events/:id" element={<EventDetailsPage />} />
         <Route path="events/:id/checkout" element={<CheckoutPage />} />
+        <Route path="organizer/events/:id/campaigns" element={<CampaignsPage />} />
         <Route path="orders" element={<OrdersPage />} />
         <Route path="orders/:id" element={<OrdersPage />} />
         <Route path="organizer/events/:id/activation" element={<ActivationPage />} />

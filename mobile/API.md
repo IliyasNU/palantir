@@ -83,6 +83,7 @@ Return the same receipt for an authorized retry of the same request ID, actor, e
 | 409 | `TICKET_REFUNDED` | This ticket was refunded; no entry |
 | 409 | `CHECK_IN_UNDONE` | This request's check-in was undone; scan the ticket again |
 | 404 | `INVALID_TICKET` | Unknown QR or wrong event |
+| 409 | `CAMPAIGN_QR_NOT_TICKET` | BiletFlow campaign link. Show «Это QR акции, а не билет» and allow the next scan. No admission receipt. |
 | 404 | `EVENT_NOT_FOUND` | Event missing |
 | 409 | `EVENT_CANCELLED` / `EVENT_NOT_PUBLISHED` | Event unavailable for new check-ins |
 | 409 | `REQUEST_ID_CONFLICT` | Ask the organizer to verify the ticket |

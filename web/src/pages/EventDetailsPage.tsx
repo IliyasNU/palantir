@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useParams, useSearchParams } from 'react-router';
+import { isCampaignToken } from '../campaigns/model';
+import { usePromoQuote } from '../campaigns/usePromoQuote';
 import { api, ApiError, getErrorMessage } from '../api';
 import { Page } from '../components/Page';
 import { useAuth } from '../auth/AuthProvider';
@@ -27,7 +29,10 @@ export function EventDetailsPage() {
 function EventContent({ id, request, guest }: { id: string | undefined; request: typeof api.request; guest: boolean }) {
   const { user } = useAuth();
   const eventId = parseEventId(id);
-  const returnTo = safeReturnTo(`/events/${id}`);
+  const [query] = useSearchParams();
+  const token = query.get('campaign');
+  const promo = usePromoQuote(request, eventId, null, token ?? '', true);
+  const returnTo = safeReturnTo(`/events/${id}${isCampaignToken(token) ? '?campaign=' + token : ''}`);
   const [state, setState] = useState<DetailsState>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
 
@@ -101,7 +106,10 @@ function EventContent({ id, request, guest }: { id: string | undefined; request:
             })}</ul> : <p>Доступных типов пока нет.</p>}
           </section>}
           {/* Do not hide/disable this slot when full: an existing ticket may still be opened. */}
-          <EventActions event={event} remainingSeats={available} returnTo={returnTo} />
+          {token && <p role={promo?.error ? 'alert' : 'status'}>{promo?.error ?? (promo?.quote
+            ? 'Промокод ' + promo.quote.code + ' · выберите платный билет, чтобы увидеть скидку.'
+            : 'Проверяем промокод…')}</p>}
+          <EventActions event={event} remainingSeats={available} returnTo={returnTo} campaignToken={isCampaignToken(token) ? token : undefined} />
           {user && (user.role === 'admin' || user.id === event.organizer_id) && <p>
             <Link className="text-link" to={`/organizer/events/${event.id}/ticket-types`}>Управлять типами билетов</Link>
           </p>}

@@ -60,13 +60,21 @@ Fees are coded demo defaults, not new platform settings: activation 500000 tiyn,
 The buyer's total equals the ticket price. Orders retain the applied rate and rounded fee.
 The summary reports gross paid totals, fees, zero refunds and gross minus fees as estimated payout.
 
-### Hooks for P3 and P5
+### Campaign attribution (P3) and delivery or refund extensions
 
-P3 can validate and consume campaign usage under the event lock before reserving inventory,
-then snapshot discount and campaign IDs on the order. It must preserve creation idempotency
-and never consume usage twice. P5 can extend the order lifecycle for financial refunds and
+A campaign belongs to one event. The server issues a shareable opaque link and a separate human-readable code.
+The QR opens the event. Public preview resolves the token and then calculates a quote for the selected ticket type.
+Checkout locks the event, checks idempotency, validates the code and remaining uses, and reserves the seat and
+campaign use in the same transaction. The order snapshots the code, discount and amount payable. An accepted
+reservation retains that price until it expires. Admission rejects campaign links before ticket lookup.
+
+Attribution survives failed and expired attempts. A campaign's order count includes all attempts that created
+orders. Paid orders supply redemptions, ticket count, gross value, discounts, net sales and organizer proceeds
+after the processing fee. Reports read order rows so a retried confirmation has no second financial effect.
+
+P5 can extend the order lifecycle for financial refunds and
 connect existing admission-state transitions under the same event lock, recording refund
-amounts and adjusting the organizer summary. P2 does not implement either phase. B4 may send
+amounts and adjusting the organizer summary. B4 may send
 a delivery message after a newly paid order commits, with its own deduplication keyed by order ID.
 
 Verification covers unit denials/checklists/rounding/ownership, real PostgreSQL races and

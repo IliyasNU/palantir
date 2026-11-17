@@ -2,7 +2,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, HttpUrl, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_DEV_SECRET = "dev-only-secret-change-me-0123456789abcdef"
@@ -19,6 +19,15 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "Palantir API"
+    campaign_web_origin: HttpUrl = HttpUrl("https://localhost:5173")
+
+    @field_validator("campaign_web_origin")
+    @classmethod
+    def https_origin(cls, value: HttpUrl) -> HttpUrl:
+        if (value.scheme != "https" or value.username or value.password or value.path not in ("", "/")
+                or value.query is not None or value.fragment is not None):
+            raise ValueError("CAMPAIGN_WEB_ORIGIN must be an HTTPS origin")
+        return value
     environment: Literal["development", "test", "production"] = "development"
 
     # Docker Compose overrides this with the `db` hostname.

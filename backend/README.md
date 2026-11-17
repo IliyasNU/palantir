@@ -203,6 +203,24 @@ Verified again on 12 November 2026 after the action filter fix and the shared `e
 check, on a disposable local PostgreSQL 16.15 (ICU `und`, UTF8): 455 unit tests and 43 PostgreSQL e2e
 tests passed, with `alembic heads` at `0005 (head)`.
 
+## Promo codes and Campaign QR (P3)
+
+Set the API process variable `CAMPAIGN_WEB_ORIGIN` to the public HTTPS origin of the web app before generating demo QRs. The default `https://localhost:5173` is for development. With Compose, pass the variable through the API service's `environment` in a local override. A printed QR opens `/events/{event_id}?campaign=pc_<opaque token>` and bears the label «Это не билет». Its link contains no price or discount.
+
+| Route | Access and result |
+| --- | --- |
+| `POST /events/{id}/campaigns` | Owner/admin, 201. Provide name, kind (`percent` or `fixed` in tiyn), value, max_uses, optional UTC interval and ticket_type_ids. An empty selection applies to all paid types. |
+| `GET /events/{id}/campaigns` | Owner/admin, 200. Settings, code, link, usage and financial summary for each campaign. |
+| `PATCH /events/{id}/campaigns/{campaign_id}` | Owner/admin, 200. Set `enabled` to true or false. Creation and actual state changes write to the action log. |
+| `GET /events/{id}/campaigns/{campaign_id}/qr.svg` | Owner/admin, 200. Download the labeled campaign QR. |
+| `POST /events/{id}/campaigns/quote` | Public for a published event. Supply exactly one of code or token. Without a ticket_type_id, returns the canonical code. With a type, also returns subtotal, discount and total in tiyn. |
+| `POST /events/{id}/orders` | Existing checkout accepts optional promo_code. The order stores the code, campaign ID and discount. |
+| `POST /events/{id}/check-in` | A campaign QR returns 409 CAMPAIGN_QR_NOT_TICKET without admitting anyone. |
+
+A code from another event returns 404 PROMO_NOT_FOUND. Ineligible codes return 409 with PROMO_NOT_STARTED, PROMO_EXPIRED, PROMO_DISABLED, PROMO_NOT_APPLICABLE or PROMO_EXHAUSTED. Event, ticket type, ownership and suspension checks retain their existing errors. Invalid request fields return the usual 422 validation array.
+
+Migration `0007` follows `0006`. Existing orders receive zero discount. Downgrade refuses to drop campaign data. The quota includes paid orders and live reservations. Payment failure, cancellation and expiry release a use. Checkout fixes the price at reservation time. Percentage discounts round half up to one tiyn, fixed discounts stop at the ticket price, and the organizer pays the processing fee on the discounted total.
+
 ## Simulated paid sales and orders (P2)
 
 P2 is a university simulation: **Демонстрационная оплата, деньги не списываются**.

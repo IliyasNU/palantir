@@ -45,6 +45,77 @@ for (const outcome of ['success', 'failure']) {
   });
 }
 
+test('campaign link survives sign-in and checkout uses the quoted promo code', async ({ page }) => {
+  const token = 'pc_' + 'a'.repeat(32);
+  const code = 'BF-ABCDEF123456';
+  const path = '/events/42?campaign=' + token;
+  const kind = { ...timedTicketType, price_tiyn: 10050, sales_start: null, sales_end: null };
+  await page.route(base + '/events/42', r => r.fulfill({json: {...eventDetails, paid_sales_available: true, ticket_types: [kind]}}));
+  await page.route(base + '/tickets/me', r => r.fulfill({json: []}));
+  await page.route(base + '/events/42/campaigns/quote', r => {
+    const body = r.request().postDataJSON();
+    expect(body.token).toBe(token);
+    const pricing = body.ticket_type_id === null
+      ? {ticket_type_id: null, subtotal_tiyn: null, discount_tiyn: null, total_tiyn: null}
+      : {ticket_type_id: 1, subtotal_tiyn: 10050, discount_tiyn: 2513, total_tiyn: 7537};
+    return r.fulfill({json: {code, ...pricing}});
+  });
+  let order;
+  await page.route(base + '/events/42/orders', r => {
+    const body = r.request().postDataJSON();
+    expect(body.promo_code).toBe(code);
+    expect(body).not.toHaveProperty('total_tiyn');
+    expect(body).not.toHaveProperty('discount_tiyn');
+    order = {...body, id: 81, event_id: 42, buyer_id: 7, status: 'pending', campaign_id: 5,
+      subtotal_tiyn: 10050, discount_tiyn: 2513, total_tiyn: 7537, processing_fee_tiyn: 226,
+      ticket_id: null, expires_at: '2030-01-01T10:00:00Z', simulation: true};
+    return r.fulfill({status: 201, json: order});
+  });
+  await page.route(base + '/orders/81', r => r.fulfill({json: order}));
+  await page.goto(path);
+  await expect(page.getByRole('status').filter({hasText: code})).toBeVisible();
+  const signIn = page.getByRole('link', {name: 'Войти, чтобы получить билет'});
+  const returnTo = new URL(await signIn.getAttribute('href'), page.url()).searchParams.get('returnTo');
+  expect(returnTo).toBe(path);
+  await login(page, returnTo);
+  await page.getByRole('button', { name: 'Купить', exact: true }).click();
+  await expect(page.getByRole('status').filter({hasText: code})).toContainText('75,37');
+  await page.getByRole('button', {name: 'Продолжить к оплате'}).click();
+  await expect(page).toHaveURL('/orders/81');
+  await expect(page.getByText(/Итого покупателю/)).toContainText('75,37');
+});
+
+test('organizer creates a campaign, downloads its QR and disables it', async ({page}) => {
+  let campaign;
+  const endpoint = base + '/events/42/campaigns';
+  await page.route(base + '/events/42/ticket-types/manage', r => r.fulfill({json: [{...timedTicketType, price_tiyn: 10050}]}));
+  await page.route(endpoint, r => {
+    if (r.request().method() === 'GET') return r.fulfill({json: campaign ? [campaign] : []});
+    const input = r.request().postDataJSON();
+    expect(input).toMatchObject({kind: 'percent', value: 25, max_uses: 2, ticket_type_ids: []});
+    campaign = {...input, id: 5, code: 'BF-ABCDEF123456', link: 'https://demo.example/events/42?campaign=pc_' + 'a'.repeat(32),
+      enabled: true, redemptions: 0, orders: 0, tickets_sold: 0, gross_tiyn: 0, discount_tiyn: 0, net_sales_tiyn: 0, organizer_net_tiyn: 0};
+    return r.fulfill({status: 201, json: campaign});
+  });
+  await page.route(endpoint + '/5', r => {
+    expect(r.request().postDataJSON()).toEqual({enabled: false});
+    campaign.enabled = false;
+    return r.fulfill({json: campaign});
+  });
+  await page.route(endpoint + '/5/qr.svg', r => r.fulfill({contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg"/>'}));
+  await login(page, '/organizer/events/42/campaigns', 'organizer');
+  await page.getByLabel('Название').fill('Spring');
+  await page.getByLabel('Скидка, %').fill('25');
+  await page.getByLabel('Лимит использований').fill('2');
+  await page.getByRole('button', {name: 'Создать кампанию'}).click();
+  await expect(page.getByRole('heading', {name: 'Spring'})).toBeVisible();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', {name: /Скачать QR акции/}).click();
+  expect((await download).suggestedFilename()).toBe('campaign-5.svg');
+  await page.getByRole('button', {name: 'Выключить кампанию'}).click();
+  await expect(page.getByRole('button', {name: 'Включить кампанию'})).toBeVisible();
+});
+
 test('organizer completes the demo activation checklist', async ({ page }) => {
   const done = { paid_type: true, identity: false, payout: false, terms: false, fee: false };
   const state = () => ({ event_id: 42, activated: Object.values(done).every(Boolean), paid_sales_suspended: false,

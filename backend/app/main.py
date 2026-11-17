@@ -12,7 +12,7 @@ from app.auth.router import router as auth_router
 from app.core.config import get_settings
 from app.routers import attendance, check_ins, events, health, organizer_profiles, staff, tickets
 from app.routers import admin, ticket_types
-from app.routers import orders, paid_sales
+from app.routers import campaigns, orders, paid_sales
 
 settings = get_settings()
 
@@ -77,5 +77,6 @@ app.include_router(check_ins.router)
 app.include_router(attendance.router)
 app.include_router(ticket_types.router)
 app.include_router(admin.router)
+app.include_router(campaigns.router)
 app.include_router(orders.router)
 app.include_router(paid_sales.router)

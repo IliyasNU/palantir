@@ -13,6 +13,7 @@ class OrderCreate(BaseModel):
     attendee_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
     attendee_email: EmailStr
     request_id: UUID
+    promo_code: Annotated[str, StringConstraints(strip_whitespace=True, to_upper=True, min_length=1, max_length=20)] | None = None
 
 
 class PaymentRequest(BaseModel):
@@ -40,6 +41,9 @@ class OrderRead(BaseModel):
     attendee_name: str
     attendee_email: str
     status: str
+    campaign_id: Optional[int]
+    promo_code: Optional[str]
+    discount_tiyn: int
     subtotal_tiyn: int
     processing_fee_tiyn: int
     processing_fee_bps: int
