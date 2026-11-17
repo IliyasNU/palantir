@@ -23,13 +23,15 @@ def test_manage_types_audit_and_visitor_visibility(client, db, login_as, new_eve
     assert [row["id"] for row in client.get(root).json()["ticket_types"]] == [default["id"]]
     assert client.get(f"{path}/manage", headers=manager).json()[1]["hidden"] is True
     assert client.get(f"{root}/action-log", headers=visitor).status_code == 403
-    entries = client.get(f"{root}/action-log", headers=manager).json()
+    # The event's timeline also holds its creation and publication; this test is about the type journal.
+    entries = client.get(f"{root}/action-log", params={"action": "ticket_type"}, headers=manager).json()
     assert len(entries) == 4
     assert all(row["actor_id"] == owner.id for row in entries)
     assert entries[0]["action"] == "ticket_type.updated" and entries[0]["entity_id"] == type_id
     assert all(field in entries[0]["description"] for field in ("price_tiyn", "quantity", "hidden"))
     assert client.delete(f"{root}/action-log", headers=manager).status_code == 405
-    assert len(db.scalars(select(ActionLog).where(ActionLog.event_id == event["id"])).all()) == 4
+    type_rows = select(ActionLog).where(ActionLog.event_id == event["id"], ActionLog.entity_type == "ticket_type")
+    assert len(db.scalars(type_rows).all()) == 4
 
 
 def test_claim_respects_type_selection_event_and_window(client, login_as, new_event):

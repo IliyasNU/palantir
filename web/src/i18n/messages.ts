@@ -8,7 +8,7 @@ const ru = {
     brandLabel: 'BiletFlow — события',
     navLabel: 'Основная навигация',
     events: 'События',
-    myTickets: 'Мои билеты',
+    myTickets: 'Мои билеты', myOrders: 'Мои заказы',
     logout: 'Выйти',
     login: 'Войти',
     register: 'Регистрация',
@@ -135,7 +135,7 @@ const ru = {
     openMyTicket: 'Открыть мой билет',
     chooseType: 'Выберите тип билета',
     noTypeChoices: 'Доступных типов билетов пока нет.',
-    paidHint: 'Платные типы можно посмотреть. Продажа появится на следующем этапе.',
+    paidHint: 'Демонстрационная оплата, деньги не списываются', buy: 'Купить',
     claim: 'Получить бесплатный билет',
     claiming: 'Получаем билет…',
     allClaimed: 'Все билеты уже получены.',
@@ -233,7 +233,7 @@ const ru = {
     reset: {
       title: 'Смена пароля',
       description: 'Задайте новый пароль для входа.',
-      password: 'Новый пароль',
+      password: 'Новый пароль', confirmPassword: 'Повторите пароль', mismatch: 'Пароли не совпадают.',
       passwordHint: 'Минимум 8 символов. Максимум 72 байта UTF-8: буквы кириллицы и эмодзи занимают больше одного байта.',
       submit: 'Сохранить пароль',
       submitting: 'Сохраняем…',
@@ -354,7 +354,7 @@ const ru = {
     reason: 'Причина блокировки',
     reasonHint: 'От 3 до 300 символов. Причина сохраняется в журнале действий.',
     reasonInvalid: 'Укажите причину: от 3 до 300 символов.',
-    confirmSuspend: 'Заблокировать',
+    confirmSuspend: 'Заблокировать', confirmReactivate: 'Подтвердите разблокировку.',
     keep: 'Не блокировать',
     working: 'Выполняем…',
     users: {
@@ -424,7 +424,7 @@ export type Messages = Widen<typeof ru>;
 
 const kk: Messages = {
   common: {
-    skip: 'Мазмұнға өту', brandLabel: 'BiletFlow — іс-шаралар', navLabel: 'Негізгі навигация', events: 'Іс-шаралар', myTickets: 'Менің билеттерім',
+    skip: 'Мазмұнға өту', brandLabel: 'BiletFlow — іс-шаралар', navLabel: 'Негізгі навигация', events: 'Іс-шаралар', myTickets: 'Менің билеттерім', myOrders: 'Менің тапсырыстарым',
     logout: 'Шығу', login: 'Кіру', register: 'Тіркелу',
     sessionExpired: 'Сессия аяқталды. Жалғастыру үшін қайта кіріңіз.', forbidden: 'Бұл әрекетке құқығыңыз жеткіліксіз.',
     loginAgain: 'Қайта кіру', closeNotice: 'Хабарды жабу', footer: 'Адамдарды біріктіретін іс-шаралар.', retry: 'Қайталау',
@@ -483,7 +483,7 @@ const kk: Messages = {
     statusDraft: 'Жоба', statusPublished: 'Жарияланған', statusCancelled: 'Тоқтатылған', statusUnknown: 'Күйі белгісіз',
     loginToClaim: 'Билет алу үшін кіру', loginToCheck: 'Кіріп, билеттерімді тексеру', checkingTickets: 'Билеттеріңіз тексерілуде…',
     openMyTicket: 'Билетімді ашу', chooseType: 'Билет түрін таңдаңыз', noTypeChoices: 'Қолжетімді билет түрлері әзірге жоқ.',
-    paidHint: 'Ақылы түрлерді көруге болады. Сату келесі кезеңде қосылады.', claim: 'Тегін билет алу', claiming: 'Билет алынуда…',
+    paidHint: 'Демо-төлем: ақша алынбайды', buy: 'Сатып алу', claim: 'Тегін билет алу', claiming: 'Билет алынуда…',
     allClaimed: 'Барлық билет алынып қойған.', noNewTickets: 'Жаңа билеттер қазір қолжетімсіз.', checkMyTickets: 'Билеттерімді тексеру',
   },
   tickets: {
@@ -526,7 +526,7 @@ const kk: Messages = {
     eyebrow: 'Сіздің аккаунтыңыз', invalidLink: 'Сілтеме жарамсыз немесе мерзімі өткен.', toLogin: 'Кіру бетіне өту', toEvents: 'Іс-шараларға',
     verify: { title: 'Email растау', description: 'Хаттағы сілтемені тексеріп жатырмыз.', checking: 'Сілтеме тексерілуде…',
       success: 'Email расталды. Рақмет!', invalidHint: 'Аккаунтқа кіріп, жаңа хат сұраңыз.', retry: 'Тексеруді қайталау' },
-    reset: { title: 'Құпиясөзді өзгерту', description: 'Кіруге арналған жаңа құпиясөз орнатыңыз.', password: 'Жаңа құпиясөз',
+    reset: { title: 'Құпиясөзді өзгерту', description: 'Кіруге арналған жаңа құпиясөз орнатыңыз.', password: 'Жаңа құпиясөз', confirmPassword: 'Құпиясөзді қайталаңыз', mismatch: 'Құпиясөздер сәйкес келмейді.',
       passwordHint: 'Кемінде 8 таңба. Ең көбі UTF-8 бойынша 72 байт: кирилл әріптері мен эмодзи бір байттан көп орын алады.',
       submit: 'Құпиясөзді сақтау', submitting: 'Сақталуда…', success: 'Құпиясөз өзгертілді. Жаңа құпиясөзбен кіріңіз.',
       invalidHint: 'Құпиясөзді қалпына келтіретін жаңа сілтеме сұраңыз.', requestAgain: 'Жаңа сілтеме сұрау', checkForm: 'Форманың толтырылуын тексеріңіз.' },
@@ -569,7 +569,7 @@ const kk: Messages = {
     limitNote: (limit: number) => `Сұрауға сәйкес соңғы ${limit} жазба көрсетілген. Қалғанын табу үшін іздеуді нақтылаңыз.`,
     filterNote: 'Бұл сүзгі жүктелген жолдарға қолданылады.', any: 'Барлығы', reason: 'Бұғаттау себебі',
     reasonHint: '3-тен 300 таңбаға дейін. Себеп әрекеттер журналында сақталады.', reasonInvalid: 'Себебін көрсетіңіз: 3-тен 300 таңбаға дейін.',
-    confirmSuspend: 'Бұғаттау', keep: 'Бұғаттамау', working: 'Орындалуда…',
+    confirmSuspend: 'Бұғаттау', confirmReactivate: 'Бұғаттан шығаруды растаңыз.', keep: 'Бұғаттамау', working: 'Орындалуда…',
     users: { heading: 'Пайдаланушылар', query: 'Аты немесе email', role: 'Рөлі', state: 'Күйі', active: 'Белсенді', suspended: 'Бұғатталған',
       empty: 'Пайдаланушылар табылмады.',
       columns: { name: 'Аты', email: 'Email', role: 'Рөлі', state: 'Күйі', created: 'Жасалған', action: 'Әрекет' },
@@ -594,7 +594,7 @@ const kk: Messages = {
 
 const en: Messages = {
   common: {
-    skip: 'Skip to content', brandLabel: 'BiletFlow — events', navLabel: 'Main navigation', events: 'Events', myTickets: 'My tickets',
+    skip: 'Skip to content', brandLabel: 'BiletFlow — events', navLabel: 'Main navigation', events: 'Events', myTickets: 'My tickets', myOrders: 'My orders',
     logout: 'Sign out', login: 'Sign in', register: 'Sign up',
     sessionExpired: 'Your session has ended. Sign in again to continue.', forbidden: 'You do not have permission for this action.',
     loginAgain: 'Sign in again', closeNotice: 'Close message', footer: 'Events that bring people together.', retry: 'Try again',
@@ -652,7 +652,7 @@ const en: Messages = {
     statusDraft: 'Draft', statusPublished: 'Published', statusCancelled: 'Cancelled', statusUnknown: 'Unknown status',
     loginToClaim: 'Sign in to get a ticket', loginToCheck: 'Sign in and check my tickets', checkingTickets: 'Checking your tickets…',
     openMyTicket: 'Open my ticket', chooseType: 'Choose a ticket type', noTypeChoices: 'No ticket types are available yet.',
-    paidHint: 'Paid types can be viewed. Sales will come in the next stage.', claim: 'Get a free ticket', claiming: 'Getting the ticket…',
+    paidHint: 'Demo payment: no money is charged', buy: 'Buy', claim: 'Get a free ticket', claiming: 'Getting the ticket…',
     allClaimed: 'All tickets have been taken.', noNewTickets: 'New tickets are not available right now.', checkMyTickets: 'Check my tickets',
   },
   tickets: {
@@ -695,7 +695,7 @@ const en: Messages = {
     eyebrow: 'Your account', invalidLink: 'The link is invalid or has expired.', toLogin: 'Go to sign-in', toEvents: 'To events',
     verify: { title: 'Email confirmation', description: 'Checking the link from the email.', checking: 'Checking the link…',
       success: 'Email confirmed. Thank you!', invalidHint: 'Sign in and request a new email.', retry: 'Check again' },
-    reset: { title: 'Change password', description: 'Set a new password for signing in.', password: 'New password',
+    reset: { title: 'Change password', description: 'Set a new password for signing in.', password: 'New password', confirmPassword: 'Confirm password', mismatch: 'Passwords do not match.',
       passwordHint: 'At least 8 characters. At most 72 bytes of UTF-8: Cyrillic letters and emoji take more than one byte.',
       submit: 'Save password', submitting: 'Saving…', success: 'Password changed. Sign in with the new password.',
       invalidHint: 'Request a new password reset link.', requestAgain: 'Request a new link', checkForm: 'Check the form.' },
@@ -737,7 +737,7 @@ const en: Messages = {
     limitNote: (limit: number) => `The latest ${limit} matching records are shown. Narrow the search to find the rest.`,
     filterNote: 'This filter applies to the rows already loaded.', any: 'All', reason: 'Reason for suspension',
     reasonHint: 'From 3 to 300 characters. The reason is kept in the action log.', reasonInvalid: 'Enter a reason: from 3 to 300 characters.',
-    confirmSuspend: 'Suspend', keep: 'Do not suspend', working: 'Working…',
+    confirmSuspend: 'Suspend', confirmReactivate: 'Confirm reactivation.', keep: 'Do not suspend', working: 'Working…',
     users: { heading: 'Users', query: 'Name or email', role: 'Role', state: 'State', active: 'Active', suspended: 'Suspended', empty: 'No users found.',
       columns: { name: 'Name', email: 'Email', role: 'Role', state: 'State', created: 'Created', action: 'Action' },
       suspend: 'Suspend', reactivate: 'Reactivate', suspendedDone: (name: string) => `The account “${name}” is suspended.`,

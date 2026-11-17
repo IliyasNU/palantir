@@ -53,7 +53,7 @@ export function LoginPage() {
                 <button className="button" type="submit" disabled={pending}>{pending ? t.auth.loginPending : t.auth.loginSubmit}</button>
               </fieldset>
             </form>
-            <p><Link className="text-link" to="/forgot-password">{t.account.forgot.link}</Link></p>
+            <p><Link className="text-link" to={returnTo === '/events' ? '/forgot-password' : `/forgot-password?${new URLSearchParams({ returnTo })}`}>{t.account.forgot.link}</Link></p>
             <p>{t.auth.noAccount} <Link className="text-link" to={authLink('/register', returnTo)}>{t.auth.toRegister}</Link></p>
           </>
         )}

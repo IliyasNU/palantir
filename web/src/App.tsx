@@ -14,6 +14,9 @@ import { TicketsPage } from './pages/TicketsPage';
 import { TicketDetailsPage } from './pages/TicketDetailsPage';
 import { TicketTypesPage } from './pages/TicketTypesPage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
+import { CheckoutPage } from './pages/CheckoutPage';
+import { OrdersPage } from './pages/OrdersPage';
+import { ActivationPage } from './pages/ActivationPage';
 
 export function App() {
   return (
@@ -22,6 +25,10 @@ export function App() {
         <Route index element={<Navigate to="/events" replace />} />
         <Route path="events" element={<EventsPage />} />
         <Route path="events/:id" element={<EventDetailsPage />} />
+        <Route path="events/:id/checkout" element={<CheckoutPage />} />
+        <Route path="orders" element={<OrdersPage />} />
+        <Route path="orders/:id" element={<OrdersPage />} />
+        <Route path="organizer/events/:id/activation" element={<ActivationPage />} />
         <Route path="tickets" element={<TicketsPage />} />
         <Route path="tickets/:id" element={<TicketDetailsPage />} />
         <Route path="admin" element={<AdminPage />} />

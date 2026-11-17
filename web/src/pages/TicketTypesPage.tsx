@@ -102,6 +102,7 @@ function TypeManagement({ eventId, request }: { eventId: number; request: typeof
   return <>
     <div className="content-card type-management-summary">
       <h2>{event.title}</h2>
+      <p><Link to={`/organizer/events/${eventId}/activation`}>Активация и сводка демо-продаж</Link></p>
       <p>Вместимость: {event.capacity ?? 'неизвестна'} · распределено по типам: {allocated}</p>
       <p>Первый бесплатный тип получает всю вместимость события. Чтобы добавить ещё один тип, сначала уменьшите количество первого. Выданные действующие билеты освобождать нельзя.</p>
       <p>Скрытый тип остаётся в списке и в выданных билетах, но недоступен новым посетителям. Количество скрытых типов тоже входит в общую вместимость.</p>
@@ -115,7 +116,7 @@ function TypeManagement({ eventId, request }: { eventId: number; request: typeof
         <tbody>{types.map((type) => <tr key={type.id}>
           <td><strong>{type.name}</strong>{type.description && <p>{type.description}</p>}</td>
           <td>{ticketTypePrice(type.price_tiyn)}</td><td>{type.quantity} (выдано {type.tickets_issued})</td><td>{type.remaining}</td>
-          <td>{type.hidden ? 'Скрыт' : 'Виден'}{type.price_tiyn > 0 && <p className="field-hint">Продажа пока недоступна</p>}</td>
+          <td>{type.hidden ? 'Скрыт' : 'Виден'}{type.price_tiyn > 0 && <p className="field-hint">Демо-продажи требуют активации</p>}</td>
           <td><button className="text-button" type="button" disabled={saving} onClick={() => edit(type)} aria-label={`Редактировать ${type.name}`}>Редактировать</button></td>
         </tr>)}</tbody>
       </table></div> : <p>Типов пока нет.</p>}
@@ -131,7 +132,7 @@ function TypeManagement({ eventId, request }: { eventId: number; request: typeof
           <textarea id="type-description" value={draft.description} onChange={(input) => field('description', input.target.value)} rows={3} maxLength={5000} />
           <label htmlFor="type-price">Цена в тиынах</label>
           <input id="type-price" type="number" min="0" step="1" value={draft.price_tiyn} onChange={(input) => field('price_tiyn', input.target.value)} required aria-describedby="type-price-hint" />
-          <p className="field-hint" id="type-price-hint">100 тиынов = 1 ₸, 0 — бесплатно. Платный тип можно создать, но продать на этом этапе нельзя.</p>
+          <p className="field-hint" id="type-price-hint">100 тиынов = 1 ₸, 0 — бесплатно. Платные продажи требуют демо-активации.</p>
           <label htmlFor="type-quantity">Количество билетов типа</label>
           <input id="type-quantity" type="number" min="0" step="1" value={draft.quantity} onChange={(input) => field('quantity', input.target.value)} required />
           <label htmlFor="type-sales-start">Начало продаж</label>
@@ -162,7 +163,8 @@ function ActionLog({ eventId, request, revision }: { eventId: number; request: t
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    request<unknown>(`/events/${eventId}/action-log`, { signal: controller.signal }).then((payload) => {
+    // The event timeline also holds check-ins, staff and lifecycle actions; this section lists type changes only.
+    request<unknown>(`/events/${eventId}/action-log?action=ticket_type`, { signal: controller.signal }).then((payload) => {
       if (!Array.isArray(payload) || payload.some((entry) => !entry || typeof entry !== 'object'
         || !Number.isSafeInteger(entry.id) || entry.event_id !== eventId || !Number.isSafeInteger(entry.actor_id)
         || typeof entry.occurred_at !== 'string' || !Number.isFinite(Date.parse(entry.occurred_at))

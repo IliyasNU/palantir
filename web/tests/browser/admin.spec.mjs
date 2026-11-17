@@ -86,6 +86,7 @@ test('an admin searches users and suspends one with a reason, by API code on ref
   await expect(page.getByRole('status')).toHaveText('Аккаунт «Алия Организатор» заблокирован.');
   await expect(target).toContainText('Заблокирован');
   await target.getByRole('button', { name: 'Разблокировать: organizer@example.com' }).click();
+  await target.getByRole('button', { name: 'Разблокировать', exact: true }).click();
   await expect(page.getByRole('status')).toHaveText('Аккаунт «Алия Организатор» разблокирован.');
   expect(distinct(calls).slice(1)).toEqual([['POST 5/suspend', { reason: 'уже удалён' }], ['POST 5/suspend', { reason: 'Жалобы на мошенничество' }], ['POST 5/reactivate', null]]);
 
@@ -121,6 +122,7 @@ test('an admin filters events and suspends and reactivates one', async ({ page }
   await expect(page.getByRole('status')).toHaveText('Событие «Вечер джаза» заблокировано и скрыто от посетителей.');
   await expect(row).toContainText('Заблокировано с 1 мар. 2030 г., 09:30');
   await row.getByRole('button', { name: 'Разблокировать: Вечер джаза #9' }).click();
+  await row.getByRole('button', { name: 'Разблокировать', exact: true }).click();
   await expect(page.getByRole('status')).toHaveText('Блокировка события «Вечер джаза» снята.');
   await page.getByLabel('Статус').selectOption('draft');
   await expect(table.getByRole('row')).toHaveCount(2);

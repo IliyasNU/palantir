@@ -1,7 +1,15 @@
 import { ApiError, getErrorMessage } from '../api/client.ts';
-import { current } from '../i18n/index.ts';
+import { current, messages } from '../i18n/index.ts';
 import type { ValidationIssue } from '../api/client.ts';
 import type { RegistrationInput } from './types.ts';
+
+/** Known local validation stays specific; server validation uses a translated safe fallback. */
+export function validationIssueMessage(issue: ValidationIssue): string {
+  for (const key of ['nameRequired', 'passwordShort', 'passwordLong'] as const) {
+    if (Object.values(messages).some(text => text.auth[key] === issue.message)) return current().auth[key];
+  }
+  return current().api.invalid;
+}
 
 /** Password rules shared by registration and password reset. */
 export function passwordIssues(password: string): ValidationIssue[] {

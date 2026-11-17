@@ -9,14 +9,23 @@ import { Page } from '../components/Page';
 type State = { step: 'checking' } | { step: 'verified' } | { step: 'failed'; error: unknown };
 
 export function VerifyEmailPage() {
-  const text = useT().account;
-  const auth = useAuth();
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
+  return <VerifyEmailContent key={token} token={token} />;
+}
+
+function VerifyEmailContent({ token }: { token: string }) {
+  const text = useT().account;
+  const auth = useAuth();
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<State>({ step: 'checking' });
   // One request per link and attempt, also when React runs the effect twice in development.
   const started = useRef('');
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    return () => { active.current = false; };
+  }, []);
   const { markEmailVerified } = auth;
 
   useEffect(() => {
@@ -24,11 +33,11 @@ export function VerifyEmailPage() {
     if (!token || started.current === key) return;
     started.current = key;
     api.request('/auth/verify-email', { method: 'POST', body: { token } }).then((user) => {
-      if (started.current !== key) return;
+      if (!active.current || started.current !== key) return;
       if (typeof user === 'object' && user !== null && 'id' in user && typeof user.id === 'number') markEmailVerified(user.id);
       setState({ step: 'verified' });
     }, (error: unknown) => {
-      if (started.current === key) setState({ step: 'failed', error });
+      if (active.current && started.current === key) setState({ step: 'failed', error });
     });
   }, [token, attempt, markEmailVerified]);
 

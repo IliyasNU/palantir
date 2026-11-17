@@ -39,7 +39,7 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
   const types = event.ticket_types;
   const time = useTicketTypeClock(types);
   const [selectedTypeId, setSelectedTypeId] = useState<number | null>(null);
-  const choices = types?.map((type) => ({ type, unavailable: ticketTypeUnavailable(type, time) }));
+  const choices = types?.map((type) => ({ type, unavailable: ticketTypeUnavailable(type, time, event.paid_sales_available) }));
   const availableChoices = choices?.filter(({ unavailable }) => unavailable === null);
   const selected = selectedTypeId === null && availableChoices?.length === 1
     ? availableChoices[0] : choices?.find(({ type }) => type.id === selectedTypeId);
@@ -60,9 +60,13 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
 
   async function claim() {
     if (inFlight.current || (types !== undefined && !selected)) return;
-    const unavailableNow = selected ? ticketTypeUnavailable(selected.type) : null;
+    const unavailableNow = selected ? ticketTypeUnavailable(selected.type, Date.now(), event.paid_sales_available) : null;
     if (unavailableNow !== null) {
       setError(unavailableNow);
+      return;
+    }
+    if (selected && selected.type.price_tiyn > 0) {
+      navigate(`/events/${event.id}/checkout?type=${selected.type.id}`);
       return;
     }
     const controller = new AbortController();
@@ -98,7 +102,7 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
       {choices.some(({ type }) => type.price_tiyn > 0) && <p className="field-hint">{t.event.paidHint}</p>}
     </fieldset>}
     {event.status === 'published' && remainingSeats !== 0 && <button className="button" type="button" disabled={claiming || typeUnavailable}
-      onClick={() => { void claim(); }}>{claiming ? t.event.claiming : t.event.claim}</button>}
+      onClick={() => { void claim(); }}>{claiming ? t.event.claiming : selected && selected.type.price_tiyn > 0 ? t.event.buy : t.event.claim}</button>}
     {event.status === 'published' && remainingSeats === 0 && <p>{t.event.allClaimed}</p>}
     {event.status !== 'published' && <p>{t.event.noNewTickets}</p>}
     {error && <button className="text-button" type="button" disabled={claiming} onClick={() => setAttempt((value) => value + 1)}>{t.event.checkMyTickets}</button>}

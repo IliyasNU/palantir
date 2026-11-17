@@ -94,7 +94,7 @@ function EventContent({ id, request, guest }: { id: string | undefined; request:
           {event.ticket_types !== undefined && <section className="public-ticket-types" aria-label={t.event.ticketTypes}>
             <h2>{t.event.ticketTypes}</h2>
             {event.ticket_types.length ? <ul>{event.ticket_types.map((type) => {
-              const unavailable = ticketTypeUnavailable(type, salesTime);
+              const unavailable = ticketTypeUnavailable(type, salesTime, event.paid_sales_available);
               return <li key={type.id}>
                 <strong>{type.name}</strong>{t.event.typeLine(ticketTypePrice(type.price_tiyn), type.remaining)}
                 {type.description && <p>{type.description}</p>}

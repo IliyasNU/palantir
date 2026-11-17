@@ -11,10 +11,11 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.audit import record_action
 from app.dependencies.auth import CurrentUser
 from app.dependencies.db import DbSession
 from app.db.base import utcnow
-from app.dependencies.events import can_manage, get_event_or_404, is_visible
+from app.dependencies.events import can_manage, ensure_not_suspended, get_event_or_404, is_visible
 from app.dependencies.roles import is_admin
 from app.errors import api_error
 from app.models import Event, EventStatus, Ticket, TicketStatus, TicketType, User
@@ -22,6 +23,8 @@ from app.schemas.ticket import TicketRead
 from app.schemas.ticket_type import TicketClaimRequest
 from app.ticket_pdf import build_ticket_pdf
 from app.ticket_types import select_claim_type
+from app.ticket_types import lock_event
+from app.order_inventory import ensure_no_pending_order, expire_event_orders
 
 router = APIRouter(tags=["tickets"])
 
@@ -47,6 +50,8 @@ def _ensure_open_for_tickets(event: Event) -> None:
         raise api_error(status.HTTP_409_CONFLICT, "EVENT_NOT_PUBLISHED", "Event is not published yet")
     if event.status == EventStatus.CANCELLED.value:
         raise api_error(status.HTTP_409_CONFLICT, "EVENT_CANCELLED", "Event is cancelled")
+    # Reached by the event's own managers, and by a claim that raced a suspension: everyone else gets 404.
+    ensure_not_suspended(event)
 
 
 @router.post("/events/{event_id}/tickets", response_model=TicketRead, status_code=status.HTTP_201_CREATED)
@@ -57,15 +62,20 @@ def claim_ticket(event_id: int, db: DbSession, current_user: CurrentUser, respon
     if not is_visible(event, current_user):
         raise api_error(status.HTTP_404_NOT_FOUND, "EVENT_NOT_FOUND", "Event not found")
 
+    event = lock_event(db, event_id)
+    expire_event_orders(db, event_id)
+
     ticket_type_id = payload.ticket_type_id if payload else None
     if ticket_type_id is not None and not any(ticket_type.id == ticket_type_id for ticket_type in event.ticket_types):
         raise api_error(404, "TICKET_TYPE_NOT_FOUND", "Ticket type not found at this event")
 
     existing = _find_ticket(db, event.id, current_user.id)
     if existing is not None:
+        db.commit()  # retain lazy cleanup; legacy replays include closed tickets
         response.status_code = status.HTTP_200_OK
         return existing
     _ensure_open_for_tickets(event)
+    ensure_no_pending_order(db, event_id, current_user.id)
 
     # One atomic statement takes a seat, so concurrent claims for the last seat cannot both succeed.
     seat_taken = db.execute(
@@ -73,6 +83,7 @@ def claim_ticket(event_id: int, db: DbSession, current_user: CurrentUser, respon
         .where(
             Event.id == event.id,
             Event.status == EventStatus.PUBLISHED.value,
+            Event.suspended_at.is_(None),  # a suspension that commits first stops this claim
             Event.tickets_issued < Event.capacity,
         )
         .values(tickets_issued=Event.tickets_issued + 1)
@@ -222,6 +233,11 @@ def _close_ticket(db: Session, ticket_id: int, user: User, target: TicketStatus,
         update(TicketType).where(TicketType.id == ticket.ticket_type_id)
         .values(tickets_issued=TicketType.tickets_issued - 1)
         .execution_options(synchronize_session=False)
+    )
+    record_action(
+        db, event_id=ticket.event_id, actor_id=user.id, action=f"ticket.{target.value}", entity_type="ticket",
+        entity_id=ticket.id,
+        description=f"Ticket {target.value} by {'event management' if manager else 'its attendee'}",
     )
     db.commit()
     db.expire_all()  # the event counter changed outside the ORM

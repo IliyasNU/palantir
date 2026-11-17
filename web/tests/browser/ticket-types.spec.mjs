@@ -123,7 +123,7 @@ test('organizer creates a paid type, edits its price and hides it', async ({ pag
   let audit = [];
   await page.route(`${base}/events/42`, (route) => route.fulfill({ json: { ...eventDetails, organizer_id: 1 } }));
   await page.route(`${base}/events/42/ticket-types/manage`, (route) => route.fulfill({ json: rows }));
-  await page.route(`${base}/events/42/action-log`, (route) => route.fulfill({ json: audit }));
+  await page.route(`${base}/events/42/action-log?action=ticket_type`, (route) => route.fulfill({ json: audit }));
   await page.route(`${base}/events/42/ticket-types`, (route) => {
     expect(route.request().method()).toBe('POST');
     expect(route.request().postDataJSON()).toMatchObject({ name: 'VIP', price_tiyn: 150050, quantity: 1 });

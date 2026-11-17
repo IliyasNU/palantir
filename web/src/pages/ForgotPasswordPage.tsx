@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link } from 'react-router';
-import { api, getErrorMessage } from '../api';
-import { forgotPasswordAnswered } from '../account/model';
+import { Link, useSearchParams } from 'react-router';
+import { api, ApiError, getErrorMessage } from '../api';
+import { authLink, safeReturnTo } from '../auth/returnTo';
 import { useT } from '../i18n';
 import { useSubmission } from '../auth/useSubmission';
 import { Page } from '../components/Page';
 
 export function ForgotPasswordPage() {
-  const text = useT().account;
+  const t = useT();
+  const text = t.account;
+  const [params] = useSearchParams();
+  const returnTo = safeReturnTo(params.get('returnTo'));
   const { pending, error, submit } = useSubmission();
   const [sent, setSent] = useState(false);
 
@@ -16,12 +19,7 @@ export function ForgotPasswordPage() {
     event.preventDefault();
     const email = String(new FormData(event.currentTarget).get('email') ?? '').trim();
     void submit(async (signal) => {
-      try {
-        await api.request<void>('/auth/forgot-password', { method: 'POST', body: { email }, signal });
-      } catch (failure) {
-        // Whatever the server answers, the page says the same thing: it never shows whether the address exists.
-        if (!forgotPasswordAnswered(failure)) throw failure;
-      }
+      await api.request<void>('/auth/forgot-password', { method: 'POST', body: { email }, signal });
       if (!signal.aborted) setSent(true);
     });
   }
@@ -33,7 +31,7 @@ export function ForgotPasswordPage() {
           <div className="notice notice-success" role="status"><p>{text.forgot.sent}</p></div>
         ) : (
           <form className="auth-form" onSubmit={onSubmit} aria-busy={pending} aria-describedby={error ? 'form-error' : undefined}>
-            {error !== null && <div className="notice notice-error" role="alert" id="form-error"><p>{getErrorMessage(error)}</p></div>}
+            {error !== null && <div className="notice notice-error" role="alert" id="form-error"><p>{error instanceof ApiError && error.status ? (error.status === 429 ? t.api.tooMany : t.api.server) : getErrorMessage(error)}</p></div>}
             <fieldset disabled={pending}>
               <label htmlFor="forgot-email">{text.forgot.email}</label>
               <input id="forgot-email" name="email" type="email" autoComplete="username" required />
@@ -41,7 +39,7 @@ export function ForgotPasswordPage() {
             </fieldset>
           </form>
         )}
-        <p><Link className="text-link" to="/login">{text.toLogin}</Link></p>
+        <p><Link className="text-link" to={authLink('/login', returnTo)}>{text.toLogin}</Link></p>
       </div>
     </Page>
   );

@@ -1,5 +1,5 @@
 import { ApiError } from '../api/client.ts';
-import { current, dateLocale } from '../i18n/index.ts';
+import { current, dateLocale, getLocale } from '../i18n/index.ts';
 
 /** Fields used by the catalog from the backend's EventRead response. */
 export interface CatalogEvent {
@@ -35,5 +35,11 @@ export function filterEventsByTitle(events: CatalogEvent[], query: string): Cata
 
 export function formatEventDate(date: string): string {
   // No timeZone override: display the server instant in the browser's local time.
+  if (getLocale() === 'kk') {
+    const months = ['қаңтар', 'ақпан', 'наурыз', 'сәуір', 'мамыр', 'маусым', 'шілде', 'тамыз', 'қыркүйек', 'қазан', 'қараша', 'желтоқсан'];
+    const value = new Date(date);
+    const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(value);
+    return `${value.getDate()} ${months[value.getMonth()]} ${value.getFullYear()}, ${time}`;
+  }
   return new Intl.DateTimeFormat(dateLocale(), { dateStyle: 'long', timeStyle: 'short' }).format(new Date(date));
 }

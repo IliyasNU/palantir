@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { current, useT } from '../i18n';
+import { useT } from '../i18n';
 import { Link } from 'react-router';
 import { api, ApiError, getErrorMessage } from '../api';
 import { Page } from '../components/Page';
@@ -8,7 +8,7 @@ import type { CatalogEvent } from '../events/catalog';
 
 type CatalogState =
   | { kind: 'loading' }
-  | { kind: 'error'; message: string }
+  | { kind: 'error'; error: unknown }
   | { kind: 'success'; events: CatalogEvent[] };
 
 export function EventsPage() {
@@ -27,9 +27,7 @@ export function EventsPage() {
       .catch((error: unknown) => {
         if (!controller.signal.aborted) setState({
           kind: 'error',
-          message: error instanceof ApiError && error.status === 405
-            ? current().catalog.unavailable
-            : getErrorMessage(error),
+          error,
         });
       });
     return () => controller.abort();
@@ -65,7 +63,7 @@ export function EventsPage() {
       {state.kind === 'error' && (
         <div className="notice notice-error catalog-state" role="alert">
           <h2>{t.catalog.loadFailed}</h2>
-          <p>{state.message}</p>
+          <p>{state.error instanceof ApiError && state.error.status === 405 ? t.catalog.unavailable : getErrorMessage(state.error)}</p>
           <button className="button" type="button" onClick={retry}>{t.common.retry}</button>
         </div>
       )}

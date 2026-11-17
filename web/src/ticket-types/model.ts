@@ -1,5 +1,5 @@
 import { ApiError, getErrorMessage } from '../api/client.ts';
-import { current } from '../i18n/index.ts';
+import { current, dateLocale } from '../i18n/index.ts';
 import ticketTypeNamePolicy from '../../../backend/app/assets/ticket-type-name.json' with { type: 'json' };
 
 export { ticketTypeNamePolicy };
@@ -74,12 +74,12 @@ export function readTicketTypes(payload: unknown, eventId: number): TicketType[]
 /** Money is received as integer tiyn; this is display-only, never a checkout calculation. */
 export function ticketTypePrice(priceTiyn: number): string {
   if (priceTiyn === 0) return current().ticketTypes.free;
-  return `${new Intl.NumberFormat('ru-KZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(priceTiyn / 100)} ₸`;
+  return `${new Intl.NumberFormat(dateLocale(), { minimumFractionDigits: priceTiyn % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 }).format(priceTiyn / 100)} ₸`;
 }
 
-export function ticketTypeUnavailable(type: TicketType, now = Date.now()): string | null {
+export function ticketTypeUnavailable(type: TicketType, now = Date.now(), paidSalesAvailable = false): string | null {
   if (type.hidden) return current().ticketTypes.hidden;
-  if (type.price_tiyn > 0) return current().ticketTypes.paidUnavailable;
+  if (type.price_tiyn > 0 && !paidSalesAvailable) return current().ticketTypes.paidUnavailable;
   if (type.sales_start !== null && Date.parse(type.sales_start) > now) return current().ticketTypes.salesNotStarted;
   if (type.sales_end !== null && Date.parse(type.sales_end) <= now) return current().ticketTypes.salesClosed;
   if (type.remaining === 0) return current().ticketTypes.none;

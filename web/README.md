@@ -216,3 +216,34 @@ npx playwright test --config playwright.isolation.config.mjs
 ## Проверка интеграционной версии
 
 Результаты реальных браузерных проверок авторизации, билетов и восстановления API приведены в [отчёте аудита](../docs/integration-audit.md).
+
+## Account, organizer, administration and languages
+
+The header offers Russian, Kazakh and English. The choice persists in localStorage. Session tokens remain in memory, so a full reload requires signing in again. The browser, API and mobile app must use the same backend and database. An account registered as an attendee has no organizer role. The organizer pages read the role returned by `GET /auth/me`.
+
+Account routes are `/forgot-password`, `/reset-password?token=...` and `/verify-email?token=...`. Recovery preserves a validated destination through the login link. A reset requires matching passwords. Each link has its own state, and a new link clears an earlier success or refusal. Failed HTTP requests show a retryable failure without disclosing whether an email exists.
+
+The account endpoints and server-side refresh-token logout depend on backend PR #21. The current web logout clears the local session. This web change retains that behavior until the backend contract is integrated. Account browser tests use mocked HTTP. Live validation of email links and server logout remains pending.
+
+Organizers open `/organizer`, `/organizer/events/new` and `/organizer/events/{id}/edit`. Admins open `/admin/users`, `/admin/events` and `/admin/action-log`. The server checks roles and event ownership on every request. The web refuses non-admin navigation locally, and signed-out admin navigation returns through the public catalog. Mutation controls require confirmation. Administrator accounts have no suspension controls in the UI, and the activity log is read only.
+
+The language switch covers these pages, the public event and ticket flow, dates and API errors. Prices use the selected locale and omit decimals for whole tenge. Ticket-type management and the P2 checkout, order and activation text still need a separate translation pass. Kazakh text needs native review before the defense.
+
+## P2 demo checkout
+
+Paid types on activated events lead from `/events/:id` to `/events/:id/checkout?type=:typeId`,
+then `/orders/:id`. `/orders` lists the authenticated buyer's orders. The server computes
+prices and fees; the browser never adds a surcharge. Every payment screen says
+«Демонстрационная оплата, деньги не списываются». Success and failure buttons call the
+simulated provider endpoint. Retries reuse the order or creation request UUID. A definitive
+422 allows correcting the form; uncertain delivery preserves the original request payload.
+
+Organizers use `/organizer/events/:id/activation`, linked from ticket type management, for
+the demo checklist and sales summary. Profile identity/payout confirmations apply to their
+own profile. The payout form accepts only a four-character demo suffix, never real account
+details. Admins can suspend/restore paid sales from this page. Financial refunds belong to P5.
+
+P2 uses the existing authenticated API client, strict response readers and plain CSS classes.
+It adds no dependencies. `npm test` covers contract readers, amount invariants, safe return
+URLs and availability. `tests/browser/orders.spec.mjs` covers success/failure checkout and
+activation with HTTP fixtures; run it as part of `npm run test:browser`.

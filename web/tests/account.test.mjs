@@ -3,7 +3,7 @@ import test from 'node:test';
 import { createApiClient, ApiError } from '../src/api/client.ts';
 import { createAuthStore } from '../src/auth/store.ts';
 import { passwordIssues, validateRegistration } from '../src/auth/formErrors.ts';
-import { RESEND_INTERVAL_MS, forgotPasswordAnswered, isInvalidLink, linkErrorMessage, resendWaitMs, validateNewPassword } from '../src/account/model.ts';
+import { RESEND_INTERVAL_MS, isInvalidLink, linkErrorMessage, resendWaitMs, validateNewPassword } from '../src/account/model.ts';
 import { messages } from '../src/i18n/messages.ts';
 
 const accountText = messages.ru.account;
@@ -45,11 +45,12 @@ test('only 400 INVALID_TOKEN is reported as an invalid link', () => {
   assert.doesNotMatch(linkErrorMessage(new Error('private stack')), /private/);
 });
 
-test('any HTTP answer to forgot-password counts as answered; a failed connection does not', () => {
-  for (const status of [202, 400, 404, 422, 429, 500]) assert.equal(forgotPasswordAnswered(new ApiError('x', { kind: 'http', status })), true);
-  assert.equal(forgotPasswordAnswered(new ApiError('offline', { kind: 'network' })), false);
-  assert.equal(forgotPasswordAnswered(new ApiError('slow', { kind: 'timeout' })), false);
-  assert.equal(forgotPasswordAnswered(new Error('x')), false);
+test('forgot-password HTTP failures remain retryable errors', async () => {
+  for (const status of [400, 404, 422, 429, 500]) {
+    const client = createApiClient('http://localhost:8000', async () => new Response('', { status }));
+    await assert.rejects(client.request('/auth/forgot-password', { method: 'POST', body: { email: 'demo@example.com' } }),
+      error => error instanceof ApiError && error.status === status);
+  }
 });
 
 test('the verification email can be requested once per minute', () => {

@@ -1,4 +1,4 @@
-import { current } from '../i18n/index.ts';
+import { current, messages } from '../i18n/index.ts';
 import { apiBaseUrl } from './config.ts';
 
 export type ApiErrorKind = 'configuration' | 'network' | 'timeout' | 'http' | 'validation' | 'response';
@@ -188,5 +188,14 @@ export function createApiClient(baseUrl: string | undefined, fetchImpl: typeof f
 
 /** UI-safe message, without stringifying arbitrary objects or response bodies. */
 export function getErrorMessage(error: unknown): string {
-  return error instanceof ApiError ? error.message : current().api.unknown;
+  if (!(error instanceof ApiError)) return current().api.unknown;
+  for (const text of Object.values(messages)) {
+    for (const [key, value] of Object.entries(text.api)) {
+      if (typeof value === 'string' && value === error.message) {
+        const translated = current().api[key as keyof typeof text.api];
+        if (typeof translated === 'string') return translated;
+      }
+    }
+  }
+  return error.message;
 }

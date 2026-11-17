@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Link, Navigate, NavLink, useParams } from 'react-router';
 import { useAuth } from '../auth/AuthProvider';
@@ -19,7 +19,7 @@ const dateTime = (value: string) => new Date(value).toLocaleString(dateLocale(),
 /** Loads one admin list. A new path or a retry replaces the previous answer; a stale answer is dropped. */
 function useAdminList<T>(path: string | null, read: (payload: unknown) => T[]) {
   const { request } = useAuth();
-  const [state, setState] = useState<{ key: string; rows: T[] | null; error: string | null }>({ key: '', rows: null, error: null });
+  const [state, setState] = useState<{ key: string; rows: T[] | null; error: unknown | null }>({ key: '', rows: null, error: null });
   const [attempt, setAttempt] = useState(0);
   const key = `${attempt}:${path ?? ''}`;
 
@@ -29,7 +29,7 @@ function useAdminList<T>(path: string | null, read: (payload: unknown) => T[]) {
     request(path, { signal: controller.signal }).then((payload) => {
       setState({ key, rows: read(payload), error: null });
     }).catch((error: unknown) => {
-      if (!controller.signal.aborted && !(error instanceof Error && error.name === 'AbortError')) setState({ key, rows: null, error: adminError(error) });
+      if (!controller.signal.aborted && !(error instanceof Error && error.name === 'AbortError')) setState({ key, rows: null, error });
     });
     return () => controller.abort();
   }, [path, key, read, request]);
@@ -44,12 +44,12 @@ function useAdminList<T>(path: string | null, read: (payload: unknown) => T[]) {
   };
 }
 
-function ListState({ loading, error, empty, emptyText, retry }: { loading: boolean; error: string | null; empty: boolean; emptyText: string; retry: () => void }) {
+function ListState({ loading, error, empty, emptyText, retry }: { loading: boolean; error: unknown | null; empty: boolean; emptyText: string; retry: () => void }) {
   const text = useT().admin;
   if (loading) return <p role="status">{text.searching}</p>;
-  if (error !== null) {
+  if (error != null) {
     return <div className="notice notice-error" role="alert">
-      <h3>{text.loadFailed}</h3><p>{error}</p>
+      <h3>{text.loadFailed}</h3><p>{adminError(error)}</p>
       <button className="text-button" type="button" onClick={retry}>{text.retry}</button>
     </div>;
   }
@@ -66,7 +66,7 @@ function SuspendControl({ suspended, subject, onSuspend, onReactivate }: {
   const text = useT().admin;
   const { pending, error, submit } = useSubmission();
   const [asking, setAsking] = useState(false);
-  const inputId = `reason-${subject.replace(/\W+/g, '-')}`;
+  const inputId = useId();
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -79,9 +79,15 @@ function SuspendControl({ suspended, subject, onSuspend, onReactivate }: {
 
   return <>
     {error !== null && <p className="notice notice-error" role="alert">{adminError(error)}</p>}
-    {suspended ? (
+    {suspended && asking ? (
+      <div className="admin-reason">
+        <p>{text.confirmReactivate}</p>
+        <button className="button" type="button" disabled={pending} onClick={() => void submit(onReactivate)}>{text.users.reactivate}</button>
+        <button className="text-button" type="button" disabled={pending} onClick={() => setAsking(false)}>{text.keep}</button>
+      </div>
+    ) : suspended ? (
       <button className="button" type="button" disabled={pending} aria-label={`${text.users.reactivate}: ${subject}`}
-        onClick={() => { void submit(onReactivate); }}>{pending ? text.working : text.users.reactivate}</button>
+        onClick={() => setAsking(true)}>{pending ? text.working : text.users.reactivate}</button>
     ) : asking ? (
       <form className="admin-reason" onSubmit={onSubmit} noValidate>
         <label htmlFor={inputId}>{text.reason}</label>
@@ -113,13 +119,13 @@ function Users() {
   const [role, setRole] = useState('');
   const [active, setActive] = useState('');
   const list = useAdminList(adminPath('/admin/users', { q: query, limit: SEARCH_LIMIT }), readUsers);
-  const [done, setDone] = useState<string | null>(null);
+  const [done, setDone] = useState<{ action: 'suspend' | 'reactivate'; name: string } | null>(null);
   const rows = (list.rows ?? []).filter((row) => (!role || row.role === role) && (!active || String(row.is_active) === active));
 
   async function change(target: AdminUser, action: 'suspend' | 'reactivate', signal: AbortSignal, reason?: string) {
     const saved = readAdminUser(await request(`/admin/users/${target.id}/${action}`, { method: 'POST', signal, ...(reason === undefined ? {} : { body: { reason } }) }));
     list.replace((row) => row.id === saved.id, saved);
-    setDone(action === 'suspend' ? text.users.suspendedDone(saved.full_name) : text.users.reactivatedDone(saved.full_name));
+    setDone({ action, name: saved.full_name });
   }
 
   const columns = text.users.columns;
@@ -139,7 +145,7 @@ function Users() {
         </select></div>
     </form>
     <p className="field-hint">{text.filterNote} {list.rows?.length === SEARCH_LIMIT && text.limitNote(SEARCH_LIMIT)}</p>
-    {done && <div className="notice notice-success" role="status"><p>{done}</p></div>}
+    {done && <div className="notice notice-success" role="status"><p>{done.action === 'suspend' ? text.users.suspendedDone(done.name) : text.users.reactivatedDone(done.name)}</p></div>}
     <ListState loading={list.loading} error={list.error} empty={list.rows !== null && rows.length === 0} emptyText={text.users.empty} retry={list.retry} />
     {rows.length > 0 && <Table label={text.users.heading} columns={[columns.name, columns.email, columns.role, columns.state, columns.created, columns.action]}>
       {rows.map((row) => <tr key={row.id}>
@@ -148,7 +154,7 @@ function Users() {
         <td>{roleLabel(row.role)}</td>
         <td>{row.is_active ? text.users.active : text.users.suspended}</td>
         <td><time dateTime={row.created_at}>{dateTime(row.created_at)}</time></td>
-        <td>{row.id === user?.id ? <span className="field-hint">{text.users.self}</span> : (
+        <td>{row.id === user?.id || row.role === 'admin' ? <span className="field-hint">{row.id === user?.id ? text.users.self : text.roles.admin}</span> : (
           <SuspendControl suspended={!row.is_active} subject={row.email}
             onSuspend={(reason, signal) => change(row, 'suspend', signal, reason)} onReactivate={(signal) => change(row, 'reactivate', signal)} />
         )}</td>
@@ -164,13 +170,14 @@ function Events() {
   const [suspended, setSuspended] = useState('');
   const [status, setStatus] = useState('');
   const list = useAdminList(adminPath('/admin/events', { q: query, suspended, limit: SEARCH_LIMIT }), readEvents);
-  const [done, setDone] = useState<string | null>(null);
-  const rows = (list.rows ?? []).filter((row) => !status || row.status === status);
+  const [done, setDone] = useState<{ action: 'suspend' | 'reactivate'; name: string } | null>(null);
+  const rows = (list.rows ?? []).filter((row) => (!status || row.status === status)
+    && (!suspended || String(row.suspended_at !== null) === suspended));
 
   async function change(target: AdminEvent, action: 'suspend' | 'reactivate', signal: AbortSignal, reason?: string) {
     const saved = readAdminEvent(await request(`/admin/events/${target.id}/${action}`, { method: 'POST', signal, ...(reason === undefined ? {} : { body: { reason } }) }));
     list.replace((row) => row.id === saved.id, saved);
-    setDone(action === 'suspend' ? text.events.suspendedDone(saved.title) : text.events.reactivatedDone(saved.title));
+    setDone({ action, name: saved.title });
   }
 
   const columns = text.events.columns;
@@ -190,7 +197,7 @@ function Events() {
         </select></div>
     </form>
     <p className="field-hint">{text.filterNote} {list.rows?.length === SEARCH_LIMIT && text.limitNote(SEARCH_LIMIT)}</p>
-    {done && <div className="notice notice-success" role="status"><p>{done}</p></div>}
+    {done && <div className="notice notice-success" role="status"><p>{done.action === 'suspend' ? text.events.suspendedDone(done.name) : text.events.reactivatedDone(done.name)}</p></div>}
     <ListState loading={list.loading} error={list.error} empty={list.rows !== null && rows.length === 0} emptyText={text.events.empty} retry={list.retry} />
     {rows.length > 0 && <Table label={text.events.heading} columns={[columns.title, columns.status, columns.when, columns.issued, columns.suspension, columns.action]}>
       {rows.map((row) => <tr key={row.id}>

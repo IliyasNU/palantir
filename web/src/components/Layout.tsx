@@ -29,6 +29,7 @@ export function Layout() {
                 {canOrganize(auth.user) && <NavLink className="nav-link" to="/organizer">{t.organizer.nav}</NavLink>}
                 <NavLink className="nav-link" to="/tickets">{t.common.myTickets}</NavLink>
                 {isAdmin(auth.user) && <NavLink className="nav-link" to="/admin">{t.admin.nav}</NavLink>}
+                <NavLink className="nav-link" to="/orders">{t.common.myOrders}</NavLink>
                 <span className="account-name">{auth.user.full_name}</span>
                 <button className="nav-link nav-link-accent" type="button" onClick={auth.logout}>{t.common.logout}</button>
               </>

@@ -75,6 +75,7 @@ test('password reset validates locally, sends token and new_password, and handle
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
   await field.fill('a-new-password');
+  await page.getByLabel('Повторите пароль', { exact: true }).fill('a-new-password');
   await page.getByRole('button', { name: 'Сохранить пароль' }).click();
   await expect(page.getByRole('status')).toHaveText('Пароль изменён. Войдите с новым паролем.');
   expect(bodies).toEqual([{ token: 'reset-token', new_password: 'a-new-password' }]);
@@ -85,6 +86,7 @@ test('password reset validates locally, sends token and new_password, and handle
   answer = invalidToken;
   await page.goto('/reset-password?token=old-token');
   await page.getByLabel('Новый пароль', { exact: true }).fill('a-new-password');
+  await page.getByLabel('Повторите пароль', { exact: true }).fill('a-new-password');
   await page.getByRole('button', { name: 'Сохранить пароль' }).click();
   await expect(page.getByRole('alert')).toContainText('Ссылка недействительна или устарела');
   await expect(page.getByRole('link', { name: 'Запросить новую ссылку' })).toHaveAttribute('href', '/forgot-password');
@@ -93,7 +95,7 @@ test('password reset validates locally, sends token and new_password, and handle
   expect(bodies).toHaveLength(2);
 });
 
-test('forgot password shows the same message whatever the server answers and never hints at the account', async ({ page }) => {
+test('forgot password reports HTTP failures and hides account existence', async ({ page }) => {
   const sent = 'Если такой email зарегистрирован, мы отправили на него письмо со ссылкой для сброса пароля. Проверьте почту.';
   const bodies = [];
   let answer = { status: 202 };
@@ -109,8 +111,14 @@ test('forgot password shows the same message whatever the server answers and nev
     const before = bodies.length;
     await page.getByRole('button', { name: 'Отправить ссылку' }).click();
     await expect.poll(() => bodies.length, { message: 'the form must send exactly one request' }).toBe(before + 1);
-    await expect(page.getByRole('status')).toHaveText(sent);
-    await expect(page.getByRole('alert')).toHaveCount(0);
+    if (next.status === 202) {
+      await expect(page.getByRole('status')).toHaveText(sent);
+      await expect(page.getByRole('alert')).toHaveCount(0);
+    } else {
+      await expect(page.getByRole('alert')).toBeVisible();
+      await expect(page.getByRole('status')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Отправить ссылку' })).toBeEnabled();
+    }
     await expect(page.getByText('No such user')).toHaveCount(0);
   }
   expect(bodies).toEqual(Array(3).fill({ email: 'known@example.com' }));

@@ -19,11 +19,6 @@ export function linkErrorMessage(error: unknown): string {
   return getErrorMessage(error);
 }
 
-/** The API answers 202 whether or not the address exists; any HTTP answer shows the same text. */
-export function forgotPasswordAnswered(error: unknown): boolean {
-  return error instanceof ApiError && error.status !== undefined;
-}
-
 export const RESEND_INTERVAL_MS = 60_000;
 
 /** How long the "send again" button stays disabled after the last request. */
