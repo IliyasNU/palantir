@@ -6,9 +6,11 @@ import { useAuth } from '../auth/AuthProvider';
 import { authLink, safeReturnTo } from '../auth/returnTo';
 import { validateRegistration } from '../auth/formErrors';
 import { useSubmission } from '../auth/useSubmission';
+import { useT } from '../i18n';
 
 export function RegisterPage() {
   const auth = useAuth();
+  const t = useT();
   const { pending, error, submit } = useSubmission();
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -33,29 +35,29 @@ export function RegisterPage() {
   }
   return (
     <Page
-      eyebrow="Присоединяйтесь"
-      title="Регистрация в BiletFlow"
-      description="Создайте аккаунт посетителя."
+      eyebrow={t.auth.registerEyebrow}
+      title={t.auth.registerTitle}
+      description={t.auth.registerDescription}
     >
       <div className="content-card narrow-card">
         {auth.user ? (
-          <><p>Вы уже вошли как {auth.user.full_name}.</p><Link className="button" to={returnTo}>Продолжить</Link></>
+          <><p>{t.auth.alreadyIn(auth.user.full_name)}</p><Link className="button" to={returnTo}>{t.auth.proceed}</Link></>
         ) : (
           <>
             <form className="auth-form" onSubmit={onSubmit} aria-busy={pending} aria-describedby={error ? 'form-error' : undefined}>
               <AuthFormError error={error} mode="register" />
               <fieldset disabled={pending}>
-                <label htmlFor="register-name">Имя</label>
+                <label htmlFor="register-name">{t.auth.name}</label>
                 <input id="register-name" name="full_name" autoComplete="name" required maxLength={255} />
-                <label htmlFor="register-email">Email</label>
+                <label htmlFor="register-email">{t.auth.email}</label>
                 <input id="register-email" name="email" type="email" autoComplete="username" required />
-                <label htmlFor="register-password">Пароль</label>
+                <label htmlFor="register-password">{t.auth.password}</label>
                 <input id="register-password" name="password" type="password" autoComplete="new-password" required minLength={8} maxLength={72} aria-describedby="password-hint" />
-                <p className="field-hint" id="password-hint">Минимум 8 символов. Максимум 72 байта UTF-8: буквы кириллицы и эмодзи занимают больше одного байта.</p>
-                <button className="button" type="submit" disabled={pending}>{pending ? 'Создаём аккаунт…' : 'Создать аккаунт'}</button>
+                <p className="field-hint" id="password-hint">{t.auth.passwordHint}</p>
+                <button className="button" type="submit" disabled={pending}>{pending ? t.auth.registerPending : t.auth.registerSubmit}</button>
               </fieldset>
             </form>
-            <p>Уже есть аккаунт? <Link className="text-link" to={authLink('/login', returnTo)}>Перейти ко входу</Link></p>
+            <p>{t.auth.haveAccount} <Link className="text-link" to={authLink('/login', returnTo)}>{t.auth.toLogin}</Link></p>
           </>
         )}
       </div>
