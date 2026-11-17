@@ -23,6 +23,8 @@ from app.schemas.ticket import TicketRead
 from app.schemas.ticket_type import TicketClaimRequest
 from app.ticket_pdf import build_ticket_pdf
 from app.ticket_types import select_claim_type
+from app.ticket_types import lock_event
+from app.order_inventory import ensure_no_pending_order, expire_event_orders
 
 router = APIRouter(tags=["tickets"])
 
@@ -60,15 +62,20 @@ def claim_ticket(event_id: int, db: DbSession, current_user: CurrentUser, respon
     if not is_visible(event, current_user):
         raise api_error(status.HTTP_404_NOT_FOUND, "EVENT_NOT_FOUND", "Event not found")
 
+    event = lock_event(db, event_id)
+    expire_event_orders(db, event_id)
+
     ticket_type_id = payload.ticket_type_id if payload else None
     if ticket_type_id is not None and not any(ticket_type.id == ticket_type_id for ticket_type in event.ticket_types):
         raise api_error(404, "TICKET_TYPE_NOT_FOUND", "Ticket type not found at this event")
 
     existing = _find_ticket(db, event.id, current_user.id)
     if existing is not None:
+        db.commit()  # retain lazy cleanup; legacy replays include closed tickets
         response.status_code = status.HTTP_200_OK
         return existing
     _ensure_open_for_tickets(event)
+    ensure_no_pending_order(db, event_id, current_user.id)
 
     # One atomic statement takes a seat, so concurrent claims for the last seat cannot both succeed.
     seat_taken = db.execute(

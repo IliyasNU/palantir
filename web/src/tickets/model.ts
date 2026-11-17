@@ -95,6 +95,7 @@ export function ticketErrorMessage(error: unknown): string {
       case 'SOLD_OUT': return 'Свободных билетов больше нет. Уже полученные билеты доступны в разделе «Мои билеты».';
       case 'EVENT_CANCELLED': return 'Событие отменено. Уже полученный билет доступен в разделе «Мои билеты».';
       case 'EVENT_NOT_PUBLISHED': return 'Событие ещё не опубликовано. Получить билет пока нельзя.';
+      case 'PENDING_ORDER_EXISTS': return 'У вас есть незавершённый платный заказ. Откройте «Мои заказы» и завершите или отмените его.';
       case 'TICKET_NOT_FOUND': return 'Билет не найден или принадлежит другому посетителю.';
       case 'TICKET_CANCELLED': return 'Билет отменён и не даёт права на вход.';
       case 'TICKET_REFUNDED': return 'Билет возвращён и не даёт права на вход.';

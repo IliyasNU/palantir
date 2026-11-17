@@ -216,3 +216,22 @@ npx playwright test --config playwright.isolation.config.mjs
 ## Проверка интеграционной версии
 
 Результаты реальных браузерных проверок авторизации, билетов и восстановления API приведены в [отчёте аудита](../docs/integration-audit.md).
+
+## P2 demo checkout
+
+Paid types on activated events lead from `/events/:id` to `/events/:id/checkout?type=:typeId`,
+then `/orders/:id`. `/orders` lists the authenticated buyer's orders. The server computes
+prices and fees; the browser never adds a surcharge. Every payment screen says
+«Демонстрационная оплата, деньги не списываются». Success and failure buttons call the
+simulated provider endpoint. Retries reuse the order or creation request UUID. A definitive
+422 allows correcting the form; uncertain delivery preserves the original request payload.
+
+Organizers use `/organizer/events/:id/activation`, linked from ticket type management, for
+the demo checklist and sales summary. Profile identity/payout confirmations apply to their
+own profile. The payout form accepts only a four-character demo suffix, never real account
+details. Admins can suspend/restore paid sales from this page. Financial refunds belong to P5.
+
+P2 uses the existing authenticated API client, strict response readers and plain CSS classes.
+It adds no dependencies. `npm test` covers contract readers, amount invariants, safe return
+URLs and availability. `tests/browser/orders.spec.mjs` covers success/failure checkout and
+activation with HTTP fixtures; run it as part of `npm run test:browser`.
