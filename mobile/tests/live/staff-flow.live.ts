@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { ApiError, createApi, type ScanRequest } from '../../src/api.ts';
+import { createRenewer, tokenExpiry } from '../../src/renewal.ts';
 import { createScanner } from '../../src/scanner.ts';
 import { createUndoStore } from '../../src/undo.ts';
 
@@ -298,6 +299,25 @@ await step('revoked staff lose attendance, search and check-in at once; reassign
 await step('an invalid session is reported as sign-in required, never as an admission', async () => {
   assert.equal(await code(api.attendance('not-a-token', eventId)), 'UNAUTHORIZED');
   assert.equal((await scannerFor('not-a-token', eventId).scan(tickets.camera.qr_payload))?.error?.code, 'UNAUTHORIZED');
+});
+
+await step('a session is renewed with its refresh token, for the same account only', async () => {
+  // The real access token carries the expiry the app plans its renewal from.
+  const expiry = tokenExpiry(staff.token);
+  assert.ok(expiry !== null && expiry > Date.now() && expiry < Date.now() + 24 * 3_600_000, String(expiry));
+  const renew = createRenewer((refreshToken, userId) => api.refresh(refreshToken, userId));
+  const renewed = await renew(staff);
+  assert.ok('session' in renewed, JSON.stringify(renewed));
+  assert.equal(renewed.session.userId, staff.userId);
+  assert.ok(renewed.session.refreshToken);
+  assert.deepEqual((await api.events(renewed.session.token)).map(item => item.id), [eventId]);
+  // The renewed pair renews again, as it does through a long shift.
+  assert.ok('session' in await renew(renewed.session));
+  // An access token is not a refresh token, another account's refresh token is not this account's,
+  // and garbage is refused: each needs a password sign-in.
+  for (const refreshToken of [staff.token, outsider.refreshToken, 'not-a-token']) {
+    assert.deepEqual(await renew({ ...staff, refreshToken }), { rejected: true });
+  }
 });
 
 await step('final database state matches what the phone was shown', async () => {

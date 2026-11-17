@@ -7,7 +7,8 @@ export type StaffEvent = {
   can_manage?: boolean;
 };
 
-export type StaffSession = { token: string; userId: number };
+// `refreshToken` renews the access token without the password. It is absent when the server issues none.
+export type StaffSession = { token: string; userId: number; refreshToken?: string };
 
 export type Attendance = {
   event_id: number;
@@ -200,6 +201,23 @@ export function createApi(baseUrl: string, fetcher: typeof fetch = fetch, timeou
     }
   }
 
+  // A token pair is trusted only after GET /auth/me names its account with the new access token.
+  async function identified(data: unknown, expectedUserId?: number, previousRefresh?: string): Promise<StaffSession> {
+    if (!object(data) || typeof data.access_token !== 'string' || !data.access_token) {
+      throw new ApiError('SERVER_ERROR', 'The server returned an invalid login response.');
+    }
+    const token = data.access_token;
+    const user = await request('/auth/me', token);
+    if (!object(user) || typeof user.id !== 'number' || !Number.isSafeInteger(user.id) || user.id < 1) {
+      throw new ApiError('SERVER_ERROR', 'The server did not identify the signed-in account.');
+    }
+    if (expectedUserId !== undefined && user.id !== expectedUserId) {
+      throw new ApiError('ACCOUNT_MISMATCH', 'Use the same staff account to retry this check-in.');
+    }
+    const refreshToken = typeof data.refresh_token === 'string' && data.refresh_token ? data.refresh_token : previousRefresh;
+    return { token, userId: user.id, ...(refreshToken ? { refreshToken } : {}) };
+  }
+
   return {
     async health(): Promise<void> {
       const data = await request('/health');
@@ -208,19 +226,12 @@ export function createApi(baseUrl: string, fetcher: typeof fetch = fetch, timeou
       }
     },
     async login(email: string, password: string, expectedUserId?: number): Promise<StaffSession> {
-      const data = await request('/auth/login', undefined, { email: email.trim(), password });
-      if (!object(data) || typeof data.access_token !== 'string' || !data.access_token) {
-        throw new ApiError('SERVER_ERROR', 'The server returned an invalid login response.');
-      }
-      const token = data.access_token;
-      const user = await request('/auth/me', token);
-      if (!object(user) || typeof user.id !== 'number' || !Number.isSafeInteger(user.id) || user.id < 1) {
-        throw new ApiError('SERVER_ERROR', 'The server did not identify the signed-in account.');
-      }
-      if (expectedUserId !== undefined && user.id !== expectedUserId) {
-        throw new ApiError('ACCOUNT_MISMATCH', 'Use the same staff account to retry this check-in.');
-      }
-      return { token, userId: user.id };
+      return identified(await request('/auth/login', undefined, { email: email.trim(), password }), expectedUserId);
+    },
+    // Exchanges the refresh token for a new pair. The new access token must belong to the same account,
+    // so a renewed session can repeat that account's unconfirmed requests.
+    async refresh(refreshToken: string, userId: number): Promise<StaffSession> {
+      return identified(await request('/auth/refresh', undefined, { refresh_token: refreshToken }), userId, refreshToken);
     },
     async events(token: string): Promise<StaffEvent[]> {
       const data = await request('/staff/events', token);

@@ -16,7 +16,21 @@ Ticket states and check-in undo come from [PR #10](https://github.com/IliyasNU/p
 { "email": "staff@example.com", "password": "the-user-password" }
 ```
 
-Successful login returns `access_token`, `refresh_token`, and `token_type`. The client calls `GET /auth/me` with the access token and holds the token and returned user ID in memory. Authenticated requests send `Authorization: Bearer <access_token>`. Before a retry after reauthentication, the client checks that `/auth/me` returns the original user ID. Staff access is scoped to each event.
+Successful login returns `access_token`, `refresh_token`, and `token_type`. The client calls `GET /auth/me` with the access token and holds both tokens and the returned user ID in memory. Authenticated requests send `Authorization: Bearer <access_token>`. Before a retry after reauthentication, the client checks that `/auth/me` returns the original user ID. Staff access is scoped to each event.
+
+### Session renewal
+
+`POST /auth/refresh`, JSON, without an `Authorization` header:
+
+```json
+{ "refresh_token": "<refresh_token from the last pair>" }
+```
+
+It returns a new pair in the login format. The client again calls `GET /auth/me` with the new access token and accepts the pair only if the user ID is the one already signed in. `401` (expired, malformed, or an access token sent instead) and `403` (disabled account) mean the session cannot be renewed: the app asks for the password. A timeout or `5xx` leaves the session as it is, and the same refresh token is tried again later.
+
+The app reads the `exp` claim of the access token only to plan the renewal: about two minutes before the expiry, or halfway through a shorter token life, while the app is in front. If the phone's clock makes the token look expired, nothing is planned and the renewal happens after the first `401`. The server remains the only judge of a token.
+
+After a `401` on a check-in the app renews once and repeats the same request with the same `request_id`; a second `401` shows the sign-in form. Totals, search and undo renew through “Войти снова”. Refresh tokens are stateless: signing out on the phone forgets them, the server does not revoke them.
 
 ## Accessible events
 

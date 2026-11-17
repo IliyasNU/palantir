@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
-from app.models import CheckIn
+from app.models import ActionLog, CheckIn
 from app.routers import check_ins as check_ins_router
 from tests.helpers import parse_dt
 
@@ -148,6 +148,37 @@ def test_unknown_qr_is_an_invalid_ticket(client, db, setup):
     assert response.status_code == 404
     assert detail_code(response) == "INVALID_TICKET"
     assert check_in_count(db) == 0
+
+
+CAMPAIGN_STYLE_PAYLOADS = [
+    "https://biletflow.kz/events/1?campaign=SPRING25",
+    "https://biletflow.kz/c/9f2b7c1e4d",
+    "http://localhost:5173/events/1?promo=WELCOME",
+    "biletflow:campaign:v1:9f2b7c1e4d",
+    "SPRING25",
+]
+
+
+@pytest.mark.parametrize("payload", CAMPAIGN_STYLE_PAYLOADS)
+def test_campaign_link_or_promo_code_is_never_an_admission(client, db, setup, payload):
+    """SRS 4.14: a Campaign QR is a link to an event page, not a ticket. The door refuses it and records nothing."""
+    response = scan(client, setup["event"]["id"], payload, setup["staff"])
+    assert response.status_code == 404
+    assert detail_code(response) == "INVALID_TICKET"
+    assert check_in_count(db) == 0
+    assert db.scalar(select(func.count()).select_from(ActionLog).where(ActionLog.action == "check_in.created")) == 0
+
+
+def test_link_that_carries_a_real_ticket_payload_is_still_refused(client, db, setup):
+    """Only the exact ticket payload admits: a link wrapped around it is not that ticket."""
+    qr = setup["ticket"]["qr_payload"]
+    for wrapped in (f"https://biletflow.kz/events/{setup['event']['id']}?ticket={qr}", f"{qr}?campaign=SPRING25", f" {qr}"):
+        response = scan(client, setup["event"]["id"], wrapped, setup["staff"])
+        assert (response.status_code, detail_code(response)) == (404, "INVALID_TICKET"), wrapped
+    assert check_in_count(db) == 0
+    # The real ticket is untouched and still admits.
+    assert scan(client, setup["event"]["id"], qr, setup["staff"]).status_code == 200
+    assert check_in_count(db) == 1
 
 
 def test_ticket_for_another_event_is_an_invalid_ticket(client, db, new_event, setup):
