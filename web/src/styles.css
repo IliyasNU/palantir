@@ -136,6 +136,12 @@ button.nav-link { color: inherit; background: transparent; }
 .type-editor textarea { font: inherit; width: 100%; padding: 10px 12px; border: 1px solid #839885; border-radius: 8px; resize: vertical; }
 .auth-form .type-checkbox { display: flex; align-items: center; gap: 10px; }
 .auth-form .type-checkbox input { width: auto; min-height: auto; }
+.auth-form .role-choice { margin-top: 12px; padding: 12px 16px 16px; border: 1px solid #dce3d8; border-radius: 9px; gap: 4px; }
+.auth-form .role-choice legend { padding: 0 6px; font-weight: 600; }
+.auth-form .role-option { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: start; margin-top: 8px; }
+.auth-form .role-option input { grid-row: span 2; width: 22px; height: 22px; min-height: 0; margin: 2px 0 0; padding: 0; accent-color: #254e38; cursor: pointer; }
+.auth-form .role-option label { margin: 0; cursor: pointer; }
+.auth-form .role-option .field-hint { grid-column: 2; color: #536153; line-height: 1.5; }
 .type-audit li { margin-block: 14px; }
 .type-audit li p { margin-block: 4px; }
 

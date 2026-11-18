@@ -1,5 +1,6 @@
 import { ApiError } from '../api/client.ts';
 import type { ApiRequestOptions, createApiClient } from '../api/client.ts';
+import { isRegistrationRole } from './types.ts';
 import type { LoginInput, RegistrationInput, TokenPair, User } from './types.ts';
 
 type ApiClient = ReturnType<typeof createApiClient>;
@@ -70,7 +71,9 @@ export function createAuthStore(api: ApiClient) {
     async register(input: RegistrationInput, signal?: AbortSignal): Promise<User> {
       return readUser(await api.request('/auth/register', {
         method: 'POST',
-        body: { email: input.email.trim(), full_name: input.full_name.trim(), password: input.password, role: 'attendee' },
+        // Only the two self-service roles are ever sent; anything else becomes the default attendee.
+        body: { email: input.email.trim(), full_name: input.full_name.trim(), password: input.password,
+          role: isRegistrationRole(input.role) ? input.role : 'attendee' },
         signal,
       }));
     },
