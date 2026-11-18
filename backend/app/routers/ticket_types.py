@@ -12,6 +12,8 @@ from app.models import TicketType
 from app.schemas.common import to_utc
 from app.schemas.ticket_type import ActionLogRead, TicketTypeCreate, TicketTypeRead, TicketTypeUpdate
 from app.ticket_types import check_allocation, lock_event
+from app.order_inventory import expire_event_orders, refresh_inventory
+from app.paid_sales import activation_state
 
 router = APIRouter(tags=["ticket types"])
 
@@ -21,6 +23,7 @@ def list_ticket_types(event_id: int, db: DbSession, current_user: OptionalUser):
     event = get_event_or_404(db, event_id)
     if not is_visible(event, current_user):
         raise api_error(404, "EVENT_NOT_FOUND", "Event not found")
+    refresh_inventory(db, [event_id])
     return db.scalars(select(TicketType).where(TicketType.event_id == event_id, TicketType.hidden.is_(False))
                       .order_by(TicketType.id)).all()
 
@@ -29,6 +32,7 @@ def list_ticket_types(event_id: int, db: DbSession, current_user: OptionalUser):
 def manage_ticket_types(event_id: int, db: DbSession, current_user: CurrentUser):
     event = get_event_or_404(db, event_id)
     ensure_can_manage(event, current_user)
+    refresh_inventory(db, [event_id])
     return db.scalars(select(TicketType).where(TicketType.event_id == event_id).order_by(TicketType.id)).all()
 
 
@@ -39,6 +43,7 @@ def create_ticket_type(event_id: int, payload: TicketTypeCreate, db: DbSession, 
     if payload.event_id is not None and payload.event_id != event_id:
         raise api_error(404, "EVENT_NOT_FOUND", "Ticket type event does not match the route")
     event = lock_event(db, event_id)
+    expire_event_orders(db, event_id)
     check_allocation(db, event, payload.quantity)
     ticket_type = TicketType(event_id=event_id, **payload.model_dump(exclude={"event_id"}))
     db.add(ticket_type)
@@ -47,6 +52,7 @@ def create_ticket_type(event_id: int, payload: TicketTypeCreate, db: DbSession, 
                   entity_type="ticket_type", entity_id=ticket_type.id,
                   description=f"Created ticket type {ticket_type.name}: price_tiyn={ticket_type.price_tiyn}, "
                               f"quantity={ticket_type.quantity}, hidden={ticket_type.hidden}")
+    activation_state(db, event, current_user.id)
     db.commit()
     db.refresh(ticket_type)
     return ticket_type
@@ -57,6 +63,7 @@ def update_ticket_type(event_id: int, type_id: int, payload: TicketTypeUpdate, d
     event = get_event_or_404(db, event_id)
     ensure_can_manage(event, current_user)
     event = lock_event(db, event_id)
+    expire_event_orders(db, event_id)
     ticket_type = db.scalar(select(TicketType).where(TicketType.id == type_id, TicketType.event_id == event_id)
                             .with_for_update().execution_options(populate_existing=True))
     if ticket_type is None:
@@ -83,6 +90,8 @@ def update_ticket_type(event_id: int, type_id: int, payload: TicketTypeUpdate, d
     if changed:
         record_action(db, event_id=event_id, actor_id=current_user.id, action="ticket_type.updated",
                       entity_type="ticket_type", entity_id=ticket_type.id, description=description)
+    db.flush()
+    activation_state(db, event, current_user.id)
     db.commit()
     db.refresh(ticket_type)
     return ticket_type

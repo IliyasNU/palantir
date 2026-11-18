@@ -14,6 +14,7 @@ from app.models import Event, EventStatus
 from app.schemas.common import to_utc
 from app.schemas.event import EventCreate, EventRead, EventUpdate
 from app.ticket_types import create_default_type, lock_event, resize_default_or_check_allocation
+from app.order_inventory import expire_event_orders, refresh_inventory
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -48,7 +49,9 @@ def list_published_events(db: DbSession):
         .where(Event.status == EventStatus.PUBLISHED.value, Event.suspended_at.is_(None))
         .order_by(Event.date, Event.id)
     )
-    return db.scalars(query).all()
+    events = db.scalars(query).all()
+    refresh_inventory(db, [event.id for event in events])
+    return events
 
 
 @router.post("", response_model=EventRead, status_code=status.HTTP_201_CREATED)
@@ -69,7 +72,9 @@ def create_event(payload: EventCreate, db: DbSession, current_user: OrganizerUse
 def list_my_events(db: DbSession, current_user: OrganizerUser):
     """The logged-in organizer's events in every status."""
     query = select(Event).where(Event.organizer_id == current_user.id).order_by(Event.date, Event.id)
-    return db.scalars(query).all()
+    events = db.scalars(query).all()
+    refresh_inventory(db, [event.id for event in events])
+    return events
 
 
 @router.get("/{event_id}", response_model=EventRead)
@@ -78,6 +83,7 @@ def get_event(event_id: int, db: DbSession, current_user: OptionalUser):
     event = get_event_or_404(db, event_id)
     if not is_visible(event, current_user):
         raise api_error(status.HTTP_404_NOT_FOUND, "EVENT_NOT_FOUND", "Event not found")
+    refresh_inventory(db, [event_id])
     return event
 
 
@@ -90,6 +96,7 @@ def update_event(event_id: int, payload: EventUpdate, db: DbSession, current_use
     changes = payload.model_dump(exclude_unset=True)
     if "capacity" in changes:
         event = lock_event(db, event_id)
+        expire_event_orders(db, event_id)
     if changes.get("capacity", event.capacity) < event.tickets_issued:
         raise _capacity_below_issued()
     if "capacity" in changes:

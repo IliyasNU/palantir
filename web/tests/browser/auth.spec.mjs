@@ -42,7 +42,8 @@ test('network errors and FastAPI 422 are readable in the actual forms (mocked HT
   await page.goto('/register');
   await registrationForm(page, 'fixture@example.com', 'test-only-password');
   await page.getByRole('button', { name: 'Создать аккаунт' }).click();
-  await expect(page.getByRole('alert')).toContainText('Email: value is not a valid email address');
+  await expect(page.getByRole('alert')).toContainText('Email: Проверьте введённые данные.');
+  await expect(page.getByRole('alert')).not.toContainText('value is not a valid email address');
   await expect(page.getByRole('alert')).not.toContainText('[object Object]');
 });
 

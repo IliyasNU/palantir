@@ -39,7 +39,7 @@ The access token still works until it expires (30 minutes); the client discards 
 ## Steps
 
 1. Settings, `app/email.py`, email templates.
-2. Model and migration `0006`: `users.email_verified_at`, `users.token_version`, table `revoked_tokens`.
+2. Model and migration `0007` (renumbered from `0006` after #15 merged first): `users.email_verified_at`, `users.token_version`, table `revoked_tokens`.
 3. Token helpers and checks in `get_current_user` and `/auth/refresh`.
 4. Endpoints and tests.
 5. README API table, `.env.example`, compose variables.

@@ -1,0 +1,32 @@
+import {test, expect} from '@playwright/test';
+import {randomUUID} from 'node:crypto';
+import {liveApiUrl, verifyLiveSession} from './live-api.mjs';
+
+test('real organizer session creates, publishes and cancels an event', async ({page, request: raw}, info) => {
+  test.skip(process.env.RUN_LIVE_TICKETS !== '1', 'Requires a verified isolated API and PostgreSQL.');
+  const {request} = await verifyLiveSession(page, raw, info);
+  const base = liveApiUrl();
+  const email = 'organizer-web-' + randomUUID() + '@example.com';
+  const password = randomUUID();
+  const registration = await request.post(base + '/auth/register', {data: {email, password, full_name: 'Live Organizer', role: 'organizer'}});
+  expect(registration.status()).toBe(201);
+  await page.goto('/login?returnTo=%2Forganizer');
+  await page.getByLabel('Email', {exact: true}).fill(email);
+  await page.getByLabel('Пароль', {exact: true}).fill(password);
+  await page.getByRole('button', {name: 'Войти', exact: true}).click();
+  await expect(page).toHaveURL('/organizer');
+  await expect(page.getByRole('status')).toContainText('У вас пока нет созданных событий');
+  await page.getByRole('link', {name: 'Создать событие'}).click();
+  await page.getByLabel('Название', {exact: true}).fill('Live Organizer Test');
+  await page.getByLabel('Дата и время начала', {exact: true}).fill('2030-07-15T12:00');
+  await page.getByLabel('Место проведения', {exact: true}).fill('Demo Hall');
+  await page.getByLabel('Вместимость', {exact: true}).fill('2');
+  await page.getByRole('button', {name: 'Создать черновик'}).click();
+  await expect(page).toHaveURL(/\/organizer\/events\/\d+\/edit$/);
+  const status = page.getByRole('region', {name: 'Статус и публикация'});
+  await status.getByRole('button', {name: 'Опубликовать', exact: true}).click();
+  await expect(status).toContainText('Опубликовано');
+  await status.getByRole('button', {name: 'Отменить событие', exact: true}).click();
+  await status.getByRole('button', {name: 'Да, отменить событие', exact: true}).click();
+  await expect(status).toContainText('Отменено');
+});

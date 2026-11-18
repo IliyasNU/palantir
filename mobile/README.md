@@ -4,14 +4,15 @@ Iliyas's part of Team Palantir's project. Three screens: sign in, choose an even
 
 ## Current status
 
+- Delivery candidate: [PR #26](https://github.com/IliyasNU/palantir/pull/26), targeting `integration/biletflow-e2e`. The implementation is ready for review; the PR has not been merged. The [device results](DEVICE-RESULTS.md) separate Iliyas's iPhone checks on 13 November 2026 from the remaining Android and extended device checks.
 - Start the backend in the same integration checkout. Follow the [root setup](../README.md) and [API contract](API.md).
 - Sign-in confirms the staff account through `GET /auth/me`. The tokens and account ID stay in memory. After restarting the app, sign in again.
-- The access token lasts 30 minutes on the server. The app renews it with the refresh token about two minutes before it expires while the app is in front, and again after any 401, so a shift is not interrupted by a password prompt. A renewal is accepted only for the same account. The password is asked again only when the server refuses the refresh token (after 7 days, or for a disabled account).
+- The server's default access-token lifetime is 30 minutes. While the app is in front, it schedules renewal before expiry. Event loading and scanning can recover from a 401 with the refresh token; totals, search and undo offer session recovery. Renewal must belong to the current account, and a late response from an older session cannot clear a newer login. If renewal is refused, sign in again; a network failure does not prove the session is invalid.
 - Only a matching `CHECKED_IN` receipt confirms admission. A lost response or a server error leaves the scan unconfirmed and keeps its QR and request ID in memory for a retry. After a 401 the app first renews the session and repeats the same request by itself; if that is refused, the retry asks for the password of the same staff account.
 - A 403 preserves the session. If the event is unavailable or access is denied on the first attempt, return to the event list to reload it. If an earlier attempt is still unconfirmed, ask the organizer to verify it before admitting the attendee.
 - The interface supports Russian, Kazakh and English through the header switch (РУС · ҚАЗ · ENG). Russian is the default; the choice lasts for the current app session. Switching language leaves the scan and its retry ID intact.
 - Before signing in, use the connection button to check the real `/health` response, including database readiness. Camera permission is checked again when the app returns from Settings; a camera failure offers a retry.
-- The browser ticket QR and PostgreSQL check-in API passed separate integration checks. On a physical iPhone with Expo Go SDK 58, a staff account signed in, selected its assigned event and scanned a QR generated from a real API ticket. A second scan was rejected and PostgreSQL held one check-in. The web-to-phone QR flow and extended device checks are in the [manual acceptance checklist](../docs/manual-acceptance.md).
+- Automated tests cover the API and admission logic. Iliyas also reported successful admission from a printed ticket on a physical iPhone and rejection of its second scan, then confirmed the follow-up ticket-state and manual-search checks worked. These are user-reported results, not a complete device acceptance run or an independently observed database count. See [device results](DEVICE-RESULTS.md) for the evidence and remaining checks.
 
 ## Attendance and manual admission
 
@@ -19,11 +20,11 @@ The visitor can claim a ticket and display its QR on the integrated web client. 
 
 Use the integration backend with the attendance routes in [API.md](API.md) and the [W2 PostgreSQL locale setup](../backend/README.md#w2-postgresql-16-locale-and-acceptance). The scanner shows checked-in visitors out of issued tickets and displays capacity separately. It refreshes on return and after a confirmed check-in or undo. Tap “Обновить посещаемость” to read the totals again, for example after another phone admitted someone. The time of the last successful read is shown; if a refresh fails, the last totals stay with a note that they are outdated.
 
-Open “Найти вручную” to search by name or email using at least three characters. Each match shows a masked email. A fresh ticket can be marked through the same check-in and retry flow as a camera scan. An admitted ticket shows its check-in time. A cancelled or refunded ticket shows its state and cannot be marked. The new attendance and search screens still need the physical-phone checks below.
+Open “Найти вручную” to search by name or email using at least three characters. Each match shows a masked email. A fresh ticket can be marked through the same check-in and retry flow as a camera scan. An admitted ticket shows its check-in time. A cancelled or refunded ticket shows its state and cannot be marked. Basic manual admission has user-reported iPhone coverage; the broader language, camera-permission and cross-device attendance checks remain in the device checklist.
 
 ## Cancelled and refunded tickets, undo
 
-These need the backend from [PR #10](https://github.com/IliyasNU/palantir/pull/10). Without it the app works as before and offers no undo.
+Use the backend in this integration candidate. Ticket states and undo were introduced in migration `0003`; the candidate's current migration head is `0004`. Apply all migrations before testing. The server PDF route and web download action are also present.
 
 - A cancelled ticket and a refunded ticket each get their own rejection message, different from the message for a cancelled event. Neither can be admitted. “Refunded” is an admission state set by the organizer; tickets are free and no payment is involved.
 - The organizer of the event, or an admin, sees “Отменить вход” on an admitted search result and on a fresh confirmation. It asks for confirmation, then removes the admission. The ticket can be scanned again afterwards. Assigned staff do not see the action, and the server refuses it for them.
@@ -43,6 +44,8 @@ npm start
 ```
 
 Set `EXPO_PUBLIC_API_URL` to the team's shared HTTPS backend address. For local development, use the computer's actual Wi-Fi address, for example `http://192.168.1.100:8000`. The example address is a placeholder, not a running server. The phone and computer need to be on the same network; the backend must listen on `0.0.0.0` and its port must be reachable. Do not use `localhost`: on the phone that refers to the phone itself. An Expo tunnel does not also expose the backend.
+
+Keep the API port in the address: with the default setup, omitting `:8000` sends requests to the wrong port even on the same Wi-Fi. Before signing in, open `http://<computer-LAN-IP>:8000/health` in the phone's browser and check for `status: ok` and `database: up`. If it is unreachable, check the running backend, IP address and firewall, then restart Expo after correcting `.env`.
 
 Open the Expo QR with a compatible Expo Go app. Allow camera access. Restart Expo after changing `.env`. Ask the organizer to publish a test event and assign your account through `POST /events/{event_id}/staff`. Use a separate attendee account to claim a test ticket in the web interface. The QR must encode exactly the returned `qr_payload` string. Both clients must use the same API and database.
 
@@ -87,7 +90,7 @@ Run this with the backend team on a test database. Record the device, backend co
 5. Leave the QR in front of the camera: only one request should be sent. Tap “Следующий билет” / “Келесі билет” and scan it again: expect an already-used-ticket rejection (`ALREADY_CHECKED_IN`).
 6. Try another event's ticket and an unrelated QR: expect `INVALID_TICKET`. Revoke the staff assignment: check-in must be denied.
 7. Disable Wi-Fi/mobile data and scan. It must not show green. Switch RU/KZ and verify the message changes while the displayed request ID stays the same. Reconnect and retry. Also simulate a lost response after the backend committed, then retry and verify only one record exists.
-8. Expire the token during an unconfirmed scan. A different staff account must be rejected without sending a retry. The original account must be able to retry the same request. Check that the camera pauses when the app is backgrounded, and test Back and sign-out.
+8. Expire the access token during an unconfirmed scan: a valid refresh token should renew the session and retry with the same request ID. Separately make refresh unavailable for authentication (not merely offline) to reach the password form: another account must be rejected without sending a retry, while the original account can authenticate and retry. Check that the camera pauses when the app is backgrounded, and test Back and sign-out.
 9. Open “Найти вручную” while the camera sees a test QR. The preview pauses and only an intentional tap on “Отметить вход” admits a search result. Switch back and verify the camera resumes. Search by name and email, compare masked addresses and check-in times, and confirm an admitted result has no action. Repeat after denying camera access.
 10. Compare the attendance totals with the API before entry and after a confirmed manual or camera check-in. After “Следующий билет”, the same search should show the updated check-in time. A duplicate or a successful replay must not add an entry. Return to the scanner and confirm it fetches current totals.
 11. Admit a visitor on a second phone, then tap “Обновить посещаемость” on the first. The total and its time change. Turn the network off and tap it again: the last total stays, marked as outdated.
