@@ -10,7 +10,7 @@ import { parseEventId } from '../events/details';
 import { ticketTypeNamePolicy } from '../ticket-types/model';
 import { readTicket, ticketErrorMessage, ticketPdfName, ticketState } from '../tickets/model';
 import type { Ticket } from '../tickets/model';
-import { TicketQr } from '../tickets/TicketQr';
+import { TicketQr, TicketQrFullscreen } from '../tickets/TicketQr';
 
 export function TicketDetailsPage() {
   const t = useT().tickets;
@@ -63,7 +63,8 @@ function TicketContent({ id, request }: { id: number; request: typeof api.reques
     {ticket.status === 'refunded' && <p className="notice notice-error" role="status">{t.refundedNotice}</p>}
     {!closed && ticket.event.status === 'cancelled' && <p className="notice notice-error" role="status">{t.eventCancelledNotice}</p>}
     {ticket.checked_in_at && <p className="notice" role="status">{t.used(formatEventDate(ticket.checked_in_at))}</p>}
-    {usable && <><TicketQr payload={ticket.qr_payload} /><p>{t.showQr}</p></>}
+    {usable && <><TicketQr payload={ticket.qr_payload} /><p>{t.showQr}</p>
+      <p><TicketQrFullscreen payload={ticket.qr_payload} title={t.number(ticket.id)} subtitle={ticket.event.title} /></p></>}
     {!usable && !closed && !ticket.checked_in_at && ticket.event.status !== 'cancelled' && <p role="status">{t.unavailable}</p>}
     {printable && <TicketPdf id={ticket.id} request={request} />}
     {cancellable && <CancelTicket id={ticket.id} request={request} onCancelled={setTicket} />}
