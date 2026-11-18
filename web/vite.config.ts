@@ -1,4 +1,5 @@
-import { defineConfig, loadEnv } from 'vite';
+import { fileURLToPath } from 'node:url';
+import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
 import react from '@vitejs/plugin-react';
 import { apiBaseUrl } from './src/api/config.ts';
 
@@ -16,6 +17,7 @@ export default defineConfig(({ command, mode }) => {
     host: 'localhost',
     port: 5173,
     strictPort: true,
+    fs: { allow: [searchForWorkspaceRoot(process.cwd()), fileURLToPath(new URL('../backend/app/assets/ticket-type-name.json', import.meta.url))] },
   },
   preview: {
     host: 'localhost',

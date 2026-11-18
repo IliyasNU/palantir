@@ -5,6 +5,8 @@ export interface User {
   role: string;
   is_active: boolean;
   created_at: string;
+  /** Absent when the API predates email verification. */
+  email_verified?: boolean;
 }
 
 export interface LoginInput {

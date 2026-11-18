@@ -10,6 +10,7 @@ from app.db.base import Base, utcnow
 if TYPE_CHECKING:
     from app.models.check_in import CheckIn
     from app.models.event import Event
+    from app.models.ticket_type import TicketType
 
 
 class TicketStatus(str, enum.Enum):
@@ -37,6 +38,7 @@ class Ticket(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="RESTRICT"), index=True)
     attendee_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    ticket_type_id: Mapped[int] = mapped_column(ForeignKey("ticket_types.id", ondelete="RESTRICT"), index=True)
     # Opaque string encoded into the QR code; scanners send it back unchanged.
     qr_payload: Mapped[str] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -48,6 +50,7 @@ class Ticket(Base):
     status_changed_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
 
     event: Mapped["Event"] = relationship(lazy="joined")
+    ticket_type: Mapped["TicketType"] = relationship(lazy="joined")
     # The current admission only. Undone check-ins stay in ``check_ins`` as history and are not loaded here.
     check_in: Mapped[Optional["CheckIn"]] = relationship(
         primaryjoin="and_(CheckIn.ticket_id == Ticket.id, CheckIn.undone_at.is_(None))",

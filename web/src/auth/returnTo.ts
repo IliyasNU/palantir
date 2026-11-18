@@ -1,6 +1,7 @@
-/** Only known event and ticket routes are allowed as post-login destinations. */
+/** Only known event, ticket and organizer routes are allowed after login. */
 export function safeReturnTo(value: unknown): string {
-  return typeof value === 'string' && value === value.trim() && /^\/(?:(?:events|tickets)(?:\/[1-9]\d*)?|organizer)\/?$/.test(value)
+  return typeof value === 'string' && value === value.trim()
+    && /^(?:\/(?:events|tickets|orders)(?:\/[1-9]\d*)?\/?|\/events\/[1-9]\d*\/checkout\?type=[1-9]\d*|\/organizer(?:\/events\/(?:new|[1-9]\d*\/(?:ticket-types|activation|edit)))?\/?)$/.test(value)
     ? value : '/events';
 }
 

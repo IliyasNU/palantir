@@ -98,6 +98,23 @@ npm run build
 - Отправка блокирует поля и кнопку; синхронный guard предотвращает повторный запрос до перерисовки React. При уходе со страницы запрос отменяется. После завершения попытки поле пароля очищается.
 - Формы показывают неверные учётные данные, занятый email, отсутствие доступа, сетевые ошибки и FastAPI 422 с названиями полей. Проверяются обязательные поля, длина имени и ограничение пароля в 72 байта UTF-8. Пароли и токены не логируются.
 
+## Типы билетов (P1)
+
+На странице события видны цена и остаток каждого доступного типа. Посетитель выбирает
+бесплатный тип перед выдачей. Платные типы показаны для ознакомления, продажа появится
+в следующей фазе. Название типа также отображается на странице выданного билета.
+При начале и окончании окна продаж страница обновляет доступность без перезагрузки.
+Кнопка выдачи проверяет время перед запросом, а окончательное решение принимает API.
+Лимит названия и число строк на билете берутся из общего файла
+`backend/app/assets/ticket-type-name.json`.
+
+Организатор события и администратор управляют типами по адресу
+`/organizer/events/{id}/ticket-types`. Ссылка есть на странице события. Когда появится
+кабинет организатора, добавьте эту ссылку к действиям его события.
+Первый тип занимает всю вместимость. Уменьшите его количество, чтобы выделить места
+другому типу. Скрытые типы сохраняются в уже выданных билетах и учитываются во вместимости.
+Журнал внизу страницы показывает изменения, сохранённые сервером.
+
 ## API-клиент
 
 `src/api/index.ts` экспортирует общий публичный экземпляр `api`, `ApiError` и `getErrorMessage`. `src/api/client.ts` содержит JSON-клиент на `fetch` без зависимостей от React. Для запроса с сессией в React-компоненте:
@@ -162,15 +179,27 @@ npm run check:auth
 npm run test:browser
 ```
 
-По умолчанию выполняются только проверки с подменой HTTP и сценарии без записи в базу. Для полного сценария с локальным FastAPI:
+По умолчанию запускаются проверки с HTTP-фикстурами, без подготовки записей в БД. Для live используйте [новую инструкцию проверяемой изоляции](LIVE-TESTS.md): runner сверяет Docker-контейнеры, volume, фактическое подключение FastAPI к PostgreSQL и API origin браузера до первого POST. DATABASE_URL оболочки не служит доказательством.
 
-```powershell
-$env:RUN_LIVE_AUTH = '1'
-npm run test:browser
-Remove-Item Env:RUN_LIVE_AUTH
+Пример для выделенного локального проекта (подставьте свои проверенные API/project/SHA):
+
+```sh
+node scripts/run-live.mjs --api http://localhost:8002 --project biletflow-667-live --backend-ref c5b83a851128c486b1b15cebea94c6df8166308d --mode dev --channel msedge
+node scripts/run-live.mjs --api http://localhost:8002 --project biletflow-667-live --backend-ref c5b83a851128c486b1b15cebea94c6df8166308d --mode production --channel msedge
 ```
 
-Полный сценарий создаёт одного тестового посетителя за запуск. Проверяет регистрацию, блокировку повторной отправки, переход на login с сообщением, неверный пароль, login + `/auth/me`, возврат к событию, logout, потерю сессии после reload и занятый email. Трассировка, видео и скриншоты отключены, чтобы не сохранять пароли и токены; отчёты игнорируются Git.
+Production live всегда строит свежий dist с выбранным API. Порт 8002 приведён только как пример окружения Алиби, не как обязательная настройка команды. Один live-прогон создаёт 5 тестовых аккаунтов, 2 события и 2 билета; существующие данные не удаляются.
+
+Регрессия старого dist на двух локальных HTTP-origin без БД:
+
+```sh
+npx playwright test --config playwright.isolation.config.mjs
+```
+
+Результаты каждого live запуска сохраняются отдельно в игнорируемом Git `test-results/live/`. Для обычной регрессии без перезаписи live-артефактов: `npm run test:browser -- --output test-results/mock-regression`. Не включайте RUN_LIVE_* для неё.
+
+[Историческая приёмка 7 ноября](667-acceptance.md) и [результаты доработки 8 ноября](667-review-2026-11-08.md) разделены. В [LIVE-TESTS.md](LIVE-TESTS.md) указаны ограничения CI, телефона/хостинга, правила публикации безопасных evidence и стыковка с W1.
+
 
 ### Результат проверки FE01 — 28 октября 2026
 
@@ -187,3 +216,34 @@ Remove-Item Env:RUN_LIVE_AUTH
 ## Проверка интеграционной версии
 
 Результаты реальных браузерных проверок авторизации, билетов и восстановления API приведены в [отчёте аудита](../docs/integration-audit.md).
+
+## Account, organizer, administration and languages
+
+The header offers Russian, Kazakh and English. The choice persists in localStorage. Session tokens remain in memory, so a full reload requires signing in again. The browser, API and mobile app must use the same backend and database. An account registered as an attendee has no organizer role. The organizer pages read the role returned by `GET /auth/me`.
+
+Account routes are `/forgot-password`, `/reset-password?token=...` and `/verify-email?token=...`. Recovery preserves a validated destination through the login link. A reset requires matching passwords. Each link has its own state, and a new link clears an earlier success or refusal. Failed HTTP requests show a retryable failure without disclosing whether an email exists.
+
+The account endpoints and server-side refresh-token logout depend on backend PR #21. The current web logout clears the local session. This web change retains that behavior until the backend contract is integrated. Account browser tests use mocked HTTP. Live validation of email links and server logout remains pending.
+
+Organizers open `/organizer`, `/organizer/events/new` and `/organizer/events/{id}/edit`. Admins open `/admin/users`, `/admin/events` and `/admin/action-log`. The server checks roles and event ownership on every request. The web refuses non-admin navigation locally, and signed-out admin navigation returns through the public catalog. Mutation controls require confirmation. Administrator accounts have no suspension controls in the UI, and the activity log is read only.
+
+The language switch covers these pages, the public event and ticket flow, dates and API errors. Prices use the selected locale and omit decimals for whole tenge. Ticket-type management and the P2 checkout, order and activation text still need a separate translation pass. Kazakh text needs native review before the defense.
+
+## P2 demo checkout
+
+Paid types on activated events lead from `/events/:id` to `/events/:id/checkout?type=:typeId`,
+then `/orders/:id`. `/orders` lists the authenticated buyer's orders. The server computes
+prices and fees; the browser never adds a surcharge. Every payment screen says
+«Демонстрационная оплата, деньги не списываются». Success and failure buttons call the
+simulated provider endpoint. Retries reuse the order or creation request UUID. A definitive
+422 allows correcting the form; uncertain delivery preserves the original request payload.
+
+Organizers use `/organizer/events/:id/activation`, linked from ticket type management, for
+the demo checklist and sales summary. Profile identity/payout confirmations apply to their
+own profile. The payout form accepts only a four-character demo suffix, never real account
+details. Admins can suspend/restore paid sales from this page. Financial refunds belong to P5.
+
+P2 uses the existing authenticated API client, strict response readers and plain CSS classes.
+It adds no dependencies. `npm test` covers contract readers, amount invariants, safe return
+URLs and availability. `tests/browser/orders.spec.mjs` covers success/failure checkout and
+activation with HTTP fixtures; run it as part of `npm run test:browser`.
