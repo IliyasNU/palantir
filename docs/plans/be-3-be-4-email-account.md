@@ -59,7 +59,6 @@ Results on 2026-11-12: 466 SQLite tests and 43 PostgreSQL 16 e2e tests passed; `
 
 ## Known limits
 
-- No rate limit on `forgot-password` and `resend-verification`.
 - Refresh tokens are not rotated, so logout revokes only the latest refresh token of that session.
 
 ## 13 Nov plan: follow-up, BE-3a, Mailpit, BE-3b
@@ -71,7 +70,7 @@ The backend requirements document it cites was not available, so the task notes 
 - BE-3a (done): `notifications` table (`0008`, renumbered from `0007`), `notify(...)` inside the caller's transaction, email after commit from one worker thread, `GET /notifications/me`, `POST /notifications/{id}/read`.
 - Mailpit (done): Compose profile `mail`, inbox at <http://localhost:8025>.
 - BE-3b (done): ticket email with the PDF after a free claim (new tickets only); event updated (title, date or location) and event cancelled emails to active ticket holders.
-- BE-3c (open): order paid with the ticket PDF and payment failed, one email per order; two days after #15 merges.
+- BE-3c (done, branch `feature/be-3c-order-emails` on #27): see below.
 
 Verification on 2026-11-16: 481 SQLite tests and 47 PostgreSQL 16 e2e tests passed; `0007` upgrades, downgrades and re-applies; the Compose stack with `--profile mail` delivered the verification, ticket (with PDF), event updated and event cancelled emails to Mailpit in order; with Mailpit stopped, registration and a claim still returned `201` and kept the in-app notification.
 
@@ -84,3 +83,18 @@ A local merge of integration + #15 + #27 passed 507 SQLite and 59 PostgreSQL e2e
 3. In `tests/test_migrations.py`, the email/logout migration test starts from and downgrades to `0006`.
 4. In `e2e/test_order_migration.py`, compare models with the schema at `head`, then downgrade to `0006` for the order checks.
 5. Retarget #27 to `integration/biletflow-e2e` once #21 merges, and dispatch CI on it.
+
+Status on 2026-11-19: steps 1–4 done in #21 and #27; at Iliyas's request #27 was retargeted to integration before #21 merged, so its diff includes #21 until then.
+
+## BE-3c order emails (19 Nov)
+
+`P2` (#15) is merged, so order emails go on `feature/be-3c-order-emails`, stacked on #27.
+
+- `order.paid`: sent when `POST /orders/{id}/pay` with `success` issues the ticket; it states the order number, the amount and the event, says the payment is a demo, and attaches the ticket PDF (the same factory as the free-claim email).
+- `payment.failed`: sent when the payment outcome is `failure`; it says the seat was released and the order can be placed again.
+- One email per order: both are queued only on the transition out of `pending`, under the event lock; a repeated or parallel pay returns the first result before that point and sends nothing.
+- Refusals before a ticket (sold out, suspended, existing ticket) and expiry send nothing: no payment happened.
+- The email goes to the buyer's account address, like every other notification; `attendee_email` is a snapshot on the order and is not used for delivery.
+- Tests: paid email with PDF once across a repeated pay, failed email once, nothing on expiry or a refused payment, rollback sends nothing.
+
+Verification on 2026-11-19: 511 SQLite tests and 59 PostgreSQL 16 e2e tests passed at `0008 (head)`.

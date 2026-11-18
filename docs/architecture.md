@@ -235,7 +235,8 @@ erDiagram
 the email on the SQLAlchemy session. An `after_commit` listener hands the queue to one worker thread, which keeps emails in commit order; an
 `after_rollback` listener discards it. The ticket PDF is rendered in the worker from its own session, so the claim
 does not hold the event row lock while the PDF is drawn. Only a claim that creates a ticket calls `ticket_issued`,
-so a repeated claim never emails twice. Queued emails are lost if the process stops before sending; the
+so a repeated claim never emails twice. In the same way, `order_paid` and `payment_failed` are called only on
+the order's transition out of `pending` under the event lock, so each order sends one email. Queued emails are lost if the process stops before sending; the
 notification rows remain.
 
 ## Design decisions

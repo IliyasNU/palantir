@@ -1,4 +1,4 @@
-"""In-app notifications with an email copy (BE-3a).
+"""In-app notifications with an email copy (BE-3a); messages for tickets, events and orders (BE-3b, BE-3c).
 
 ``notify`` adds the notification to the caller's transaction and queues its email on the session. The email goes
 out only after that transaction commits, from a worker thread, so a rolled-back change sends nothing and a slow or
@@ -13,7 +13,9 @@ from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
 from app import email
+from app.demo_fees import DEMO_NOTICE
 from app.models import Event, Notification, Ticket, TicketStatus, User
+from app.models.order import Order
 from app.ticket_pdf import build_ticket_pdf, venue_time
 
 logger = logging.getLogger(__name__)
@@ -77,19 +79,50 @@ def _drop_after_rollback(session: Session) -> None:
 
 
 # ------------------------------------------------------------------ messages (BE-3b)
-def ticket_issued(db: Session, user: User, ticket: Ticket, event: Event) -> None:
-    """Call for a newly issued ticket only, never for a repeated claim that returns the existing one."""
-    ticket_id = ticket.id
-
+def _ticket_pdf(ticket_id: int) -> AttachmentFactory:
     def pdf(session: Session) -> email.Attachment:
         issued = session.get(Ticket, ticket_id)
         return f"biletflow-ticket-{ticket_id}.pdf", build_ticket_pdf(issued, session.get(User, issued.attendee_id))
 
+    return pdf
+
+
+def _when_where(event: Event) -> str:
+    return f"Когда: {venue_time(event.date)}\nГде: {event.location}"
+
+
+def _tenge(tiyn: int) -> str:
+    return f"{tiyn // 100:,}".replace(",", "\u00a0") + f",{tiyn % 100:02d} ₸"
+
+
+_SHOW_QR = "Билет с QR-кодом во вложении и в разделе «Мои билеты». Покажите QR-код на входе."
+
+
+def ticket_issued(db: Session, user: User, ticket: Ticket, event: Event) -> None:
+    """Call for a newly issued ticket only, never for a repeated claim that returns the existing one."""
     notify(
         db, user, "ticket.issued", f"Ваш билет: {event.title}",
-        f"Билет на «{event.title}» оформлен.\n\nКогда: {venue_time(event.date)}\nГде: {event.location}\n\n"
-        "Билет с QR-кодом во вложении и в разделе «Мои билеты». Покажите QR-код на входе.",
-        link=f"/tickets/{ticket_id}", attachment=pdf,
+        f"Билет на «{event.title}» оформлен.\n\n{_when_where(event)}\n\n{_SHOW_QR}",
+        link=f"/tickets/{ticket.id}", attachment=_ticket_pdf(ticket.id),
+    )
+
+
+# Call these two only on the order's transition out of `pending`, so each order sends one email (BE-3c).
+def order_paid(db: Session, user: User, order: Order, event: Event) -> None:
+    notify(
+        db, user, "order.paid", f"Заказ №{order.id} оплачен: {event.title}",
+        f"Заказ №{order.id} на «{event.title}» оплачен: {_tenge(order.total_tiyn)}.\n{DEMO_NOTICE}.\n\n"
+        f"{_when_where(event)}\n\n{_SHOW_QR}",
+        link=f"/tickets/{order.ticket_id}", attachment=_ticket_pdf(order.ticket_id),
+    )
+
+
+def payment_failed(db: Session, user: User, order: Order, event: Event) -> None:
+    notify(
+        db, user, "payment.failed", f"Оплата заказа №{order.id} не прошла",
+        f"Оплата заказа №{order.id} на «{event.title}» ({_tenge(order.total_tiyn)}) не прошла.\n{DEMO_NOTICE}.\n\n"
+        "Место освобождено. Вы можете оформить заказ заново на странице события.",
+        link=f"/events/{event.id}",
     )
 
 

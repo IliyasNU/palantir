@@ -142,7 +142,7 @@ The reset limit is keyed by the address, registered or not, so it reveals no acc
 Logout ends only the session whose refresh token it receives: other devices stay signed in, and the access token of that session keeps working until it expires (30 minutes).
 To end every session, reset the password.
 
-## Notifications (BE-3a, BE-3b)
+## Notifications (BE-3a, BE-3b, BE-3c)
 
 Revision `0008` adds `notifications`. Each notification is shown in the app and emailed to the user.
 `notify(...)` in `app/notifications.py` adds the row inside the caller's transaction; the email is sent from a worker thread only after that transaction commits, so a rolled-back change sends nothing.
@@ -153,6 +153,10 @@ If the mail server is down the email is logged as failed and the notification st
 | `ticket.issued` | a free claim creates a ticket (`201`); a repeated claim (`200`) sends nothing | with the ticket PDF attached |
 | `event.updated` | a published event's title, date or location changes | to every holder of an active ticket |
 | `event.cancelled` | a published event is cancelled; cancelling again sends nothing | to every holder of an active ticket |
+| `order.paid` | `POST /orders/{id}/pay` with `success` issues the ticket | to the buyer, with the amount and the ticket PDF attached |
+| `payment.failed` | `POST /orders/{id}/pay` with `failure` releases the seat | to the buyer |
+
+Each order sends at most one of the two: a repeated pay returns the first result and sends nothing, and expiry, cancellation or a refused payment send nothing.
 
 | Method & path | Access | Notes |
 |---|---|---|
