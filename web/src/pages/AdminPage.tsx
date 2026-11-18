@@ -9,12 +9,13 @@ import { eventStatusLabel } from '../events/details';
 import { LOG_PAGE, SEARCH_LIMIT, actionLogPath, adminError, adminPath, isAdmin, readActionLogEntry, readAdminEvent, readAdminUser,
   readList, roleLabel, suspensionReason } from '../admin/model';
 import type { ActionLogEntry, AdminEvent, AdminUser, LogFilters } from '../admin/model';
-import { dateLocale, useT } from '../i18n';
+import { useT } from '../i18n';
+import { formatDateTime } from '../i18n/format';
 
 const readUsers = (payload: unknown) => readList(payload, readAdminUser);
 const readEvents = (payload: unknown) => readList(payload, readAdminEvent);
 const readLog = (payload: unknown) => readList(payload, readActionLogEntry);
-const dateTime = (value: string) => new Date(value).toLocaleString(dateLocale(), { dateStyle: 'medium', timeStyle: 'short' });
+const dateTime = (value: string) => formatDateTime(value, 'medium');
 
 /** Loads one admin list. A new path or a retry replaces the previous answer; a stale answer is dropped. */
 function useAdminList<T>(path: string | null, read: (payload: unknown) => T[]) {
@@ -83,7 +84,7 @@ function SuspendControl({ suspended, subject, onSuspend, onReactivate }: {
       <div className="admin-reason">
         <p>{text.confirmReactivate}</p>
         <button className="button" type="button" disabled={pending} onClick={() => void submit(onReactivate)}>{text.users.reactivate}</button>
-        <button className="text-button" type="button" disabled={pending} onClick={() => setAsking(false)}>{text.keep}</button>
+        <button className="text-button" type="button" disabled={pending} onClick={() => setAsking(false)}>{text.keepSuspended}</button>
       </div>
     ) : suspended ? (
       <button className="button" type="button" disabled={pending} aria-label={`${text.users.reactivate}: ${subject}`}
@@ -219,7 +220,7 @@ function ActionLog() {
   const text = useT().admin;
   const [filters, setFilters] = useState<LogFilters>(noFilters);
   const [offset, setOffset] = useState(0);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<unknown>(null);
   const [path, setPath] = useState(() => actionLogPath(noFilters, 0));
   const list = useAdminList<ActionLogEntry>(path, readLog);
 
@@ -230,7 +231,7 @@ function ActionLog() {
       setOffset(nextOffset);
       setProblem(null);
     } catch (error) {
-      setProblem(adminError(error));
+      setProblem(error);
     }
   }
 
@@ -255,7 +256,7 @@ function ActionLog() {
       <div><label htmlFor="log-to">{text.log.to}</label><input id="log-to" name="to" type="datetime-local" /></div>
       <button className="button" type="submit">{text.search}</button>
     </form>
-    {problem !== null && <p className="notice notice-error" role="alert">{problem}</p>}
+    {problem !== null && <p className="notice notice-error" role="alert">{adminError(problem)}</p>}
     <ListState loading={list.loading} error={list.error} empty={list.rows !== null && rows.length === 0} emptyText={text.log.empty} retry={list.retry} />
     {rows.length > 0 && <Table label={text.log.heading} columns={[columns.time, columns.actor, columns.action, columns.entity, columns.event, columns.description]}>
       {rows.map((row) => <tr key={row.id}>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { current, useT } from '../i18n';
+import { useT } from '../i18n';
 import { Link, useParams } from 'react-router';
 import { api, ApiError } from '../api';
 import { useAuth } from '../auth/AuthProvider';
@@ -29,7 +29,7 @@ function TicketContent({ id, request }: { id: number; request: typeof api.reques
   const t = useT().tickets;
   const retryLabel = useT().common.retry;
   const [ticket, setTicket] = useState<Ticket | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [notFound, setNotFound] = useState(false);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -42,12 +42,12 @@ function TicketContent({ id, request }: { id: number; request: typeof api.reques
       .catch((failure: unknown) => {
         if (controller.signal.aborted) return;
         if (failure instanceof ApiError && failure.status === 404) setNotFound(true);
-        else setError(ticketErrorMessage(failure));
+        else setError(failure);
       });
     return () => controller.abort();
   }, [id, request, attempt]);
   if (notFound) return <p role="status">{t.notFoundOrForeign}</p>;
-  if (error) return <div className="notice notice-error" role="alert"><p>{error}</p>
+  if (error !== null) return <div className="notice notice-error" role="alert"><p>{ticketErrorMessage(error)}</p>
     <button className="button" type="button" onClick={() => setAttempt((value) => value + 1)}>{retryLabel}</button></div>;
   if (!ticket) return <p role="status">{t.loadingOne}</p>;
   const { usable, printable, cancellable } = ticketState(ticket);
@@ -75,7 +75,7 @@ function TicketContent({ id, request }: { id: number; request: typeof api.reques
 function TicketPdf({ id, request }: { id: number; request: typeof api.request }) {
   const t = useT().tickets;
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
@@ -86,7 +86,7 @@ function TicketPdf({ id, request }: { id: number; request: typeof api.request })
     try {
       const file = await request<Blob>(`/tickets/${id}/pdf`, { blob: true });
       if (!mounted.current) return;
-      if (file.type !== 'application/pdf' || file.size === 0) throw new ApiError(current().tickets.badFile, { kind: 'response' });
+      if (file.type !== 'application/pdf' || file.size === 0) throw new ApiError((m) => m.tickets.badFile, { kind: 'response' });
       const url = URL.createObjectURL(file);
       const link = document.createElement('a');
       link.href = url;
@@ -97,7 +97,7 @@ function TicketPdf({ id, request }: { id: number; request: typeof api.request })
       // Give the browser time to start the download before the object URL is released.
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (failure) {
-      if (mounted.current) setError(ticketErrorMessage(failure));
+      if (mounted.current) setError(failure);
     } finally {
       if (mounted.current) setBusy(false);
     }
@@ -108,7 +108,7 @@ function TicketPdf({ id, request }: { id: number; request: typeof api.request })
       {busy ? t.pdfBusy : t.pdf}
     </button>
     <p>{t.pdfHint}</p>
-    {error && <p className="notice notice-error" role="alert">{error}</p>}
+    {error !== null && <p className="notice notice-error" role="alert">{ticketErrorMessage(error)}</p>}
   </div>;
 }
 
@@ -116,7 +116,7 @@ function TicketPdf({ id, request }: { id: number; request: typeof api.request })
 function CancelTicket({ id, request, onCancelled }: { id: number; request: typeof api.request; onCancelled: (ticket: Ticket) => void }) {
   const t = useT().tickets;
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
@@ -128,7 +128,7 @@ function CancelTicket({ id, request, onCancelled }: { id: number; request: typeo
       const result = readTicket(await request(`/tickets/${id}/cancel`, { method: 'POST' }), id);
       if (mounted.current) onCancelled(result);
     } catch (failure) {
-      if (mounted.current) { setError(ticketErrorMessage(failure)); setBusy(false); }
+      if (mounted.current) { setError(failure); setBusy(false); }
     }
   }
 
@@ -136,6 +136,6 @@ function CancelTicket({ id, request, onCancelled }: { id: number; request: typeo
     <button className="button button-secondary" type="button" disabled={busy} onClick={() => { void cancel(); }}>
       {busy ? t.cancelling : t.cancel}
     </button>
-    {error && <p className="notice notice-error" role="alert">{error}</p>}
+    {error !== null && <p className="notice notice-error" role="alert">{ticketErrorMessage(error)}</p>}
   </div>;
 }

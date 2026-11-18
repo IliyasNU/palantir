@@ -94,7 +94,7 @@ npm run build
 - Единственная реализация состояния — `src/auth/store.ts`, подключённая через один `AuthProvider` в `main.tsx`. Компоненты используют `useAuth()`. Токен не выдаётся компонентам; доступен пользователь и методы сессии.
 - «Выйти» очищает token, пользователя и уведомления в памяти, отменяет запросы сессии. Серверный logout не вызывается. Поздний ответ запроса не может восстановить завершённую сессию или очистить более новую.
 - Закрытые запросы выполняются через `useAuth().request()`: `401` очищает сессию и показывает предложение войти снова; `403` показывает отсутствие прав и сохраняет сессию. Публичные запросы используют `api.request()`.
-- Возврат после входа передаётся в `returnTo`. Разрешены только `/events` и `/events/<положительный числовой ID>` (включая завершающий `/`). Внешние URL, protocol-relative URL, обратные слеши, query/hash и остальные маршруты заменяются на `/events`. Адрес сохраняется в ссылках login → register → login и после успешной регистрации.
+- Возврат после входа передаётся в `returnTo`. Разрешены только известные маршруты событий, оформления, билетов, заказов и кабинета организатора с положительными числовыми ID (список — в `src/auth/returnTo.ts`). Внешние URL, protocol-relative URL, обратные слеши, query/hash и остальные маршруты заменяются на `/events`. Адрес сохраняется в ссылках login → register → login, login → forgot-password → login и после успешной регистрации.
 - Отправка блокирует поля и кнопку; синхронный guard предотвращает повторный запрос до перерисовки React. При уходе со страницы запрос отменяется. После завершения попытки поле пароля очищается.
 - Формы показывают неверные учётные данные, занятый email, отсутствие доступа, сетевые ошибки и FastAPI 422 с названиями полей. Проверяются обязательные поля, длина имени и ограничение пароля в 72 байта UTF-8. Пароли и токены не логируются.
 
@@ -221,13 +221,26 @@ npx playwright test --config playwright.isolation.config.mjs
 
 The header offers Russian, Kazakh and English. The choice persists in localStorage. Session tokens remain in memory, so a full reload requires signing in again. The browser, API and mobile app must use the same backend and database. An account registered as an attendee has no organizer role. The organizer pages read the role returned by `GET /auth/me`.
 
-Account routes are `/forgot-password`, `/reset-password?token=...` and `/verify-email?token=...`. Recovery preserves a validated destination through the login link. A reset requires matching passwords. Each link has its own state, and a new link clears an earlier success or refusal. Failed HTTP requests show a retryable failure without disclosing whether an email exists.
+Account routes are `/forgot-password`, `/reset-password?token=...` and `/verify-email?token=...`. Recovery preserves a validated destination through the login link. A reset requires matching passwords. Each link has its own state, and a new link clears an earlier success or refusal; a request still pending for an earlier link is cancelled.
 
-The account endpoints and server-side refresh-token logout depend on backend PR #21. The current web logout clears the local session. This web change retains that behavior until the backend contract is integrated. Account browser tests use mocked HTTP. Live validation of email links and server logout remains pending.
+Forgot-password never shows whether an email exists (`forgotPasswordOutcome` in `src/account/model.ts`):
+
+| Answer | Page shows |
+| --- | --- |
+| `2xx`, and any other refusal that could depend on the account (`400`, `401`, `403`, `409`, …) | The same neutral "if this email is registered, we sent a link" text |
+| `5xx`, `404` (the endpoint is missing until backend PR #21), no connection, timeout | The same retryable technical failure for every address |
+| `429` | "Too many requests, try a little later" (the API limits per address, registered or not) |
+| `422` | "Check the email address": about the format typed, never about an account |
+
+The verification banner disables "send again" for a minute after each attempt. That is a client courtesy, not a server contract: the backend's own limit (PR #21) answers `429`, which the banner reports as too many requests.
+
+**Deferred: server logout.** The account endpoints and `POST /auth/logout` come with backend PR #21, which is not merged into integration. Until it is, "Sign out" clears only the memory session (token, user, notices) and cancels its requests; no logout request is sent, and a browser test checks that. Calling `POST /auth/logout` with the refresh token is a follow-up for after PR #21. Account browser tests use mocked HTTP. Live validation of email links and server logout remains pending.
+
+**Deviation: 403 instead of 404 for admin pages.** A signed-in non-admin who opens `/admin/...` sees a "403 — access denied" screen rather than the 404 page. The routes are public in the bundle anyway, and the screen says why nothing is shown. The API refuses every admin request with 403 regardless.
 
 Organizers open `/organizer`, `/organizer/events/new` and `/organizer/events/{id}/edit`. Admins open `/admin/users`, `/admin/events` and `/admin/action-log`. The server checks roles and event ownership on every request. The web refuses non-admin navigation locally, and signed-out admin navigation returns through the public catalog. Mutation controls require confirmation. Administrator accounts have no suspension controls in the UI, and the activity log is read only.
 
-The language switch covers these pages, the public event and ticket flow, dates and API errors. Prices use the selected locale and omit decimals for whole tenge. Ticket-type management and the P2 checkout, order and activation text still need a separate translation pass. Kazakh text needs native review before the defense.
+The language switch covers these pages, the public event and ticket flow, dates and API errors. Errors and notices already on screen follow a switch without a new request: pages keep the error itself (or a notice key) and translate it while rendering, and `ApiError` carries a `Localized` text instead of a fixed string. Server wording (FastAPI `detail`, `422` issues) is English and is replaced by translated texts. Prices use the selected locale and omit decimals for whole tenge. Kazakh dates and numbers are written out by `src/i18n/format.ts`, so a browser without Kazakh ICU data (Edge printed "2030 M11 15") still shows "15 қараша 2030, 17:00". Ticket-type management and the P2 checkout, order and activation text still need a separate translation pass. Kazakh text needs native review before the defense.
 
 ## P2 demo checkout
 

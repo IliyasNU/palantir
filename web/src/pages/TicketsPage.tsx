@@ -21,7 +21,7 @@ export function TicketsPage() {
 function TicketList({ request }: { request: typeof api.request }) {
   const t = useT();
   const [tickets, setTickets] = useState<Ticket[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
@@ -29,10 +29,10 @@ function TicketList({ request }: { request: typeof api.request }) {
     setError(null);
     request('/tickets/me', { signal: controller.signal }).then(readTickets)
       .then((result) => { if (!controller.signal.aborted) setTickets(result); })
-      .catch((failure: unknown) => { if (!controller.signal.aborted) setError(ticketErrorMessage(failure)); });
+      .catch((failure: unknown) => { if (!controller.signal.aborted) setError(failure); });
     return () => controller.abort();
   }, [request, attempt]);
-  if (error) return <div className="notice notice-error" role="alert"><p>{error}</p>
+  if (error !== null) return <div className="notice notice-error" role="alert"><p>{ticketErrorMessage(error)}</p>
     <button className="button" type="button" onClick={() => setAttempt((value) => value + 1)}>{t.common.retry}</button></div>;
   if (tickets === null) return <p role="status">{t.tickets.loading}</p>;
   if (tickets.length === 0) return <p role="status">{t.tickets.empty}</p>;

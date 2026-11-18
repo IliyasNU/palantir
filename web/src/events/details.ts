@@ -44,7 +44,7 @@ function isDate(value: unknown): value is string {
 }
 
 export function readEventDetails(payload: unknown, expectedId: number): EventDetails {
-  const fail = () => new ApiError(current().event.malformed, { kind: 'response' });
+  const fail = () => new ApiError((m) => m.event.malformed, { kind: 'response' });
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw fail();
   const event = payload as Record<string, unknown>;
   const organizerId = integer(event.organizer_id, 1);

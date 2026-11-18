@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
-import { ApiError } from '../api';
+import { ApiError, issueMessage } from '../api';
 import { useAuth } from '../auth/AuthProvider';
 import { useSubmission } from '../auth/useSubmission';
 import { Page } from '../components/Page';
@@ -11,7 +11,9 @@ import type { EventDraft, ManagedEvent } from '../organizer/model';
 import { useT } from '../i18n';
 import { OrganizerGate } from './OrganizerPage';
 
-type Load = { kind: 'loading' } | { kind: 'ready'; event: ManagedEvent } | { kind: 'notFound' } | { kind: 'error'; message: string };
+type Load = { kind: 'loading' } | { kind: 'ready'; event: ManagedEvent } | { kind: 'notFound' } | { kind: 'error'; error: unknown };
+/** Which confirmation to show; its text is picked while rendering, in the current language. */
+type Notice = 'created' | 'saved' | 'unchanged' | 'published' | 'cancelled';
 
 function Problem({ error }: { error: unknown }) {
   if (error === null) return null;
@@ -19,7 +21,7 @@ function Problem({ error }: { error: unknown }) {
     <div className="notice notice-error" role="alert" id="form-error">
       <p>{organizerError(error)}</p>
       {error instanceof ApiError && error.issues.length > 0 && (
-        <ul>{error.issues.map((issue, index) => <li key={`${issue.field}-${index}`}>{issue.message}</li>)}</ul>
+        <ul>{error.issues.map((issue, index) => <li key={`${issue.field}-${index}`}>{issueMessage(issue)}</li>)}</ul>
       )}
     </div>
   );
@@ -70,13 +72,13 @@ function EventForm({ original, onSaved }: { original?: ManagedEvent; onSaved: (e
   );
 }
 
-function StatusActions({ event, onChanged }: { event: ManagedEvent; onChanged: (event: ManagedEvent, notice: string) => void }) {
+function StatusActions({ event, onChanged }: { event: ManagedEvent; onChanged: (event: ManagedEvent, notice: Notice) => void }) {
   const text = useT().organizer;
   const { request } = useAuth();
   const { pending, error, submit } = useSubmission();
   const [confirming, setConfirming] = useState(false);
 
-  function act(action: 'publish' | 'cancel', notice: string) {
+  function act(action: 'publish' | 'cancel', notice: Notice) {
     void submit(async (signal) => {
       const saved = await request(`/events/${event.id}/${action}`, { method: 'POST', signal });
       if (signal.aborted) return;
@@ -96,7 +98,7 @@ function StatusActions({ event, onChanged }: { event: ManagedEvent; onChanged: (
         <div className="notice" role="group" aria-label={text.editor.cancel}>
           <p>{text.editor.cancelQuestion}</p>
           <p className="event-status-actions">
-            <button className="button button-secondary" type="button" disabled={pending} onClick={() => act('cancel', text.editor.cancelled)}>
+            <button className="button button-secondary" type="button" disabled={pending} onClick={() => act('cancel', 'cancelled')}>
               {pending ? text.editor.working : text.editor.cancelConfirm}
             </button>
             <button className="text-button" type="button" disabled={pending} onClick={() => setConfirming(false)}>{text.editor.cancelKeep}</button>
@@ -105,7 +107,7 @@ function StatusActions({ event, onChanged }: { event: ManagedEvent; onChanged: (
       ) : event.status !== 'cancelled' && (
         <p className="event-status-actions">
           {event.status === 'draft' && (
-            <button className="button" type="button" disabled={pending} onClick={() => act('publish', text.editor.published)}>
+            <button className="button" type="button" disabled={pending} onClick={() => act('publish', 'published')}>
               {pending ? text.editor.working : text.editor.publish}
             </button>
           )}
@@ -135,7 +137,7 @@ function EventEditor({ id }: { id: string | undefined }) {
   const navigate = useNavigate();
   const allowed = creating ? canOrganize(user) : canManageEvents(user);
   const [load, setLoad] = useState<Load>(() => (creating ? { kind: 'notFound' } : eventId === null ? { kind: 'notFound' } : { kind: 'loading' }));
-  const [notice, setNotice] = useState<string | null>(location.state?.created === true ? text.editor.created : null);
+  const [notice, setNotice] = useState<Notice | null>(location.state?.created === true ? 'created' : null);
 
   useEffect(() => {
     if (creating || eventId === null || !allowed) return;
@@ -144,7 +146,7 @@ function EventEditor({ id }: { id: string | undefined }) {
       setLoad({ kind: 'ready', event: readManagedEvent(payload, eventId) });
     }).catch((error: unknown) => {
       if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) return;
-      setLoad(error instanceof ApiError && error.status === 404 ? { kind: 'notFound' } : { kind: 'error', message: organizerError(error) });
+      setLoad(error instanceof ApiError && error.status === 404 ? { kind: 'notFound' } : { kind: 'error', error });
     });
     return () => controller.abort();
   }, [creating, eventId, allowed, request]);
@@ -159,14 +161,14 @@ function EventEditor({ id }: { id: string | undefined }) {
         </div>
       ) : load.kind === 'loading' ? <p role="status">{text.editor.loading}</p>
         : load.kind === 'notFound' ? <p role="status">{text.editor.notFound}</p>
-          : load.kind === 'error' ? <div className="notice notice-error" role="alert"><p>{load.message}</p></div> : (
+          : load.kind === 'error' ? <div className="notice notice-error" role="alert"><p>{organizerError(load.error)}</p></div> : (
             <>
-              {notice && <div className="notice notice-success" role="status"><p>{notice}</p></div>}
+              {notice && <div className="notice notice-success" role="status"><p>{text.editor[notice]}</p></div>}
               <StatusActions event={load.event} onChanged={(event, message) => { setLoad({ kind: 'ready', event }); setNotice(message); }} />
               <div className="content-card">
                 <h2>{load.event.title}</h2>
                 <EventForm key={load.event.id} original={load.event}
-                  onSaved={(event, changed) => { setLoad({ kind: 'ready', event }); setNotice(changed ? text.editor.saved : text.editor.unchanged); }} />
+                  onSaved={(event, changed) => { setLoad({ kind: 'ready', event }); setNotice(changed ? 'saved' : 'unchanged'); }} />
               </div>
             </>
           )}

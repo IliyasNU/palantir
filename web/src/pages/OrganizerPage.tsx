@@ -9,7 +9,7 @@ import { canOrganize, organizerError, readManagedEvents } from '../organizer/mod
 import type { ManagedEvent } from '../organizer/model';
 import { useT } from '../i18n';
 
-type State = { kind: 'loading' } | { kind: 'ready'; events: ManagedEvent[] } | { kind: 'error'; message: string };
+type State = { kind: 'loading' } | { kind: 'ready'; events: ManagedEvent[] } | { kind: 'error'; error: unknown };
 
 /** Sign-in prompt or refusal shared by the organizer screens. Null when the account may continue. */
 export function OrganizerGate({ allowed, returnTo }: { allowed: boolean; returnTo: string }) {
@@ -42,7 +42,7 @@ export function OrganizerPage() {
       setState({ kind: 'ready', events: readManagedEvents(payload) });
     }).catch((error: unknown) => {
       if (!controller.signal.aborted && !(error instanceof Error && error.name === 'AbortError')) {
-        setState({ kind: 'error', message: organizerError(error) });
+        setState({ kind: 'error', error });
       }
     });
     return () => controller.abort();
@@ -58,7 +58,7 @@ export function OrganizerPage() {
             : state.kind === 'error' ? (
               <div className="notice notice-error" role="alert">
                 <h3>{text.list.loadFailed}</h3>
-                <p>{state.message}</p>
+                <p>{organizerError(state.error)}</p>
                 <button className="text-button" type="button" onClick={() => { setState({ kind: 'loading' }); setAttempt((value) => value + 1); }}>
                   {text.list.retry}
                 </button>
