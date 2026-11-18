@@ -94,7 +94,7 @@ test('#22.2 a reset request still pending for an old link cannot mark a newer li
   expect(tokens).toEqual(['old']);
 });
 
-test('#24.1 the reactivation step offers "keep suspended", not "do not suspend"', async ({ page }) => {
+test('#24.1 the reactivation step offers "keep suspended" and closes after a confirmed reactivation', async ({ page }) => {
   let writes = 0;
   const suspended = { ...person('attendee', 11), email: 'inactive@example.com', is_active: false };
   await page.route(`${base}/admin/users?*`, (route) => route.fulfill({ json: [suspended] }));
@@ -107,6 +107,13 @@ test('#24.1 the reactivation step offers "keep suspended", not "do not suspend"'
   await row.getByRole('button', { name: 'Оставить блокировку', exact: true }).click();
   await expect(row.getByRole('button', { name: 'Разблокировать: inactive@example.com' })).toBeVisible();
   expect(writes).toBe(0);
+  // After a confirmed reactivation the step closes: the row offers "suspend", not an open suspension form.
+  await row.getByRole('button', { name: 'Разблокировать: inactive@example.com' }).click();
+  await row.getByRole('button', { name: 'Разблокировать', exact: true }).click();
+  await expect.poll(() => writes).toBe(1);
+  await expect(row.getByRole('button', { name: 'Заблокировать: inactive@example.com' })).toBeVisible();
+  await expect(row.getByLabel('Причина блокировки')).toHaveCount(0);
+  await expect(row.getByRole('button', { name: 'Заблокировать: inactive@example.com' })).toBeFocused();
 });
 
 test('#24.2 another administrator has no suspension control, checked once the rows are on screen', async ({ page }) => {

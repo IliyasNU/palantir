@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Link, Navigate, NavLink, useParams } from 'react-router';
 import { useAuth } from '../auth/AuthProvider';
@@ -68,37 +68,59 @@ function SuspendControl({ suspended, subject, onSuspend, onReactivate }: {
   const { pending, error, submit } = useSubmission();
   const [asking, setAsking] = useState(false);
   const inputId = useId();
+  const questionId = useId();
+  // Keyboard users keep their place: closing a step puts focus back on the row's button.
+  const trigger = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef(false);
+  useEffect(() => {
+    if (asking || !restoreFocus.current) return;
+    restoreFocus.current = false;
+    trigger.current?.focus();
+  }, [asking]);
+  function close() {
+    restoreFocus.current = true;
+    setAsking(false);
+  }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const reason = String(new FormData(event.currentTarget).get('reason') ?? '');
     void submit(async (signal) => {
       await onSuspend(suspensionReason(reason), signal);
-      if (!signal.aborted) setAsking(false);
+      if (!signal.aborted) close();
+    });
+  }
+
+  function reactivate() {
+    void submit(async (signal) => {
+      await onReactivate(signal);
+      // Without this the step stayed open and the row showed the suspension form after a reactivation.
+      if (!signal.aborted) close();
     });
   }
 
   return <>
     {error !== null && <p className="notice notice-error" role="alert">{adminError(error)}</p>}
     {suspended && asking ? (
-      <div className="admin-reason">
-        <p>{text.confirmReactivate}</p>
-        <button className="button" type="button" disabled={pending} onClick={() => void submit(onReactivate)}>{text.users.reactivate}</button>
-        <button className="text-button" type="button" disabled={pending} onClick={() => setAsking(false)}>{text.keepSuspended}</button>
+      <div className="admin-reason" role="group" aria-labelledby={questionId}>
+        <p id={questionId}>{text.confirmReactivate}</p>
+        <button className="button" type="button" disabled={pending} onClick={reactivate}>{text.users.reactivate}</button>
+        {/* The safe choice takes focus, so a second Enter does not change anything. */}
+        <button className="text-button" type="button" disabled={pending} autoFocus onClick={close}>{text.keepSuspended}</button>
       </div>
     ) : suspended ? (
-      <button className="button" type="button" disabled={pending} aria-label={`${text.users.reactivate}: ${subject}`}
+      <button ref={trigger} className="button" type="button" disabled={pending} aria-label={`${text.users.reactivate}: ${subject}`}
         onClick={() => setAsking(true)}>{pending ? text.working : text.users.reactivate}</button>
     ) : asking ? (
       <form className="admin-reason" onSubmit={onSubmit} noValidate>
         <label htmlFor={inputId}>{text.reason}</label>
-        <input id={inputId} name="reason" maxLength={300} required disabled={pending} aria-describedby={`${inputId}-hint`} />
+        <input id={inputId} name="reason" maxLength={300} required disabled={pending} aria-describedby={`${inputId}-hint`} autoFocus />
         <p className="field-hint" id={`${inputId}-hint`}>{text.reasonHint}</p>
         <button className="button button-secondary" type="submit" disabled={pending}>{pending ? text.working : text.confirmSuspend}</button>
-        <button className="text-button" type="button" disabled={pending} onClick={() => setAsking(false)}>{text.keep}</button>
+        <button className="text-button" type="button" disabled={pending} onClick={close}>{text.keep}</button>
       </form>
     ) : (
-      <button className="button button-secondary" type="button" aria-label={`${text.users.suspend}: ${subject}`}
+      <button ref={trigger} className="button button-secondary" type="button" aria-label={`${text.users.suspend}: ${subject}`}
         onClick={() => setAsking(true)}>{text.users.suspend}</button>
     )}
   </>;

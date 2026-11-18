@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { ApiError, issueMessage } from '../api';
@@ -77,6 +77,14 @@ function StatusActions({ event, onChanged }: { event: ManagedEvent; onChanged: (
   const { request } = useAuth();
   const { pending, error, submit } = useSubmission();
   const [confirming, setConfirming] = useState(false);
+  // "Keep the event" gives focus back to the button that asked, so keyboard users keep their place.
+  const cancelButton = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef(false);
+  useEffect(() => {
+    if (confirming || !restoreFocus.current) return;
+    restoreFocus.current = false;
+    cancelButton.current?.focus();
+  }, [confirming]);
 
   function act(action: 'publish' | 'cancel', notice: Notice) {
     void submit(async (signal) => {
@@ -101,7 +109,9 @@ function StatusActions({ event, onChanged }: { event: ManagedEvent; onChanged: (
             <button className="button button-secondary" type="button" disabled={pending} onClick={() => act('cancel', 'cancelled')}>
               {pending ? text.editor.working : text.editor.cancelConfirm}
             </button>
-            <button className="text-button" type="button" disabled={pending} onClick={() => setConfirming(false)}>{text.editor.cancelKeep}</button>
+            {/* The irreversible question starts on the safe answer. */}
+            <button className="text-button" type="button" disabled={pending} autoFocus
+              onClick={() => { restoreFocus.current = true; setConfirming(false); }}>{text.editor.cancelKeep}</button>
           </p>
         </div>
       ) : event.status !== 'cancelled' && (
@@ -111,7 +121,7 @@ function StatusActions({ event, onChanged }: { event: ManagedEvent; onChanged: (
               {pending ? text.editor.working : text.editor.publish}
             </button>
           )}
-          <button className="button button-secondary" type="button" disabled={pending} onClick={() => setConfirming(true)}>{text.editor.cancel}</button>
+          <button ref={cancelButton} className="button button-secondary" type="button" disabled={pending} onClick={() => setConfirming(true)}>{text.editor.cancel}</button>
         </p>
       )}
       <p className="organizer-links">

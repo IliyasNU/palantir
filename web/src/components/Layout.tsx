@@ -18,9 +18,11 @@ export function Layout() {
       <a className="skip-link" href="#main-content">{t.common.skip}</a>
       <header className="site-header">
         <div className="container header-content">
-          <Link className="brand" to="/events" aria-label={t.common.brandLabel}>
+          {/* The accessible name starts with the visible word, so voice control can say "BiletFlow" (WCAG 2.5.3). */}
+          <Link className="brand" to="/events">
             <span className="brand-mark" aria-hidden="true">b.</span>
-            BiletFlow
+            <span aria-hidden="true">BiletFlow</span>
+            <span className="visually-hidden">{t.common.brandLabel}</span>
           </Link>
           <nav className="navigation" aria-label={t.common.navLabel}>
             <NavLink className="nav-link" to="/events">{t.common.events}</NavLink>
@@ -42,8 +44,9 @@ export function Layout() {
           </nav>
           <div className="language-switch" role="group" aria-label={t.common.language}>
             {locales.map((item) => (
-              <button key={item.locale} className="language-option" type="button" lang={item.locale} aria-label={item.name}
-                aria-pressed={item.locale === locale} onClick={() => setLocale(item.locale)}>{item.short}</button>
+              // The visible text is the name itself, so what is seen is what a screen reader or voice control hears.
+              <button key={item.locale} className="language-option" type="button" lang={item.locale}
+                aria-pressed={item.locale === locale} onClick={() => setLocale(item.locale)}>{item.name}</button>
             ))}
           </div>
         </div>

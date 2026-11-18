@@ -784,9 +784,9 @@ export const messages = { ru, kk, en } satisfies Record<string, Messages>;
 
 export type Locale = keyof typeof messages;
 
-/** Short labels for the switch and full names for screen readers, in the order they are offered. */
-export const locales: readonly { locale: Locale; short: string; name: string; tag: string }[] = [
-  { locale: 'kk', short: 'ҚАЗ', name: 'Қазақша', tag: 'kk-KZ' },
-  { locale: 'ru', short: 'РУС', name: 'Русский', tag: 'ru-RU' },
-  { locale: 'en', short: 'ENG', name: 'English', tag: 'en-GB' },
+/** Each language named in itself, in the order the switch offers them. */
+export const locales: readonly { locale: Locale; name: string; tag: string }[] = [
+  { locale: 'kk', name: 'Қазақша', tag: 'kk-KZ' },
+  { locale: 'ru', name: 'Русский', tag: 'ru-RU' },
+  { locale: 'en', name: 'English', tag: 'en-GB' },
 ];

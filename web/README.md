@@ -252,6 +252,12 @@ Organizers open `/organizer`, `/organizer/events/new` and `/organizer/events/{id
 
 The language switch covers these pages, the public event and ticket flow, dates and API errors. Errors and notices already on screen follow a switch without a new request: pages keep the error itself (or a notice key) and translate it while rendering, and `ApiError` carries a `Localized` text instead of a fixed string. Server wording (FastAPI `detail`, `422` issues) is English and is replaced by translated texts. Prices use the selected locale and omit decimals for whole tenge. Kazakh dates and numbers are written out by `src/i18n/format.ts`, so a browser without Kazakh ICU data (Edge printed "2030 M11 15") still shows "15 қараша 2030, 17:00". Ticket-type management and the P2 checkout, order and activation text still need a separate translation pass. Kazakh text needs native review before the defense.
 
+## Accessibility
+
+`tests/browser/accessibility.spec.mjs` runs axe-core (dev dependency `@axe-core/playwright` 4.14.0) with the WCAG 2.1/2.2 A and AA rules on the catalogue, event, sign-in, registration, password pages, 404, my tickets, a ticket with its full-screen QR, the organizer cabinet and editor, and the three admin sections, at 375 and 1280 px, and on the catalogue and registration in all three languages. Any violation fails the browser suite. The same file checks the keyboard paths axe cannot see: the skip link, the visible focus ring, and confirmation steps that take focus on the safe answer and give it back when closed. The full-screen ticket QR is a native modal dialog (Esc, focus trap, focus returned to its button).
+
+The language switch shows each language's own name ("Қазақша", "Русский", "English") as its visible text, so the accessible name matches what is seen (WCAG 2.5.3). axe does not judge Kazakh wording; native review is still needed.
+
 ## P2 demo checkout
 
 Paid types on activated events lead from `/events/:id` to `/events/:id/checkout?type=:typeId`,
