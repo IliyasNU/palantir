@@ -68,7 +68,7 @@ function ResetPasswordForm({ token }: { token: string }) {
               <input id="reset-password" name="new_password" type="password" autoComplete="new-password" required minLength={8} maxLength={72} aria-describedby="reset-password-hint" />
               <p className="field-hint" id="reset-password-hint">{text.reset.passwordHint}</p>
               <label htmlFor="confirm-password">{text.reset.confirmPassword}</label>
-              <input id="confirm-password" name="confirm_password" type="password" autoComplete="new-password" required maxLength={72} />
+              <input id="confirm-password" name="confirm_password" type="password" autoComplete="new-password" maxLength={72} />
               <button className="button" type="submit" disabled={pending}>{pending ? text.reset.submitting : text.reset.submit}</button>
             </fieldset>
           </form>

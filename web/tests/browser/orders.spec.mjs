@@ -75,7 +75,8 @@ test('checkout allows correcting a definitive validation refusal', async ({ page
   });
   await login(page, '/events/42/checkout?type=1');
   await page.getByRole('button', { name: 'Продолжить к оплате' }).click();
-  await expect(page.getByRole('alert')).toContainText('Проверьте имя');
+  // Server 422 wording (English from FastAPI in reality) is replaced by a translated text since #25.
+  await expect(page.getByRole('alert')).toContainText('Проверьте введённые данные.');
   await expect(page.getByLabel('Имя посетителя')).toBeEnabled();
   await page.getByLabel('Имя посетителя').fill('Исправленное имя');
   await page.getByRole('button', { name: 'Продолжить к оплате' }).click();
