@@ -87,6 +87,8 @@ test('admin controls have unique labels, protect admins and confirm reactivation
   await page.route(base + '/admin/users?*', r => r.fulfill({json: rows}));
   await page.route(base + '/admin/users/11/reactivate', r => {writes++; return r.fulfill({json: {...rows[3], is_active: true}});});
   await login(page, '/admin/users');
+  // Wait for the rows: before they load, "no buttons" would pass vacuously.
+  await expect(page.getByRole('row').filter({hasText: 'Other Admin'})).toBeVisible();
   await expect(page.getByRole('row').filter({hasText: 'Other Admin'}).getByRole('button')).toHaveCount(0);
   await page.getByRole('button', {name: 'Заблокировать: a.b@example.com'}).click();
   await page.getByRole('button', {name: 'Заблокировать: a-b@example.com'}).click();
@@ -96,7 +98,7 @@ test('admin controls have unique labels, protect admins and confirm reactivation
   const row = page.getByRole('row').filter({hasText: 'inactive@example.com'});
   await row.getByRole('button', {name: 'Разблокировать: inactive@example.com'}).click();
   expect(writes).toBe(0);
-  await row.getByRole('button', {name: 'Не блокировать', exact: true}).click();
+  await row.getByRole('button', {name: 'Оставить блокировку', exact: true}).click();
   expect(writes).toBe(0);
   await row.getByRole('button', {name: 'Разблокировать: inactive@example.com'}).click();
   await row.getByRole('button', {name: 'Разблокировать', exact: true}).click();

@@ -1,5 +1,5 @@
 import { ApiError } from '../api/client.ts';
-import { current, dateLocale, getLocale } from '../i18n/index.ts';
+import { formatDateTime } from '../i18n/format.ts';
 
 /** Fields used by the catalog from the backend's EventRead response. */
 export interface CatalogEvent {
@@ -25,7 +25,7 @@ export function readCatalog(payload: unknown): CatalogEvent[] {
 }
 
 function invalidCatalog(): ApiError {
-  return new ApiError(current().catalog.malformed, { kind: 'response' });
+  return new ApiError((m) => m.catalog.malformed, { kind: 'response' });
 }
 
 export function filterEventsByTitle(events: CatalogEvent[], query: string): CatalogEvent[] {
@@ -33,13 +33,7 @@ export function filterEventsByTitle(events: CatalogEvent[], query: string): Cata
   return events.filter((event) => event.title.toLowerCase().includes(search));
 }
 
+/** The server instant in the browser's local time, in the current language. */
 export function formatEventDate(date: string): string {
-  // No timeZone override: display the server instant in the browser's local time.
-  if (getLocale() === 'kk') {
-    const months = ['қаңтар', 'ақпан', 'наурыз', 'сәуір', 'мамыр', 'маусым', 'шілде', 'тамыз', 'қыркүйек', 'қазан', 'қараша', 'желтоқсан'];
-    const value = new Date(date);
-    const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(value);
-    return `${value.getDate()} ${months[value.getMonth()]} ${value.getFullYear()}, ${time}`;
-  }
-  return new Intl.DateTimeFormat(dateLocale(), { dateStyle: 'long', timeStyle: 'short' }).format(new Date(date));
+  return formatDateTime(date, 'long');
 }

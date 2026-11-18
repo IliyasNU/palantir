@@ -1,4 +1,4 @@
-import { ApiError, getErrorMessage } from '../api/client.ts';
+import { ApiError, getErrorMessage, localIssue } from '../api/client.ts';
 import type { ValidationIssue } from '../api/client.ts';
 import type { User } from '../auth/types.ts';
 import { readEventDetails } from '../events/details.ts';
@@ -38,7 +38,7 @@ export function readManagedEvent(payload: unknown, expectedId: number): ManagedE
 }
 
 export function readManagedEvents(payload: unknown): ManagedEvent[] {
-  const fail = () => new ApiError(current().catalog.malformed, { kind: 'response' });
+  const fail = () => new ApiError((m) => m.catalog.malformed, { kind: 'response' });
   if (!Array.isArray(payload)) throw fail();
   return payload.map((item: unknown) => {
     const id = typeof item === 'object' && item !== null && 'id' in item ? item.id : undefined;
@@ -80,17 +80,17 @@ export function eventPayload(draft: EventDraft, original?: EventDetails): Partia
   const location = draft.location.trim();
   const description = draft.description.trim();
   const length = (value: string) => [...value].length;
-  if (length(title) < 3 || length(title) > 200) issues.push({ field: 'title', message: current().organizer.validation.title });
-  if (length(description) > 5000) issues.push({ field: 'description', message: current().organizer.validation.description });
+  if (length(title) < 3 || length(title) > 200) issues.push(localIssue('title', (m) => m.organizer.validation.title));
+  if (length(description) > 5000) issues.push(localIssue('description', (m) => m.organizer.validation.description));
   const sameDate = original !== undefined && draft.date === localInputValue(original.date);
   const time = Date.parse(draft.date);
-  if (!sameDate && (!draft.date || !Number.isFinite(time))) issues.push({ field: 'date', message: current().organizer.validation.date });
-  if (length(location) < 2 || length(location) > 255) issues.push({ field: 'location', message: current().organizer.validation.location });
+  if (!sameDate && (!draft.date || !Number.isFinite(time))) issues.push(localIssue('date', (m) => m.organizer.validation.date));
+  if (length(location) < 2 || length(location) > 255) issues.push(localIssue('location', (m) => m.organizer.validation.location));
   const capacity = /^\d{1,7}$/.test(draft.capacity.trim()) ? Number(draft.capacity.trim()) : Number.NaN;
   if (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > 1_000_000) {
-    issues.push({ field: 'capacity', message: current().organizer.validation.capacity });
+    issues.push(localIssue('capacity', (m) => m.organizer.validation.capacity));
   }
-  if (issues.length) throw new ApiError(current().organizer.validation.form, { kind: 'validation', status: 422, issues });
+  if (issues.length) throw new ApiError((m) => m.organizer.validation.form, { kind: 'validation', status: 422, issues });
 
   const payload: EventPayload = { title, description: description || null,
     date: sameDate ? original.date : new Date(time).toISOString(), location, capacity };

@@ -38,7 +38,7 @@ export function isAdmin(user: Pick<User, 'role'> | null): boolean {
   return user?.role === 'admin';
 }
 
-const malformed = () => new ApiError(current().api.badResponse, { kind: 'response' });
+const malformed = () => new ApiError((m) => m.api.badResponse, { kind: 'response' });
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const id = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 const time = (value: unknown): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value));
@@ -84,7 +84,7 @@ export function suspensionReason(value: string): string {
   const reason = value.trim();
   const length = [...reason].length;
   if (length < 3 || length > 300) {
-    throw new ApiError(current().admin.reasonInvalid, { kind: 'validation', status: 422, code: FORM });
+    throw new ApiError((m) => m.admin.reasonInvalid, { kind: 'validation', status: 422, code: FORM });
   }
   return reason;
 }
@@ -100,16 +100,16 @@ export interface LogFilters {
 /** Query of GET /admin/action-log for one page; local times become UTC. */
 export function actionLogPath(filters: LogFilters, offset: number): string {
   const eventId = filters.eventId.trim();
-  if (eventId && !/^[1-9]\d{0,9}$/.test(eventId)) throw new ApiError(current().admin.log.eventIdInvalid, { kind: 'validation', status: 422, code: FORM });
+  if (eventId && !/^[1-9]\d{0,9}$/.test(eventId)) throw new ApiError((m) => m.admin.log.eventIdInvalid, { kind: 'validation', status: 422, code: FORM });
   const instant = (value: string) => {
     if (!value) return undefined;
     const parsed = Date.parse(value);
-    if (!Number.isFinite(parsed)) throw new ApiError(current().admin.log.periodInvalid, { kind: 'validation', status: 422, code: FORM });
+    if (!Number.isFinite(parsed)) throw new ApiError((m) => m.admin.log.periodInvalid, { kind: 'validation', status: 422, code: FORM });
     return new Date(parsed).toISOString();
   };
   const from = instant(filters.from);
   const to = instant(filters.to);
-  if (from && to && from > to) throw new ApiError(current().admin.log.periodInvalid, { kind: 'validation', status: 422, code: FORM });
+  if (from && to && from > to) throw new ApiError((m) => m.admin.log.periodInvalid, { kind: 'validation', status: 422, code: FORM });
   return adminPath('/admin/action-log', { action: filters.action.trim(), event_id: eventId, date_from: from, date_to: to, limit: LOG_PAGE, offset });
 }
 
@@ -121,7 +121,7 @@ export function adminError(error: unknown): string {
       case 'EVENT_NOT_FOUND': return current().admin.errors.EVENT_NOT_FOUND;
       case 'CANNOT_SUSPEND_SELF': return current().admin.errors.CANNOT_SUSPEND_SELF;
     }
-    if (error.code === FORM) return error.message;
+    if (error.code === FORM) return getErrorMessage(error);
     if (error.status === 403) return current().admin.errors.forbidden;
     if (error.status === 422) return current().admin.errors.invalid;
   }

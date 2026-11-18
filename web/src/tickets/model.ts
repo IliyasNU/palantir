@@ -32,7 +32,7 @@ function ticketStatus(value: unknown): value is TicketStatus {
   return value === 'active' || value === 'cancelled' || value === 'refunded';
 }
 function invalidTicket(): ApiError {
-  return new ApiError(current().tickets.malformed, { kind: 'response' });
+  return new ApiError((m) => m.tickets.malformed, { kind: 'response' });
 }
 
 /** Validate the server response; encode qr_payload unchanged, without a client prefix. */

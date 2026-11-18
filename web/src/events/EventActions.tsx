@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import { Link, useNavigate } from 'react-router';
+import { ApiError } from '../api';
 import { useAuth } from '../auth/AuthProvider';
 import { authLink } from '../auth/returnTo';
 import { readTicket, readTickets, ticketErrorMessage } from '../tickets/model';
@@ -34,7 +35,8 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
   const [ticketId, setTicketId] = useState<number | null>(null);
   const [checking, setChecking] = useState(true);
   const [claiming, setClaiming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // The failure itself is kept and translated while rendering, so a language switch updates it.
+  const [error, setError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
   const types = event.ticket_types;
   const time = useTicketTypeClock(types);
@@ -52,7 +54,7 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
     setError(null);
     request<unknown>('/tickets/me', { signal: controller.signal }).then(readTickets)
       .then((tickets) => { if (!controller.signal.aborted) setTicketId(tickets.find((ticket) => ticket.event_id === event.id)?.id ?? null); })
-      .catch((failure: unknown) => { if (!controller.signal.aborted) setError(ticketErrorMessage(failure)); })
+      .catch((failure: unknown) => { if (!controller.signal.aborted) setError(failure); })
       .finally(() => { if (!controller.signal.aborted) setChecking(false); });
     return () => controller.abort();
   }, [event.id, request, attempt]);
@@ -60,9 +62,10 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
 
   async function claim() {
     if (inFlight.current || (types !== undefined && !selected)) return;
-    const unavailableNow = selected ? ticketTypeUnavailable(selected.type, Date.now(), event.paid_sales_available) : null;
-    if (unavailableNow !== null) {
-      setError(unavailableNow);
+    const checkedAt = Date.now();
+    if (selected && ticketTypeUnavailable(selected.type, checkedAt, event.paid_sales_available) !== null) {
+      const { type } = selected;
+      setError(new ApiError(() => ticketTypeUnavailable(type, checkedAt, event.paid_sales_available) ?? '', { kind: 'validation' }));
       return;
     }
     if (selected && selected.type.price_tiyn > 0) {
@@ -79,7 +82,7 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
         ...(selected ? { body: { ticket_type_id: selected.type.id } } : {}) }), undefined, event.id);
       if (!controller.signal.aborted) navigate(`/tickets/${ticket.id}`);
     } catch (failure) {
-      if (!controller.signal.aborted) setError(ticketErrorMessage(failure));
+      if (!controller.signal.aborted) setError(failure);
     } finally {
       if (!controller.signal.aborted) setClaiming(false);
       if (inFlight.current === controller) inFlight.current = null;
@@ -89,7 +92,7 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
   if (checking) return <p role="status">{t.event.checkingTickets}</p>;
   if (ticketId !== null) return <p><Link className="button" to={`/tickets/${ticketId}`}>{t.event.openMyTicket}</Link></p>;
   return <div className="ticket-actions" aria-busy={claiming}>
-    {error && <p className="notice notice-error" role="alert">{error}</p>}
+    {error !== null && <p className="notice notice-error" role="alert">{ticketErrorMessage(error)}</p>}
     {choices !== undefined && event.status === 'published' && <fieldset className="ticket-type-selection" disabled={claiming}>
       <legend>{t.event.chooseType}</legend>
       {choices.map(({ type, unavailable }) => <label key={type.id}>
@@ -105,7 +108,7 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
       onClick={() => { void claim(); }}>{claiming ? t.event.claiming : selected && selected.type.price_tiyn > 0 ? t.event.buy : t.event.claim}</button>}
     {event.status === 'published' && remainingSeats === 0 && <p>{t.event.allClaimed}</p>}
     {event.status !== 'published' && <p>{t.event.noNewTickets}</p>}
-    {error && <button className="text-button" type="button" disabled={claiming} onClick={() => setAttempt((value) => value + 1)}>{t.event.checkMyTickets}</button>}
+    {error !== null && <button className="text-button" type="button" disabled={claiming} onClick={() => setAttempt((value) => value + 1)}>{t.event.checkMyTickets}</button>}
     <p><Link className="text-link" to="/tickets">{t.common.myTickets}</Link></p>
   </div>;
 }

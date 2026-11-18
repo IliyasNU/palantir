@@ -15,6 +15,10 @@ export function LoginPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const returnTo = safeReturnTo(params.get('returnTo'));
+  // History state is untyped and can come from anywhere: read only the two known fields.
+  const state: unknown = location.state;
+  const registered = typeof state === 'object' && state !== null && 'registered' in state && state.registered === true
+    ? { role: 'role' in state ? state.role : undefined } : null;
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -42,7 +46,9 @@ export function LoginPage() {
           <><p>{t.auth.alreadyIn(auth.user.full_name)}</p><Link className="button" to={returnTo}>{t.auth.proceed}</Link></>
         ) : (
           <>
-            {location.state?.registered === true && <div className="notice notice-success" role="status">{t.auth.registered}</div>}
+            {registered && <div className="notice notice-success" role="status">
+              {registered.role === 'organizer' ? t.auth.registeredOrganizer : t.auth.registered}
+            </div>}
             <form className="auth-form" onSubmit={onSubmit} aria-busy={pending} aria-describedby={error ? 'form-error' : undefined}>
               <AuthFormError error={error} mode="login" />
               <fieldset disabled={pending}>

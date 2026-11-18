@@ -15,7 +15,7 @@ import { useTicketTypeClock } from '../ticket-types/useTicketTypeClock';
 type DetailsState =
   | { kind: 'loading' }
   | { kind: 'not-found' }
-  | { kind: 'error'; message: string }
+  | { kind: 'error'; error: unknown }
   | { kind: 'success'; event: EventDetails };
 
 export function EventDetailsPage() {
@@ -45,7 +45,7 @@ function EventContent({ id, request, guest }: { id: string | undefined; request:
         if (controller.signal.aborted) return;
         setState(error instanceof ApiError && error.status === 404
           ? { kind: 'not-found' }
-          : { kind: 'error', message: getErrorMessage(error) });
+          : { kind: 'error', error });
       });
     return () => controller.abort();
   }, [eventId, request, attempt]);
@@ -73,7 +73,7 @@ function EventContent({ id, request, guest }: { id: string | undefined; request:
       ) : state.kind === 'error' ? (
         <div className="notice notice-error event-details-error" role="alert">
           <h2>{t.event.loadFailed}</h2>
-          <p>{state.message}</p>
+          <p>{getErrorMessage(state.error)}</p>
           <button className="button" type="button" onClick={retry}>{t.common.retry}</button>
         </div>
       ) : event && (
