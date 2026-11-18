@@ -39,7 +39,7 @@ The access token still works until it expires (30 minutes); the client discards 
 ## Steps
 
 1. Settings, `app/email.py`, email templates.
-2. Model and migration `0006`: `users.email_verified_at`, `users.token_version`, table `revoked_tokens`.
+2. Model and migration `0007` (renumbered from `0006` after #15 merged first): `users.email_verified_at`, `users.token_version`, table `revoked_tokens`.
 3. Token helpers and checks in `get_current_user` and `/auth/refresh`.
 4. Endpoints and tests.
 5. README API table, `.env.example`, compose variables.
@@ -68,7 +68,7 @@ Source: "BiletFlow — Temirlan: tasks and deadlines" (13 Nov).
 The backend requirements document it cites was not available, so the task notes are the spec.
 
 - #21 follow-up (done, in #21): `429 TOO_MANY_REQUESTS` with `Retry-After: 60` on `forgot-password` (per address, registered or not, so it reveals no account) and `resend-verification` (per account); README states logout ends only the presented refresh token.
-- BE-3a (done): `notifications` table (`0007`), `notify(...)` inside the caller's transaction, email after commit from one worker thread, `GET /notifications/me`, `POST /notifications/{id}/read`.
+- BE-3a (done): `notifications` table (`0008`, renumbered from `0007`), `notify(...)` inside the caller's transaction, email after commit from one worker thread, `GET /notifications/me`, `POST /notifications/{id}/read`.
 - Mailpit (done): Compose profile `mail`, inbox at <http://localhost:8025>.
 - BE-3b (done): ticket email with the PDF after a free claim (new tickets only); event updated (title, date or location) and event cancelled emails to active ticket holders.
 - BE-3c (open): order paid with the ticket PDF and payment failed, one email per order; two days after #15 merges.

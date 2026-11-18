@@ -1,4 +1,5 @@
 import { ApiError } from '../api/client.ts';
+import { current } from '../i18n/index.ts';
 import { readTicketTypes } from '../ticket-types/model.ts';
 import type { TicketType } from '../ticket-types/model.ts';
 
@@ -19,6 +20,7 @@ export interface EventDetails {
   updated_at: string;
   /** Absent only when talking to a backend predating ticket types. */
   ticket_types?: TicketType[];
+  paid_sales_available?: boolean;
 }
 
 export function parseEventId(value: string | undefined): number | null {
@@ -42,7 +44,7 @@ function isDate(value: unknown): value is string {
 }
 
 export function readEventDetails(payload: unknown, expectedId: number): EventDetails {
-  const fail = () => new ApiError('Сервер вернул некорректные данные события. Попробуйте позже.', { kind: 'response' });
+  const fail = () => new ApiError((m) => m.event.malformed, { kind: 'response' });
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw fail();
   const event = payload as Record<string, unknown>;
   const organizerId = integer(event.organizer_id, 1);
@@ -65,14 +67,15 @@ export function readEventDetails(payload: unknown, expectedId: number): EventDet
     created_at: event.created_at,
     updated_at: event.updated_at,
     ...(event.ticket_types === undefined ? {} : { ticket_types: readTicketTypes(event.ticket_types, expectedId) }),
+    ...(event.paid_sales_available === undefined ? {} : { paid_sales_available: event.paid_sales_available === true }),
   };
 }
 
 export function eventStatusLabel(status: EventDetails['status']): string {
   switch (status) {
-    case 'draft': return 'Черновик';
-    case 'published': return 'Опубликовано';
-    case 'cancelled': return 'Отменено';
-    default: return 'Неизвестный статус';
+    case 'draft': return current().event.statusDraft;
+    case 'published': return current().event.statusPublished;
+    case 'cancelled': return current().event.statusCancelled;
+    default: return current().event.statusUnknown;
   }
 }

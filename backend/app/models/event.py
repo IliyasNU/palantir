@@ -54,5 +54,15 @@ class Event(Base):
         return self.suspended_at is not None
 
     @property
+    def paid_sales_available(self) -> bool:
+        from sqlalchemy.orm import object_session
+        from app.paid_sales import activation_state
+        db = object_session(self)
+        if db is None or self.suspended or self.status != "published":
+            return False
+        state = activation_state(db, self)
+        return state["activated"] and not state["paid_sales_suspended"]
+
+    @property
     def public_ticket_types(self) -> list["TicketType"]:
         return [ticket_type for ticket_type in self.ticket_types if not ticket_type.hidden]

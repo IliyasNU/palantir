@@ -144,7 +144,7 @@ To end every session, reset the password.
 
 ## Notifications (BE-3a, BE-3b)
 
-Revision `0007` adds `notifications`. Each notification is shown in the app and emailed to the user.
+Revision `0008` adds `notifications`. Each notification is shown in the app and emailed to the user.
 `notify(...)` in `app/notifications.py` adds the row inside the caller's transaction; the email is sent from a worker thread only after that transaction commits, so a rolled-back change sends nothing.
 If the mail server is down the email is logged as failed and the notification stays in the app.
 
@@ -249,6 +249,114 @@ Verified again on 12 November 2026 after the action filter fix and the shared `e
 check, on a disposable local PostgreSQL 16.15 (ICU `und`, UTF8): 455 unit tests and 43 PostgreSQL e2e
 tests passed, with `alembic heads` at `0005 (head)`.
 
+## Simulated paid sales and orders (P2)
+
+P2 is a university simulation: **Демонстрационная оплата, деньги не списываются**.
+There is no payment provider, card entry, real verification or payout. Successful payment
+responses carry `simulation: true` and `demo_notice`. Authentication and authorization are real.
+
+Migration `0006` follows `0005`. It adds `orders`, `paid_sales_activations` and two demo fields
+on organizer profiles. Existing events, tickets, QR payloads, history and counters are preserved.
+Downgrade refuses if any orders, activation rows or profile confirmations would be lost.
+
+| Method and path | Access | Result |
+| --- | --- | --- |
+| `GET /events/{id}/activation` | Owner/admin | Five checklist steps, activation and paid-sales suspension state, demo fee |
+| `POST /events/{id}/activation/terms` | Owner/admin | Accept demo terms, idempotent |
+| `POST /events/{id}/activation/fee` | Owner/admin | Simulate activation fee payment, store amount and time once |
+| `POST /organizer-profiles/me/confirm-identity` | Organizer | Simulate confirmation of own existing profile |
+| `POST /organizer-profiles/me/payout-details` | Organizer | `{reference_last4}`: exactly four ASCII letters/digits. Full references are rejected |
+| `POST /admin/events/{id}/paid-sales/suspend` | Admin | Required `{reason}` (3–300 chars); free claims remain available |
+| `POST /admin/events/{id}/paid-sales/restore` | Admin | Restore paid sales; event-wide suspension still applies |
+| `POST /events/{id}/orders` | Authenticated buyer | `{ticket_type_id, attendee_name, attendee_email, request_id}`; 201 pending, 200 replay |
+| `POST /orders/{id}/pay` | Buyer only | `{outcome: "success" or "failure"}`; first terminal result wins |
+| `POST /orders/{id}/cancel` | Buyer only | Release a pending order once; terminal states are returned unchanged |
+| `GET /orders/me`, `GET /orders/{id}` | Buyer only | Own orders, including terminal orders; another buyer's order is 404 even to admins |
+| `GET /events/{id}/orders/summary` | Owner/admin | Demo gross sales, fees, refunds (0 until P5), estimated payout |
+
+`EventRead.paid_sales_available` exposes only whether public paid checkout is available, not
+the organizer's private checklist. Activation requires a paid type, confirmed profile identity,
+demo payout suffix, event terms and event activation fee. Profile confirmations are shared by
+that organizer's events; terms and the fee are per event. Paid-sales suspension is separate from
+the admin's event-wide suspension. Payment confirmation checks both suspensions under the lock.
+
+| HTTP | P2 error codes |
+| --- | --- |
+| 401 / 403 | Existing authentication/role errors; `FORBIDDEN` for another organizer's event |
+| 404 | `EVENT_NOT_FOUND`, `TICKET_TYPE_NOT_FOUND`, `ORDER_NOT_FOUND`, `ORGANIZER_PROFILE_NOT_FOUND` |
+| 409 | `PAID_SALES_NOT_ACTIVATED`, `PAID_SALES_SUSPENDED`, `EVENT_SUSPENDED`, `EVENT_CANCELLED`, `EVENT_NOT_PUBLISHED` |
+| 409 | `TICKET_TYPE_HIDDEN`, `TICKET_TYPE_SALES_NOT_STARTED`, `TICKET_TYPE_SALES_ENDED`, `SOLD_OUT`, `TICKET_TYPE_SOLD_OUT`, `ORDER_LIMIT_EXCEEDED` |
+| 409 | `ACTIVE_TICKET_EXISTS`, `CLOSED_TICKET_EXISTS`, `PENDING_ORDER_EXISTS`, `IDEMPOTENCY_CONFLICT`, `ORDER_EXPIRED`, `FREE_TICKET_USE_CLAIM` |
+| 422 | Existing field-error array in `detail`; unstorable DB values use existing `detail.code = INVALID_INPUT` |
+
+Business errors use `api_error` (`detail.code` and `detail.message`). Public reads keep B2's
+404 visibility rules; an authenticated checkout checks the event under its lock and returns
+the explicit state refusal listed above. Legacy free claims keep `PAID_TICKETS_NOT_SUPPORTED`
+and point to checkout in the message.
+
+Money is integer tiyn. The buyer pays exactly the ticket price. The coded demo activation fee
+is 500000 tiyn, and processing is 300 basis points (3%) withheld from organizer proceeds.
+Rounding is nearest tiyn, halves upwards: `(price_tiyn * 300 + 5000) // 10000`.
+For 10050 tiyn the buyer pays 10050, the fee is 302, and estimated proceeds are 9748.
+Orders snapshot price, rate and fee; editing the type does not reprice an existing order.
+
+One order contains one ticket and checks `order_limit >= 1`. `request_id` is unique per buyer.
+The same key and payload returns the existing order; changing its event, type or attendee
+details returns `IDEMPOTENCY_CONFLICT`. Confirmation uses the order itself as its idempotency
+identity: retries (even with a different outcome) return the first completed result.
+Expired orders always return `ORDER_EXPIRED` on confirmation and never issue a ticket.
+
+`UNIQUE(event_id, attendee_id)` remains unchanged: checkout rejects **any** existing ticket,
+including cancelled/refunded (`CLOSED_TICKET_EXISTS`). Legacy `claim_ticket` still returns
+the existing ticket with HTTP 200, including closed tickets. It only gains lazy expiry and
+a pending-order check before new issuance. A zero-total order for a free claim is deliberately
+out of scope, a known SRS 4.4 gap.
+
+Reservations last 15 minutes and consume the event and type counters in the same transaction.
+Counters represent active tickets **plus pending reservations**. Payment replaces the reserved
+seat with a ticket, without incrementing again. Failure/cancellation/expiry decrements once.
+The event is locked before checking time, buyer state, orders or inventory. Expiry is lazy on
+checkout/confirmation/cancellation/order reads, public event/type inventory reads and inventory
+edits. No background process runs. For a manual sweep:
+
+```bash
+python -m scripts.expire_orders
+```
+
+A reservation made inside the sales window may be confirmed until its deadline, even if the
+type's window later closes. Event cancellation, event suspension and paid-sales suspension still
+block confirmation. Reservation counters are physically released on the next relevant request
+or sweep, not at a timer interrupt. Clients must not infer valid payment from their own clocks.
+
+Attendee name/email are order contact snapshots. Ownership, PDF holder identity and check-in
+continue to use the authenticated account. P2 does not introduce transferable tickets.
+Existing ticket cancellation/refund routes still change admission state only; financial refunds
+and adjustments to order totals belong to P5. The P2 sales summary reports refunds as zero.
+Ticket delivery email belongs to B4 and should hook after a new paid ticket commits, once only.
+
+Run `pytest -q tests` and, separately, the full `pytest -q e2e` against a disposable PostgreSQL 16
+ICU `und`, UTF8 instance. The P2 e2e tests cover buyer/free/paid races, payment vs expiry and
+suspension, repeated cleanup/confirmation, PDF and check-in, plus populated `0005 → 0006`.
+Always verify the demo database's actual locale before presenting; no existing team volume is reinitialized.
+
+P2 verification on 12 November 2026, implementation `7f8db09`, integrated tree `2e375df`
+(the integration merge did not change backend files):
+
+| Check | Observed result |
+| --- | --- |
+| Backend `python -m pytest -q tests` | 481 passed, one existing Starlette/httpx deprecation warning |
+| PostgreSQL HTTP `python -m pytest -q e2e` | 55 passed, including 12 new P2 cases; same warning |
+| SQL and migrations | PostgreSQL 16.15 / Ubuntu in WSL; provider `i`, ICU `und`, UTF8, Kazakh case folding true; sole head `0006`; empty and populated upgrade, safe downgrade and order guard passed |
+| Web unit, TypeScript, production build | 72 passed; typecheck and build passed with `VITE_API_URL=http://127.0.0.1:8000` |
+| Browser | 53 passed in the standard suite, 1 recovery and 1 isolation test passed separately. Two opt-in cases skipped in the standard suite: isolation was then run separately; strict Docker 667 acceptance was not run |
+
+The API used Python 3.14.5 on Windows, browser Microsoft Edge headless. The CI container matrix
+(Python 3.12, Alpine PostgreSQL, Chromium) and a clean dependency installation were not repeated
+locally. P2 browser flows use HTTP fixtures; PostgreSQL e2e uses the real API, including paid-ticket
+PDF and check-in. Physical phone/printing and the actual demo database remain unverified.
+One earlier browser run timed out during login in the existing PDF refusal test; it passed in
+the final full run without a test change. These checks are agent verification, not a teammate review.
+
 ## Admin accounts
 
 Admins cannot register through the API. Create one (or promote an existing user) with:
@@ -287,7 +395,7 @@ docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -
 docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -f work/compose.w2-pg16-icu.yml exec backend alembic current
 ```
 
-Compose applies `alembic upgrade head` before starting the API. Expect `0005 (head)` and `/health` HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
+Compose applies `alembic upgrade head` before starting the API. Expect `0008 (head)` and `/health` HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
 
 Run this SQL **in the database used by the API** and retain the actual output with the tested commit:
 
