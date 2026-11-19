@@ -12,7 +12,7 @@ export default function EventsScreen() {
   const { session } = useSession();
   const focused = useIsFocused();
 
-  if (!session?.token) return <Redirect href="/" />;
+  if (!session?.token) return <Redirect href="/staff" />;
   if (!focused) return null;
 
   // Returning to this screen or changing accounts starts with a fresh list. A renewed token of the same
