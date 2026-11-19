@@ -17,6 +17,7 @@ import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { CheckoutPage } from './pages/CheckoutPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { ActivationPage } from './pages/ActivationPage';
+import { OrganizerProfilePage } from './pages/OrganizerProfilePage';
 
 export function App() {
   return (
@@ -35,6 +36,7 @@ export function App() {
         <Route path="admin/:section" element={<AdminPage />} />
         <Route path="organizer/events/:id/ticket-types" element={<TicketTypesPage />} />
         <Route path="organizer" element={<OrganizerPage />} />
+        <Route path="organizer/profile" element={<OrganizerProfilePage />} />
         <Route path="organizer/events/new" element={<EventEditorPage />} />
         <Route path="organizer/events/:id/edit" element={<EventEditorPage />} />
         <Route path="login" element={<LoginPage />} />
