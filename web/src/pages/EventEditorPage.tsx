@@ -79,6 +79,8 @@ function StaffManager({ event }: { event: ManagedEvent }) {
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [pending, setPending] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'assign' | 'remove' | null>(null);
+  const [removingUserId, setRemovingUserId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -95,7 +97,7 @@ function StaffManager({ event }: { event: ManagedEvent }) {
   async function assign(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
     if (pending) return;
-    setPending(true); setError(null); setNotice(null);
+    setPending(true); setPendingAction('assign'); setError(null); setNotice(null);
     try {
       await request(`/events/${event.id}/staff`, { method: 'POST', body: { email: email.trim() } });
       setEmail('');
@@ -105,12 +107,13 @@ function StaffManager({ event }: { event: ManagedEvent }) {
       setError(staffError(failure));
     } finally {
       setPending(false);
+      setPendingAction(null);
     }
   }
 
   async function remove(userId: number) {
     if (pending) return;
-    setPending(true); setError(null); setNotice(null);
+    setPending(true); setPendingAction('remove'); setRemovingUserId(userId); setError(null); setNotice(null);
     try {
       await request(`/events/${event.id}/staff/${userId}`, { method: 'DELETE' });
       setStaff((current) => current.filter((member) => member.user_id !== userId));
@@ -119,6 +122,8 @@ function StaffManager({ event }: { event: ManagedEvent }) {
       setError(staffError(failure));
     } finally {
       setPending(false);
+      setPendingAction(null);
+      setRemovingUserId(null);
     }
   }
 
@@ -131,7 +136,7 @@ function StaffManager({ event }: { event: ManagedEvent }) {
         <fieldset disabled={pending}>
           <label htmlFor="staff-email">{text.staff.email}</label>
           <input id="staff-email" type="email" value={email} onChange={(change) => setEmail(change.target.value)} required />
-          <button className="button" type="submit" disabled={!email.trim()}>{pending ? text.staff.removing : text.staff.add}</button>
+          <button className="button" type="submit" disabled={!email.trim()}>{pendingAction === 'assign' ? text.staff.assigning : text.staff.add}</button>
         </fieldset>
       </form>
       {loading ? <p role="status">{text.staff.loading}</p> : staff.length === 0
@@ -139,7 +144,9 @@ function StaffManager({ event }: { event: ManagedEvent }) {
         : <ul>{staff.map((member) => (
           <li key={member.user_id}>
             <strong>{member.full_name}</strong> — {member.email}{' '}
-            <button className="text-button" type="button" disabled={pending} onClick={() => void remove(member.user_id)}>{text.staff.remove}</button>
+            <button className="text-button" type="button" disabled={pending} onClick={() => void remove(member.user_id)}>
+              {removingUserId === member.user_id ? text.staff.removing : text.staff.remove}
+            </button>
           </li>
         ))}</ul>}
     </section>

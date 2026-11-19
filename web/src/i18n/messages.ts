@@ -351,7 +351,7 @@ const ru = {
       notOrganizer: 'Создавать профиль может только организатор.',
     },
     staff: {
-      heading: 'Сотрудники события', email: 'Email сотрудника', add: 'Назначить', removing: 'Удаляем…',
+      heading: 'Сотрудники события', email: 'Email сотрудника', add: 'Назначить', assigning: 'Назначаем…', removing: 'Удаляем…',
       remove: 'Отозвать доступ', empty: 'Сотрудники ещё не назначены.', loading: 'Загружаем сотрудников…',
       assigned: 'Сотрудник назначен.', removed: 'Доступ сотрудника отозван.',
       userNotFound: 'Пользователь с таким email не найден.', forbidden: 'У вас нет прав управлять сотрудниками этого события.',
@@ -599,7 +599,7 @@ const kk: Messages = {
       notOrganizer: 'Профильді тек ұйымдастырушы жасай алады.',
     },
     staff: {
-      heading: 'Іс-шара қызметкерлері', email: 'Қызметкердің email мекенжайы', add: 'Тағайындау', removing: 'Жойылуда…',
+      heading: 'Іс-шара қызметкерлері', email: 'Қызметкердің email мекенжайы', add: 'Тағайындау', assigning: 'Тағайындалуда…', removing: 'Жойылуда…',
       remove: 'Қатынасты қайтарып алу', empty: 'Әзірге қызметкерлер тағайындалмаған.', loading: 'Қызметкерлер жүктелуде…',
       assigned: 'Қызметкер тағайындалды.', removed: 'Қызметкердің қатынасы қайтарылып алынды.',
       userNotFound: 'Мұндай email-мен пайдаланушы табылмады.', forbidden: 'Бұл іс-шараның қызметкерлерін басқаруға құқығыңыз жоқ.',
@@ -788,7 +788,7 @@ const en: Messages = {
       notOrganizer: 'Only organizers can create a profile.',
     },
     staff: {
-      heading: 'Event staff', email: 'Staff email', add: 'Assign', removing: 'Removing…',
+      heading: 'Event staff', email: 'Staff email', add: 'Assign', assigning: 'Assigning…', removing: 'Removing…',
       remove: 'Revoke access', empty: 'No staff have been assigned yet.', loading: 'Loading staff…',
       assigned: 'Staff member assigned.', removed: 'Staff access revoked.',
       userNotFound: 'No registered user was found with that email.', forbidden: 'You are not allowed to manage staff for this event.',

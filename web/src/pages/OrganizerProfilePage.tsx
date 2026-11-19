@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../auth/AuthProvider';
+import { ApiError } from '../api';
 import { Page } from '../components/Page';
 import { useT } from '../i18n';
-import { canOrganize, emptyOrganizerProfileDraft, organizerProfileDraft, organizerProfilePayload, readOrganizerProfile } from '../organizer/model';
+import { canOrganize, emptyOrganizerProfileDraft, organizerError, organizerProfileDraft, organizerProfilePayload, readOrganizerProfile } from '../organizer/model';
 import type { OrganizerProfile, OrganizerProfileDraft } from '../organizer/model';
 import { OrganizerGate } from './OrganizerPage';
 
@@ -32,8 +33,8 @@ export function OrganizerProfilePage() {
       })
       .catch((failure: unknown) => {
         if (controller.signal.aborted) return;
-        if (failure instanceof Error && 'status' in failure && (failure as { status?: number }).status === 404) setLoad('missing');
-        else { setLoad('error'); setError(failure instanceof Error ? failure.message : text.profileValidation); }
+        if (failure instanceof ApiError && failure.status === 404) setLoad('missing');
+        else { setLoad('error'); setError(organizerError(failure)); }
       });
     return () => controller.abort();
   }, [allowed, request, text.profileValidation]);
@@ -61,7 +62,7 @@ export function OrganizerProfilePage() {
       setLoad('ready');
       setNotice(profile ? text.profile.saved : text.profile.created);
     } catch (failure: unknown) {
-      setError(failure instanceof Error ? failure.message : text.profileValidation);
+      setError(organizerError(failure));
     } finally {
       setPending(false);
     }
