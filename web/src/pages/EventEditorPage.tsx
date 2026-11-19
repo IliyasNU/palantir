@@ -139,8 +139,8 @@ function StaffManager({ event }: { event: ManagedEvent }) {
           <button className="button" type="submit" disabled={!email.trim()}>{pendingAction === 'assign' ? text.staff.assigning : text.staff.add}</button>
         </fieldset>
       </form>
-      {loading ? <p role="status">{text.staff.loading}</p> : staff.length === 0
-        ? <p role="status">{text.staff.empty}</p>
+      {loading ? <p>{text.staff.loading}</p> : staff.length === 0
+        ? <p>{text.staff.empty}</p>
         : <ul>{staff.map((member) => (
           <li key={member.user_id}>
             <strong>{member.full_name}</strong> — {member.email}{' '}

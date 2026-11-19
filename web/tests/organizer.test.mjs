@@ -132,7 +132,7 @@ test('staff lists and failures use strict contracts and localized API codes', ()
 });
 
 test('organizer routes are allowed after login; near misses are not', () => {
-  for (const route of ['/organizer', '/organizer/', '/organizer/events/new', '/organizer/events/42/edit', '/organizer/events/42/ticket-types']) {
+  for (const route of ['/organizer', '/organizer/', '/organizer/profile', '/organizer/events/new', '/organizer/events/42/edit', '/organizer/events/42/ticket-types']) {
     assert.equal(safeReturnTo(route), route);
   }
   for (const route of ['/organizer/events', '/organizer/events/0/edit', '/organizer/events/42', '/organizer/events/new/edit', '/organizer/events/42/delete',
