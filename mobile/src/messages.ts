@@ -147,9 +147,96 @@ export const messages = {
       REQUEST_ERROR: 'Сұрау қабылданбады. Ұйымдастырушыға хабарласыңыз.',
     },
   },
+  en: {
+    eventsTitle: 'Choose an event', scanTitle: 'Ticket check',
+    signInTitle: 'Staff sign-in', signInHint: 'Sign in with the account the organizer assigned to the event.',
+    email: 'Email', password: 'Password', signIn: 'Sign in', signingIn: 'Signing in…',
+    wrongPassword: 'Wrong email or password.', disabledAccount: 'This account is disabled. Contact the organizer.',
+    checkConnection: 'Check connection', checkingConnection: 'Checking connection…',
+    connected: 'The server and database are available.',
+    eventsHint: 'Choose the event where you check tickets.',
+    refresh: 'Refresh', signOut: 'Sign out', loadingEvents: 'Loading events',
+    noEvents: 'No events are available yet. Ask the organizer to assign your account.',
+    scanTickets: 'Check tickets', selectedEvent: 'Selected event',
+    scanHint: 'Point the camera at the QR on the visitor’s ticket.',
+    attendanceCount: (checkedIn: number, issued: number, capacity: number) => `${checkedIn} of ${issued} checked in · capacity ${capacity}`,
+    loadingAttendance: 'Loading attendance…', attendanceUnavailable: 'Could not load attendance.',
+    refreshAttendance: 'Refresh attendance', refreshingAttendance: 'Refreshing…',
+    attendanceUpdatedAt: (time: string) => `Updated at ${time}`,
+    attendanceStale: (time: string) => `Could not refresh. Showing the data from ${time}.`,
+    findManually: 'Find manually', backToCamera: 'Back to the scanner',
+    attendeeQuery: 'Name or email', search: 'Search', searchHint: 'Enter at least three characters of the name or email.',
+    searchingAttendees: 'Searching for attendees…', noAttendees: 'No attendees found.',
+    markEntry: 'Mark entry', enteredAt: 'Entry marked', signInAgain: 'Sign in again',
+    ticketCancelled: 'The ticket is cancelled. Entry is not possible.', ticketRefunded: 'The ticket is refunded. Entry is not possible.',
+    undoEntry: 'Undo entry', undoTitle: 'Undo this entry?', undoKeep: 'Keep it',
+    undoHint: (name: string) => `${name}: the entry mark will be removed. After that the ticket can be scanned again.`,
+    undoing: 'Undoing the entry…', undone: 'Entry undone',
+    undoneHint: 'The entry mark was removed. Scan the ticket again to admit the visitor.',
+    undoUnknown: 'The result of the undo is unknown. Repeat the undo or refresh the search to see the ticket state.',
+    retryUndo: 'Repeat the undo',
+    undoPendingTitle: 'Undo not confirmed',
+    undoPending: 'The undo is not confirmed. Repeat it in the block above the search.',
+    eventUndoPending: 'An undo is not confirmed. Open the event and repeat it.',
+    checkingPermission: 'Checking camera permission…', needCamera: 'Camera access is needed to scan tickets.',
+    allowCamera: 'Allow camera', openSettings: 'Open settings',
+    cameraError: 'Could not open the camera. Check the permission and try again.',
+    retryCamera: 'Restart the camera', checking: 'Checking the ticket…',
+    wait: 'Wait for the answer. Do not admit the visitor yet.',
+    admitted: 'Entry confirmed', confirmed: 'The ticket is marked. The visitor may enter.',
+    rejected: 'Entry not confirmed', ticket: 'Ticket',
+    unconfirmed: 'The result of the previous request is unknown. Do not admit the visitor yet.',
+    resolveFirst: 'Repeat this request before leaving the screen. Do not admit the visitor yet.',
+    askOrganizer: 'Ask the organizer to check whether the entry was recorded.',
+    handoffTitle: 'Leave after checking with the organizer',
+    handoffHint: (requestId: string) => `Ask the organizer to check request ${requestId} in the system. Return to the events after that. The app will not confirm the entry, and this request cannot be repeated from the phone after you leave.`,
+    stayOnScan: 'Stay', handoffConfirm: 'Checked · To events',
+    retry: 'Repeat this request', reauthenticate: 'Sign in with the same staff account to repeat the request.',
+    signInRetry: 'Sign in and repeat', noAccess: 'Ask the organizer to check your assignment. You are still signed in.',
+    retryAccess: 'Repeat after access is restored', backToEvents: 'To the event list',
+    nextTicket: 'Next ticket', requestId: 'Request number for the organizer',
+    errors: {
+      CONFIG_ERROR: 'Check EXPO_PUBLIC_API_URL in mobile/.env. Set the server address on your Wi-Fi or an HTTPS address, then restart Expo.',
+      NETWORK_ERROR: 'The connection was lost or timed out. Check the network and repeat the request.',
+      SERVER_ERROR: 'The server did not confirm the result. Repeat the request or contact the organizer.',
+      UNAUTHORIZED: 'Sign in to the account again.',
+      FORBIDDEN: 'No access to this event. Ask the organizer to check your assignment.',
+      ALREADY_CHECKED_IN: 'This ticket has already been used.',
+      TICKET_CANCELLED: 'This ticket is cancelled. It does not admit anyone.',
+      TICKET_REFUNDED: 'This ticket is refunded. It does not admit anyone.',
+      CHECK_IN_UNDONE: 'The entry for this request was undone by the organizer. Scan the ticket again to admit the visitor.',
+      CHECK_IN_ALREADY_UNDONE: 'This entry has already been undone.',
+      CHECK_IN_NOT_FOUND: 'The entry record was not found. Refresh the search.',
+      UNDO_NOT_ALLOWED: 'Only the event organizer can undo an entry.',
+      INVALID_TICKET: 'This QR is not a ticket for the selected event.',
+      EVENT_NOT_FOUND: 'The event was not found. Refresh the event list.',
+      EVENT_CANCELLED: 'The event is cancelled. Refresh the event list.',
+      EVENT_NOT_PUBLISHED: 'The event is not published yet. Refresh the event list.',
+      REQUEST_ID_CONFLICT: 'This request conflicts with an earlier one. Ask the organizer to check the ticket.',
+      INVALID_INPUT: 'The server rejected the request format. Check the entered details or the ticket QR.',
+      QUERY_TOO_SHORT: 'Enter at least three characters of the name or email.',
+      NOT_AVAILABLE: 'The selected server does not support this request. Check the API address and version.',
+      ACCOUNT_MISMATCH: 'Sign in with the same staff account to repeat the request.',
+      REQUEST_ERROR: 'The request was rejected. Contact the organizer.',
+    },
+  },
 } as const;
 
 export type Locale = keyof typeof messages;
+
+// Short names for the header switch and the full names read by screen readers.
+export const languages: readonly { locale: Locale; short: string; name: string }[] = [
+  { locale: 'ru', short: 'РУС', name: 'Русский' },
+  { locale: 'kk', short: 'ҚАЗ', name: 'Қазақша' },
+  { locale: 'en', short: 'ENG', name: 'English' },
+];
+
+const LOCALE_TAGS: Record<Locale, string> = { ru: 'ru-RU', kk: 'kk-KZ', en: 'en-GB' };
+
+// Dates and times follow the chosen language; all three use a 24-hour clock.
+export function localeTag(locale: Locale): string {
+  return LOCALE_TAGS[locale];
+}
 
 export function errorMessage(error: unknown, locale: Locale, signingIn = false): string {
   const copy = messages[locale];

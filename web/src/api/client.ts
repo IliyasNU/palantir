@@ -1,10 +1,28 @@
+import { current } from '../i18n/index.ts';
+import type { Messages } from '../i18n/index.ts';
 import { apiBaseUrl } from './config.ts';
 
 export type ApiErrorKind = 'configuration' | 'network' | 'timeout' | 'http' | 'validation' | 'response';
 
+/** A text picked from the messages of whichever language is current when it is shown. */
+export type Localized = (text: Messages) => string;
+
 export interface ValidationIssue {
   field: string;
+  /** The text when the issue was found. Kept for logs and tests; the UI shows issueMessage(). */
   message: string;
+  /** Present for checks made in the browser. Server issues have none: their text is not translated. */
+  text?: Localized;
+}
+
+/** A problem found in the browser, rendered in the current language each time it is shown. */
+export function localIssue(field: string, text: Localized): ValidationIssue {
+  return { field, message: text(current()), text };
+}
+
+/** The issue in the current language; a server issue gets a translated general text. */
+export function issueMessage(issue: ValidationIssue): string {
+  return issue.text ? issue.text(current()) : current().api.invalid;
 }
 
 interface ApiErrorOptions {
@@ -20,9 +38,16 @@ export class ApiError extends Error {
   readonly status: number | undefined;
   readonly code: string | undefined;
   readonly issues: ValidationIssue[];
+  /** The UI text in any language. Absent when the message came from the server. */
+  readonly text: Localized | undefined;
 
-  constructor(message: string, options: ApiErrorOptions) {
-    super(message, { cause: options.cause });
+  /**
+   * A Localized message is translated each time the error is shown, so an error already on screen follows
+   * a language switch. `message` keeps the text of the moment for logs and tests.
+   */
+  constructor(message: string | Localized, options: ApiErrorOptions) {
+    super(typeof message === 'string' ? message : message(current()), { cause: options.cause });
+    this.text = typeof message === 'string' ? undefined : message;
     this.name = 'ApiError';
     this.kind = options.kind;
     this.status = options.status;
@@ -66,16 +91,16 @@ function validationIssues(payload: unknown): ValidationIssue[] {
   });
 }
 
-function fallbackHttpMessage(status: number): string {
-  if (status >= 500) return 'Сервер временно недоступен. Попробуйте позже.';
+function fallbackHttpMessage(status: number): Localized {
+  if (status >= 500) return (text) => text.api.server;
   switch (status) {
-    case 401: return 'Для продолжения необходимо войти в аккаунт.';
-    case 403: return 'У вас нет доступа к этому действию.';
-    case 404: return 'Запрошенные данные не найдены.';
-    case 409: return 'Данные конфликтуют с уже существующей записью.';
-    case 422: return 'Проверьте введённые данные.';
-    case 429: return 'Слишком много запросов. Попробуйте немного позже.';
-    default: return `Не удалось выполнить запрос (HTTP ${status}).`;
+    case 401: return (text) => text.api.unauthorized;
+    case 403: return (text) => text.api.forbidden;
+    case 404: return (text) => text.api.notFound;
+    case 409: return (text) => text.api.conflict;
+    case 422: return (text) => text.api.invalid;
+    case 429: return (text) => text.api.tooMany;
+    default: return (text) => text.api.http(status);
   }
 }
 
@@ -101,17 +126,17 @@ function httpError(status: number, payload: unknown): ApiError {
 
 function requestUrl(baseUrl: string | undefined, path: string): string {
   if (!baseUrl?.trim()) {
-    throw new ApiError('Не задан VITE_API_URL. Укажите адрес работающего API в web/.env.local и перезапустите Vite. Для опубликованного сайта задайте адрес перед сборкой и опубликуйте её заново.', {
+    throw new ApiError((text) => text.api.noUrl, {
       kind: 'configuration',
     });
   }
   if (!path.startsWith('/') || path.startsWith('//')) {
-    throw new ApiError('Некорректный путь запроса API.', { kind: 'configuration' });
+    throw new ApiError((text) => text.api.badPath, { kind: 'configuration' });
   }
   try {
     return apiBaseUrl(baseUrl) + path;
   } catch (cause) {
-    throw new ApiError('Некорректный VITE_API_URL. Нужен полный адрес HTTP(S) без логина, пароля, query и hash. Исправьте настройку и перезапустите Vite или пересоберите опубликованный сайт.', {
+    throw new ApiError((text) => text.api.badUrl, {
       kind: 'configuration',
       cause,
     });
@@ -133,7 +158,7 @@ export function createApiClient(baseUrl: string | undefined, fetchImpl: typeof f
       try {
         serializedBody = body === undefined ? undefined : JSON.stringify(body);
       } catch (cause) {
-        throw new ApiError('Не удалось подготовить данные запроса.', { kind: 'configuration', cause });
+        throw new ApiError((text) => text.api.prepare, { kind: 'configuration', cause });
       }
 
       let response: Response;
@@ -150,13 +175,12 @@ export function createApiClient(baseUrl: string | undefined, fetchImpl: typeof f
         // Cancellation belongs to the caller and must not look like a network failure.
         if (init.signal?.aborted) throw cause;
         if (deadline.signal.aborted) {
-          throw new ApiError('Сервер не ответил вовремя. Попробуйте снова.'
-            + (path === '/auth/register' ? ' Аккаунт мог быть создан: попробуйте войти.' : ''), {
+          throw new ApiError((text) => text.api.timeout + (path === '/auth/register' ? text.api.timeoutRegister : ''), {
             kind: 'timeout', cause,
           });
         }
         if (cause instanceof Error && cause.name === 'AbortError') throw cause;
-        throw new ApiError('Не удалось связаться с сервером. Проверьте подключение и попробуйте снова.', {
+        throw new ApiError((text) => text.api.network, {
           kind: 'network',
           cause,
         });
@@ -169,7 +193,7 @@ export function createApiClient(baseUrl: string | undefined, fetchImpl: typeof f
         payload = text.trim() ? JSON.parse(text) : undefined;
       } catch (cause) {
         if (response.ok) {
-          throw new ApiError('Сервер вернул некорректный ответ. Попробуйте позже.', {
+          throw new ApiError((text) => text.api.badResponse, {
             kind: 'response',
             status: response.status,
             cause,
@@ -185,7 +209,14 @@ export function createApiClient(baseUrl: string | undefined, fetchImpl: typeof f
   };
 }
 
-/** UI-safe message, without stringifying arbitrary objects or response bodies. */
+/**
+ * UI-safe message in the current language, without stringifying arbitrary objects or response bodies.
+ * Call it while rendering, never store its result: the text then follows a language switch.
+ * Server wording (FastAPI `detail`) is English and is not shown; callers map known codes first.
+ */
 export function getErrorMessage(error: unknown): string {
-  return error instanceof ApiError ? error.message : 'Произошла ошибка. Попробуйте ещё раз.';
+  if (!(error instanceof ApiError)) return current().api.unknown;
+  if (error.text) return error.text(current());
+  if (error.status !== undefined) return fallbackHttpMessage(error.status)(current());
+  return error.message;
 }
