@@ -360,8 +360,9 @@ same everywhere:
 
 ### Support cases (SRS 4.13)
 
-Migration `0008` adds `support_cases` and `support_messages`. It follows `0006` on this branch; the account
-e-mail branch takes `0007`, and after that merges `0008` is re-pointed at it so one head remains.
+Migration `0010` adds `support_cases` and `support_messages`. It is numbered after `0007` (account e-mail),
+`0008` (notifications) and `0009` (promo codes). Until those are merged it follows `0006`; once `0009` is
+merged it is re-pointed there, so one head remains.
 
 | Kind | Opened by | Handled by | Context |
 |---|---|---|---|

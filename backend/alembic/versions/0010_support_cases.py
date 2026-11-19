@@ -1,9 +1,11 @@
 """support cases and their message threads (SRS 4.13)
 
-Revision 0008. It follows 0006 (checkout) while this branch is built on the checkout branch. The account
-e-mail branch takes 0007; once that is merged, ``down_revision`` here becomes ``0007`` so one head remains.
+Revision 0010 in the team's merge order: 0007 (account e-mail, #21), 0008 (notifications, #27) and
+0009 (promo codes, #28) come first. Until those are merged it follows 0006, the current head of
+integration/biletflow-e2e, so the branch stays migratable. When 0009 is merged, ``down_revision`` here
+becomes ``"0009"`` so one head remains; if this merges earlier, the migration merged after it re-points instead.
 
-Revision ID: 0008
+Revision ID: 0010
 Revises: 0006
 Create Date: 2026-11-15
 """
@@ -12,7 +14,7 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0008"
+revision: str = "0010"
 down_revision: Union[str, None] = "0006"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -70,7 +72,7 @@ def downgrade() -> None:
     # The older schema has nowhere to keep a case or its thread. Refuse instead of deleting people's requests.
     cases = op.get_bind().execute(sa.text("SELECT count(*) FROM support_cases")).scalar_one()
     if cases:
-        raise RuntimeError(f"Cannot downgrade below 0008: {cases} support case(s) and their messages would be lost.")
+        raise RuntimeError(f"Cannot downgrade below 0010: {cases} support case(s) and their messages would be lost.")
     op.drop_index(op.f("ix_support_messages_case_id"), table_name="support_messages")
     op.drop_table("support_messages")
     op.drop_index(op.f("ix_support_cases_status"), table_name="support_cases")

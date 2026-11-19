@@ -313,8 +313,9 @@ the final full run without a test change. These checks are agent verification, n
 
 ## Support cases (SRS 4.13)
 
-Revision `0008` adds `support_cases` and `support_messages`. On this branch it follows `0006`; after the
-account e-mail branch merges as `0007`, its `down_revision` becomes `0007`.
+Revision `0010` adds `support_cases` and `support_messages`. In the team's merge order it comes after
+`0007` (account e-mail), `0008` (notifications) and `0009` (promo codes). Until those are merged it
+follows `0006`, the current head; once `0009` is merged, its `down_revision` becomes `0009`.
 
 An `attendee` case is a request to the organizer of an event; that organizer and admins handle it.
 An `organizer` case is a request to platform support; admins handle it.

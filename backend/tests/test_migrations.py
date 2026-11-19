@@ -227,8 +227,8 @@ SUPPORT_CASE = (
 )
 
 
-def test_0008_adds_support_cases_to_existing_data_and_refuses_to_drop_them(tmp_path):
-    config, engine = _database_with_a_checked_in_ticket(tmp_path, "migration_0008.db")
+def test_0010_adds_support_cases_to_existing_data_and_refuses_to_drop_them(tmp_path):
+    config, engine = _database_with_a_checked_in_ticket(tmp_path, "migration_0010.db")
     command.upgrade(config, "0006")
     assert "support_cases" not in inspect(engine).get_table_names()
 
@@ -248,11 +248,12 @@ def test_0008_adds_support_cases_to_existing_data_and_refuses_to_drop_them(tmp_p
     with pytest.raises(Exception, match="attendee_case_has_event|CHECK"), engine.begin() as connection:
         connection.execute(text(SUPPORT_CASE.format(kind="attendee", event_id="NULL")))
 
-    with pytest.raises(RuntimeError, match="Cannot downgrade below 0008"):
-        command.downgrade(config, "0006")
+    # One step down, so the test keeps working when 0010 is re-pointed after 0009.
+    with pytest.raises(RuntimeError, match="Cannot downgrade below 0010"):
+        command.downgrade(config, "-1")
     with engine.begin() as connection:
         connection.execute(text("DELETE FROM support_messages"))
         connection.execute(text("DELETE FROM support_cases"))
-    command.downgrade(config, "0006")
+    command.downgrade(config, "-1")
     assert not ({"support_cases", "support_messages"} & set(inspect(engine).get_table_names()))
     engine.dispose()
