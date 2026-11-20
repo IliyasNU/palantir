@@ -72,7 +72,8 @@ function AnalyticsReport({ eventId }: { eventId: number }) {
         onChange={event => setFilters({ ...filters, date_from: event.target.value })} /></label>
       <label>{copy.to}<input type="date" value={filters.date_to}
         onChange={event => setFilters({ ...filters, date_to: event.target.value })} /></label>
-      <label>{copy.ticketType}<select value={filters.ticket_type_id}
+      <label><span id="analytics-ticket-type-label">{copy.ticketType}</span>
+        <select aria-labelledby="analytics-ticket-type-label" value={filters.ticket_type_id}
         onChange={event => setFilters({ ...filters, ticket_type_id: event.target.value })}>
         <option value="">{copy.allTypes}</option>
         {choices.map(kind => <option key={kind.id} value={kind.id}>{kind.name}</option>)}
