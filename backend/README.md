@@ -43,11 +43,14 @@ organizers, the staff member assigned to **Demo | Active check-in**, and three a
 second run leaves the rows, dates and passwords as they are. The command refuses to run with
 `ENVIRONMENT=production` and stops if a demo email already belongs to an existing account.
 
-**Demo | Upcoming checkout** has free and paid ticket types, two completed demo payments, a
-promo campaign and an attendee support thread. **Demo | Active check-in** has an admitted
-ticket (attendee A), an unused ticket (attendee B) and a ticket marked refunded (attendee C)
-for scanner demos. The refunded admission carries no financial transaction. The organizers
-also have past, draft, cancelled and suspended events to explore.
+**Demo | Upcoming checkout** has free and paid ticket types, two paid orders, a simulated
+refund for attendee C, a promo campaign and an attendee support thread. The order refund
+releases the seat, records the refund in the audit log and adds an in-app notification.
+**Demo | Active check-in** has an admitted ticket (attendee A), an unused ticket (attendee B)
+and a free ticket marked refunded (attendee C) for scanner demos.
+**Demo | Suspended** shows an event suspended by the demo admin with an audit entry and a
+reason. Organizers also have past, draft and cancelled events to explore.
+Use a fresh disposable database to see these fixtures if you already ran an older seed.
 
 ## Run tests locally (no Docker, no PostgreSQL needed)
 
