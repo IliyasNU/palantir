@@ -33,6 +33,12 @@ def test_0006_populated_upgrade_and_guard(scratch_database):
             assert db.execute(text("SELECT demo_identity_confirmed_at,demo_payout_last4 FROM organizer_profiles")).one() == (None, None)
             assert db.execute(text("SELECT tickets_issued FROM events")).scalar_one() == 1
             assert db.execute(text("SELECT count(*) FROM orders")).scalar_one() == 0
+        # The models describe the newest revision, so they are compared at head, not at 0006:
+        # later migrations (support cases, the account e-mail branch) add tables this revision cannot have.
+        command.upgrade(config, "head")
+        with engine.connect() as db:
+            assert compare_metadata(MigrationContext.configure(db), Base.metadata) == []
+        command.downgrade(config, "0006")
         command.downgrade(config, "0005")
         command.upgrade(config, "0006")
         with engine.begin() as db:

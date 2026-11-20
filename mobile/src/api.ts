@@ -142,6 +142,9 @@ function httpError(status: number, body: unknown) {
   if (status === 404 && code === 'CHECK_IN_NOT_FOUND') {
     return new ApiError(code, 'This check-in could not be found. Refresh the search.', status);
   }
+  if (status === 409 && code === 'CAMPAIGN_QR_NOT_TICKET') {
+    return new ApiError(code, 'This is a promotion QR, not a ticket.', status);
+  }
   if (status === 404 && code === 'INVALID_TICKET') {
     return new ApiError(code, 'This QR is not a valid ticket for this event.', status);
   }

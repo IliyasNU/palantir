@@ -1,5 +1,6 @@
 """Import every model here so they are all registered on ``Base.metadata``
 (Alembic and ``create_all`` rely on this)."""
+from app.models.campaign import Campaign, CampaignType
 from app.models.check_in import CheckIn
 from app.models.event import Event, EventStatus
 from app.models.event_staff import EventStaff

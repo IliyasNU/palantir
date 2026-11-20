@@ -13,6 +13,7 @@ export interface EventActionsProps {
   event: EventDetails;
   /** null means availability is unknown, not sold out. */
   remainingSeats: number | null;
+  campaignToken?: string;
   /** Sanitized path to return to after login. */
   returnTo: string;
 }
@@ -28,7 +29,7 @@ export function EventActions(props: EventActionsProps) {
     </Link></p>;
 }
 
-function VisitorActions({ event, remainingSeats }: EventActionsProps) {
+function VisitorActions({ event, remainingSeats, campaignToken }: EventActionsProps) {
   const t = useT();
   const { request } = useAuth();
   const navigate = useNavigate();
@@ -69,7 +70,7 @@ function VisitorActions({ event, remainingSeats }: EventActionsProps) {
       return;
     }
     if (selected && selected.type.price_tiyn > 0) {
-      navigate(`/events/${event.id}/checkout?type=${selected.type.id}`);
+      navigate(`/events/${event.id}/checkout?type=${selected.type.id}${campaignToken ? '&campaign=' + campaignToken : ''}`);
       return;
     }
     const controller = new AbortController();

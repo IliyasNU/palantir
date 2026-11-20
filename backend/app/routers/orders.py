@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app import notifications
 from app.audit import record_action
+from app.campaigns import discount_for, validate_campaign
 from app.db.base import utcnow
 from app.demo_fees import DEMO_NOTICE, PAYMENT_PROCESSING_FEE_BPS, processing_fee
 from app.dependencies.auth import CurrentUser
@@ -57,7 +58,8 @@ def create_order(event_id: int, payload: OrderCreate, response: Response, db: Db
     existing = db.scalar(select(Order).where(Order.buyer_id == user.id, Order.request_id == str(payload.request_id)))
     if existing is not None:
         if existing.event_id != event_id or existing.ticket_type_id != payload.ticket_type_id or \
-                existing.attendee_name != payload.attendee_name or existing.attendee_email != str(payload.attendee_email):
+                existing.attendee_name != payload.attendee_name or existing.attendee_email != str(payload.attendee_email) or \
+                existing.promo_code != payload.promo_code:
             db.commit()  # persist expired reservations, without taking a new seat
             raise api_error(409, "IDEMPOTENCY_CONFLICT", "This request_id was used for another checkout")
         db.commit()
@@ -83,6 +85,9 @@ def create_order(event_id: int, payload: OrderCreate, response: Response, db: Db
             raise api_error(409, "TICKET_TYPE_SALES_ENDED", "Sales have ended")
         if kind.order_limit < 1:
             raise api_error(409, "ORDER_LIMIT_EXCEEDED", "This type does not allow a one-ticket order")
+        campaign = validate_campaign(db, event_id, payload.promo_code, kind) if payload.promo_code else None
+        discount = discount_for(campaign, kind.price_tiyn)
+        total = kind.price_tiyn - discount
         if event.tickets_issued >= event.capacity:
             raise api_error(409, "SOLD_OUT", "No seats left")
         if kind.tickets_issued >= kind.quantity:
@@ -105,8 +110,9 @@ def create_order(event_id: int, payload: OrderCreate, response: Response, db: Db
         raise api_error(409, "SOLD_OUT", "Inventory changed; retry checkout")
     order = Order(event_id=event_id, ticket_type_id=kind.id, buyer_id=user.id, request_id=str(payload.request_id),
                   attendee_name=payload.attendee_name, attendee_email=str(payload.attendee_email),
-                  subtotal_tiyn=kind.price_tiyn, processing_fee_tiyn=processing_fee(kind.price_tiyn),
-                  processing_fee_bps=PAYMENT_PROCESSING_FEE_BPS, total_tiyn=kind.price_tiyn,
+                  campaign_id=campaign.id if campaign else None, promo_code=campaign.code if campaign else None,
+                  discount_tiyn=discount, subtotal_tiyn=kind.price_tiyn, processing_fee_tiyn=processing_fee(total),
+                  processing_fee_bps=PAYMENT_PROCESSING_FEE_BPS, total_tiyn=total,
                   expires_at=now + timedelta(minutes=15))
     db.add(order)
     try:

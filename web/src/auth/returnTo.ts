@@ -3,10 +3,11 @@ export function safeReturnTo(value: unknown): string {
   if (typeof value !== 'string' || value !== value.trim()) return '/events';
 
   if (/^\/(?:events|tickets|orders)(?:\/[1-9]\d*)?\/?$/.test(value)) return value;
-  if (/^\/events\/[1-9]\d*\/checkout\?type=[1-9]\d*$/.test(value)) return value;
+  if (/^\/events\/[1-9]\d*\?campaign=pc_[0-9a-f]{32}$/.test(value)) return value;
+  if (/^\/events\/[1-9]\d*\/checkout\?type=[1-9]\d*(?:&campaign=pc_[0-9a-f]{32})?$/.test(value)) return value;
   if (/^\/organizer\/?$/.test(value)) return value;
   if (/^\/organizer\/profile\/?$/.test(value)) return value;
-  if (/^\/organizer\/events\/(?:new|[1-9]\d*\/(?:ticket-types|activation|edit))\/?$/.test(value)) return value;
+  if (/^\/organizer\/events\/(?:new|[1-9]\d*\/(?:ticket-types|activation|campaigns|edit))\/?$/.test(value)) return value;
   return '/events';
 }
 
