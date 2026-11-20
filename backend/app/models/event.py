@@ -1,11 +1,12 @@
 import enum
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, utcnow
+from app.schemas.common import to_utc
 
 if TYPE_CHECKING:
     from app.models.user import User
@@ -16,6 +17,30 @@ class EventStatus(str, enum.Enum):
     DRAFT = "draft"
     PUBLISHED = "published"
     CANCELLED = "cancelled"
+
+
+class EventPhase(str, enum.Enum):
+    UPCOMING = "upcoming"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+def event_phase(
+    starts_at: datetime, status: str, *, ends_at: datetime | None = None, now: datetime | None = None,
+) -> EventPhase:
+    """Classify an event without changing its publication status."""
+    if status == EventStatus.CANCELLED:
+        return EventPhase.CANCELLED
+    start = to_utc(starts_at)
+    current = to_utc(now) if now is not None else utcnow()
+    if current < start:
+        return EventPhase.UPCOMING
+    if ends_at is not None:
+        completed = current >= to_utc(ends_at)
+    else:
+        completed = current - start >= timedelta(days=1)
+    return EventPhase.COMPLETED if completed else EventPhase.ACTIVE
 
 
 class Event(Base):
@@ -49,6 +74,10 @@ class Event(Base):
 
     organizer: Mapped["User"] = relationship(back_populates="events")
     ticket_types: Mapped[list["TicketType"]] = relationship(lazy="selectin", order_by="TicketType.id")
+
+    @property
+    def phase(self) -> EventPhase:
+        return event_phase(self.date, self.status, ends_at=getattr(self, "ends_at", None))
 
     @property
     def suspended(self) -> bool:

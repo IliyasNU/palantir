@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.dependencies.roles import is_admin
 from app.errors import api_error
 from app.models import Event, EventStaff, EventStatus, User
+from app.models.event import EventPhase
 
 
 def get_event_or_404(db: Session, event_id: int) -> Event:
@@ -47,13 +48,19 @@ def is_visible(event: Event, user: Optional[User]) -> bool:
     return True
 
 
-def ensure_editable(event: Event) -> None:
-    """A cancelled event is final: neither it nor its ticket types can change any more (``409 EVENT_CANCELLED``).
+def ensure_not_completed(event: Event) -> None:
+    if event.phase == EventPhase.COMPLETED:
+        raise api_error(status.HTTP_409_CONFLICT, "EVENT_COMPLETED", "A completed event cannot be edited")
 
-    Call it on the event row read under ``lock_event``, so a cancel that commits first is always seen.
+
+def ensure_editable(event: Event) -> None:
+    """Refuse edits to completed or cancelled events and their ticket types.
+
+    Call it on the event row read under ``lock_event``.
     """
     if event.status == EventStatus.CANCELLED.value:
         raise api_error(status.HTTP_409_CONFLICT, "EVENT_CANCELLED", "A cancelled event cannot be edited")
+    ensure_not_completed(event)
 
 
 def ensure_not_suspended(event: Event) -> None:
