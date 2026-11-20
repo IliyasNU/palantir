@@ -14,6 +14,7 @@ async function login(page, role, destination = '/organizer') {
   await page.getByLabel('Email', { exact: true }).fill(`${role}@example.com`);
   await page.getByLabel('Пароль', { exact: true }).fill('fixture-password');
   await page.getByRole('button', { name: 'Войти', exact: true }).click();
+  await expect(page).toHaveURL(destination);
   await expect(page.getByRole('navigation')).toContainText(`Fixture ${role}`);
 }
 const go = (page, path) => page.evaluate((target) => {

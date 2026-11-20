@@ -11,6 +11,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app import notifications
 from app.audit import record_action
 from app.dependencies.auth import CurrentUser
 from app.dependencies.db import DbSession
@@ -129,8 +130,10 @@ def claim_ticket(event_id: int, db: DbSession, current_user: CurrentUser, respon
                     qr_payload=new_qr_payload())
     db.add(ticket)
     try:
+        db.flush()  # the ticket id goes into the notification
+        notifications.ticket_issued(db, current_user, ticket, event)
         db.commit()
-    except IntegrityError:  # a parallel claim by the same user won; the rollback also returns the seat
+    except IntegrityError:  # a parallel claim by the same user won; the rollback returns the seat and drops the email
         db.rollback()
         existing = _find_ticket(db, event.id, current_user.id)
         if existing is None:
