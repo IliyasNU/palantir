@@ -30,7 +30,7 @@ export function OrganizerGate({ allowed, returnTo }: { allowed: boolean; returnT
 }
 
 export function OrganizerPage() {
-  const text = useT().organizer;
+  const { organizer: text, support } = useT();
   const history = historyCopy[useLocale()];
   const { user, request } = useAuth();
   const allowed = canOrganize(user);
@@ -60,6 +60,7 @@ export function OrganizerPage() {
           <p className="organizer-links">
             <Link className="button" to="/organizer/events/new">{text.list.create}</Link>
             <Link className="text-link" to="/organizer/profile">{text.profile.title}</Link>
+            <Link className="text-link" to="/support/new?kind=organizer">{support.platformNew}</Link>
           </p>
           <div className="organizer-links" role="group" aria-label={history.phasesLabel}>
             {eventPhases.map(value => (
@@ -90,6 +91,8 @@ export function OrganizerPage() {
                       <dt>{text.list.issued}</dt><dd>{event.tickets_issued ?? text.list.unknown}</dd>
                     </dl>
                     <p className="organizer-links">
+                      <Link className="text-link" to={`/organizer/events/${event.id}/support`}
+                        aria-label={`${support.eventQueue} · ${event.title}`}>{support.eventQueue}</Link>
                       {isClosedPhase(phase)
                         ? <Link className="text-link" to={`/organizer/events/${event.id}/history`}
                           aria-label={`${history.open}: ${event.title}`}>{history.open}</Link>

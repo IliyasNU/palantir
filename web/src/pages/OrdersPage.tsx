@@ -6,8 +6,11 @@ import { DEMO_NOTICE, orderError, readOrder, readOrders, statusLabels } from '..
 import type { Order } from '../orders/model';
 import { ticketTypePrice } from '../ticket-types/model';
 import { parseEventId } from '../events/details';
+import { useT } from '../i18n';
+import { caseSourcePath } from '../support/model';
 
 export function OrderView({ initial }: { initial: Order }) {
+  const t = useT().support;
   const { request } = useAuth();
   const [order, setOrder] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -44,6 +47,7 @@ export function OrderView({ initial }: { initial: Order }) {
       <button className="text-button" disabled={busy} onClick={() => { void act('cancel'); }}>Отменить заказ</button>
     </>}
     {order.ticket_id !== null && <p><Link className="button" to={`/tickets/${order.ticket_id}`}>Открыть билет</Link></p>}
+    <p><Link className="text-link" to={caseSourcePath('order', order.id)}>{t.contact}</Link></p>
     <p><Link to="/orders">Мои заказы</Link></p>
   </section>;
 }
