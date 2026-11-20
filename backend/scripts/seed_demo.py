@@ -189,6 +189,9 @@ def _support_case(db: Session, order: Order, requester: User, owner: User, now: 
 
 
 def _seed(db: Session) -> dict[str, str]:
+    from app.routers.admin import apply_event_suspension
+    from app.routers.orders import event_orders_access, refund_paid_order
+
     existing = dict(db.execute(select(User.email, User.id).where(
         User.email.in_([_email(name) for name in DEMO_ACCOUNTS]),
     )).all())
@@ -209,14 +212,15 @@ def _seed(db: Session) -> dict[str, str]:
     _event(db, owner, "Draft", future, status=EventStatus.DRAFT)
     _event(db, other_owner, "Cancelled", future, status=EventStatus.CANCELLED)
     suspended, _ = _event(db, other_owner, "Suspended", future)
-    suspended.suspended_at = now
-    record_action(db, event_id=suspended.id, actor_id=admin.id, action="event.suspended",
-                  entity_type="event", entity_id=suspended.id, description="Suspended the demo event")
+    apply_event_suspension(db, suspended.id, admin.id, "Demonstrate platform moderation")
 
     upcoming, free = _event(db, owner, "Upcoming checkout", future)
     paid, campaign = _paid_sales(db, upcoming, free, owner, now - timedelta(hours=1))
     order = _paid_order(db, upcoming, paid, first, now - timedelta(minutes=15), campaign=campaign)
     _paid_order(db, upcoming, paid, second, now - timedelta(minutes=10))
+    refunded_order = _paid_order(db, upcoming, paid, third, now - timedelta(minutes=5))
+    locked_event = event_orders_access(db, upcoming.id, owner)
+    refund_paid_order(db, locked_event, refunded_order, owner)
     _support_case(db, order, first, owner, now)
 
     active, free = _event(db, owner, "Active check-in", now - timedelta(hours=1))

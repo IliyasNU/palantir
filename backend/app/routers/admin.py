@@ -101,17 +101,23 @@ def search_events(
     return db.scalars(query.order_by(Event.id.desc()).limit(limit)).all()
 
 
-@router.post("/events/{event_id}/suspend", response_model=AdminEventRead)
-def suspend_event(event_id: int, payload: SuspendRequest, db: DbSession, admin: AdminUser):
-    """Hide an event from the public and stop ticket claims. Suspending twice is a no-op."""
+def apply_event_suspension(db: Session, event_id: int, admin_id: int, reason: str) -> Event:
+    """Suspend an event in the caller's transaction. Repeating the action is a no-op."""
     # The exclusive row lock waits for ticket claims in flight; claims that start later see the suspension.
     event = lock_event(db, event_id)
     if event.suspended_at is None:
         event.suspended_at = utcnow()
         record_action(
-            db, event_id=event.id, actor_id=admin.id, action="event.suspended", entity_type="event",
-            entity_id=event.id, description=f"Suspended by a platform admin: {payload.reason}",
+            db, event_id=event.id, actor_id=admin_id, action="event.suspended", entity_type="event",
+            entity_id=event.id, description=f"Suspended by a platform admin: {reason}",
         )
+    return event
+
+
+@router.post("/events/{event_id}/suspend", response_model=AdminEventRead)
+def suspend_event(event_id: int, payload: SuspendRequest, db: DbSession, admin: AdminUser):
+    """Hide an event from the public and stop ticket claims. Suspending twice is a no-op."""
+    event = apply_event_suspension(db, event_id, admin.id, payload.reason)
     db.commit()
     db.refresh(event)
     return event
