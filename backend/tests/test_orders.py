@@ -4,6 +4,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import select, func
 
+from app import email, notifications
 from app.db.base import utcnow
 from app.demo_fees import processing_fee
 from app.models import Event, Ticket, TicketType, ActionLog
@@ -190,3 +191,62 @@ def test_foreign_free_type_and_request_conflict(client, shop, new_event):
     assert client.post(route, headers=shop["auth"], json=body).status_code == 201
     body["attendee_name"] = "Different"
     assert client.post(route, headers=shop["auth"], json=body).json()["detail"]["code"] == "IDEMPOTENCY_CONFLICT"
+
+
+# ------------------------------------------------------------------ order emails (BE-3c)
+@pytest.fixture()
+def outbox(monkeypatch):
+    sent = []
+    monkeypatch.setattr(email, "send_email", lambda to, subject, body, attachment=None: sent.append(
+        {"to": to, "subject": subject, "body": body, "attachment": attachment}))
+    return sent
+
+
+def kinds(client, headers):
+    return [item["kind"] for item in client.get("/notifications/me", headers=headers).json()]
+
+
+def test_a_paid_order_emails_the_ticket_pdf_once(client, shop, outbox):
+    shop["activate"]()
+    oid = shop["checkout"]().json()["id"]
+    outbox.clear()
+    for outcome in ("success", "success", "failure"):  # the first result wins and only it sends
+        ticket_id = client.post(f"/orders/{oid}/pay", headers=shop["auth"], json={"outcome": outcome}).json()["ticket_id"]
+    [sent] = outbox
+    assert sent["to"] == "buyer@example.com" and f"Заказ №{oid} оплачен" in sent["subject"]
+    assert "100,50 ₸" in sent["body"] and "Демонстрационная оплата" in sent["body"]
+    filename, pdf = sent["attachment"]
+    assert filename == f"biletflow-ticket-{ticket_id}.pdf" and pdf.startswith(b"%PDF")
+    [item] = client.get("/notifications/me", headers=shop["auth"]).json()
+    assert (item["kind"], item["link"]) == ("order.paid", f"/tickets/{ticket_id}")
+
+
+def test_tenge_format():
+    assert (notifications._tenge(10050), notifications._tenge(123456705)) == ("100,50 ₸", "1\u00a0234\u00a0567,05 ₸")
+
+
+def test_a_failed_payment_emails_once(client, shop, outbox):
+    shop["activate"]()
+    oid = shop["checkout"]().json()["id"]
+    outbox.clear()
+    for outcome in ("failure", "failure", "success"):
+        client.post(f"/orders/{oid}/pay", headers=shop["auth"], json={"outcome": outcome})
+    [sent] = outbox
+    assert f"Оплата заказа №{oid} не прошла" == sent["subject"] and sent["attachment"] is None
+    assert "Место освобождено" in sent["body"]
+    assert kinds(client, shop["auth"]) == ["payment.failed"]
+
+
+def test_no_payment_no_email(client, shop, db, outbox):
+    shop["activate"]()
+    expired = shop["checkout"]().json()["id"]
+    db.get(Order, expired).expires_at = utcnow() - timedelta(seconds=1)
+    db.commit()
+    assert client.post(f"/orders/{expired}/pay", headers=shop["auth"], json={"outcome": "success"}).status_code == 409
+
+    refused = shop["checkout"]().json()["id"]
+    db.get(Event, shop["eid"]).suspended_at = utcnow()
+    db.commit()
+    assert client.post(f"/orders/{refused}/pay", headers=shop["auth"], json={"outcome": "success"}).status_code >= 400
+    assert client.post(f"/orders/{refused}/cancel", headers=shop["auth"]).status_code == 200
+    assert outbox == [] and kinds(client, shop["auth"]) == []

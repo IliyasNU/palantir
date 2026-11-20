@@ -15,7 +15,7 @@ export default function ScanScreen() {
   const { id, title, manage } = useLocalSearchParams<{ id: string; title: string; manage?: string }>();
   const eventId = Number(id);
   const { session } = useSession();
-  if (!session?.token) return <Redirect href="/" />;
+  if (!session?.token) return <Redirect href="/staff" />;
   if (!Number.isSafeInteger(eventId) || eventId < 1) return <Redirect href="/events" />;
   // `manage` only decides whether the undo action is offered. The server checks the permission on every undo.
   return <EventScanner key={`${session.userId}:${eventId}`} eventId={eventId} title={title} session={session}

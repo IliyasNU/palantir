@@ -6,7 +6,7 @@ Write a row as `passed` or `failed` only after doing it on the phone. Anything n
 
 ## Prepare (on the computer)
 
-1. Check out the candidate and note its full SHA. Start PostgreSQL 16 (ICU `und`, UTF8), the API and the website as in the [root setup](../README.md). `alembic current` must print `0003 (head)` and `GET /health` must report `ok` and `up`.
+1. Check out the candidate and note its full SHA. Start PostgreSQL 16 (ICU `und`, UTF8), the API and the website as in the [root setup](../README.md). Run `alembic upgrade head`; on the [PR #26 candidate](https://github.com/IliyasNU/palantir/pull/26), `alembic current` must print `0004 (head)`. `GET /health` must report `ok` and `up`.
 2. Create the run's accounts, tickets and PDFs:
 
    ```bash
@@ -16,7 +16,7 @@ Write a row as `passed` or `failed` only after doing it on the phone. Anything n
 
    `device-run/run.md` lists the organizer, staff and outsider accounts, their one generated password, and which PDF is for which step. Keep the folder out of Git.
 3. Print `01-website-and-paper.pdf` on A4 in grayscale at 100% scale, without “fit to page”. Open the other PDFs on the computer screen when a step asks for them.
-4. Set `EXPO_PUBLIC_API_URL` in `mobile/.env` to the computer's LAN address and run `npx expo start --go --lan`. Open the app in Expo Go on the phone.
+4. From `mobile/`, set `EXPO_PUBLIC_API_URL` in `.env` to `http://<computer-LAN-IP>:8000` for the default local backend. Keep the port. Open that address plus `/health` in the phone's browser, then run `npx expo start --go --lan` and open the app in Expo Go. Restart Expo after changing `.env`.
 5. In the results file fill in the date, phone and OS, Expo Go version, network, the SHAs, and the PostgreSQL version and locale.
 
 ## Run (on the phone)
@@ -36,8 +36,10 @@ Write a row as `passed` or `failed` only after doing it on the phone. Anything n
 | K | Sign in as the organizer and open the main event. Find the holder of ticket 02, tap “Отменить вход”, choose “Не отменять”. Tap it again and confirm. | The first dialog changes nothing. After confirming, the result shows no entry time, the total drops by one, and the ticket's row has `undone_at` set. | 11 |
 | L | Scan `05-undo.pdf`. On the result tap “Отменить вход” and confirm. Tap “Следующий билет” and scan the same PDF again. | “Вход отменён”, then “Вход подтверждён” again. Two rows for the ticket, one with `undone_at` empty. | 12 |
 | M | Scan `spare-undo-offline.pdf`. Turn the network off, tap “Отменить вход” and confirm. Turn the network on and tap “Повторить отмену”. | The scanner shows “Отмена входа не подтверждена” with a request number, then the undo is confirmed. The row's `undo_request_id` equals the number on the phone. | 13 |
-| N | Restart the API with `ACCESS_TOKEN_EXPIRE_MINUTES=1`. Sign in as the organizer, scan `spare-undo-sign-in-again.pdf`, turn the network off, undo and confirm, turn the network on, wait two minutes, tap “Повторить отмену”, then “Войти снова”. Sign in as staff, look at the list, sign out. Sign in as the organizer, open the marked event and tap “Повторить отмену”. | The retry asks to sign in. Staff see no unconfirmed undo. The organizer sees the event marked and the same request number, and the retry is confirmed. One row, undone once. Restart the API without the one-minute setting. | 14 |
+| N | As the organizer, scan `spare-undo-sign-in-again.pdf`. Turn the network off, undo and confirm; wait for the unconfirmed-undo message. Return to the event list and explicitly sign out, without closing the app. Restore the network, sign in as staff, inspect the list and sign out. Sign in as the original organizer, open the marked event and retry the undo. | Staff see no unconfirmed undo. The original organizer sees the same request number and the retry is confirmed. One admission is undone once. This checks account isolation; a short-lived access token alone should renew, not force a password prompt. | 14 |
 | O | Sign in as staff. Turn the network off and scan `spare-organizer-check.pdf`. Turn the network on. As the organizer remove the staff assignment in the API docs (`DELETE /events/{id}/staff/{user_id}`). On the phone tap “Повторить этот запрос”. Have the organizer look the ticket up as described under “How the organizer verifies the record”, then tap “Выйти после сверки с организатором” and confirm. Assign the staff account again. | After the retry the app reports no access and still shows the request as unconfirmed with its number. It never shows a green result. Leaving returns to the event list and writes nothing: the ticket has no row. | 7 |
+| P | On the disposable test API set `ACCESS_TOKEN_EXPIRE_MINUTES=3`, restart it and sign in again. Keep the app in front for five minutes and scan a fresh ticket; then background it for five minutes, return and scan another fresh ticket. Restore the default setting afterwards. | Both scans succeed without a password prompt, each with one current admission. This checks renewal on a phone; refused-refresh recovery still needs the separate README test. | 15 |
+| Q | Switch РУС → ҚАЗ → ENG on login, events and scan screens. During an unconfirmed test scan, switch language before retrying. | The header fits, the screen text changes, and the pending request ID is unchanged. | 16 |
 
 ## Timing (row “Scan latency”)
 

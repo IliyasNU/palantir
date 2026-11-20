@@ -66,7 +66,7 @@ def test_search_users_by_name_or_email_case_insensitively(client, actors, create
         found = client.get("/admin/users", params={"q": q}, headers=actors.admin).json()
         assert [user["email"] for user in found] == ["aigerim@example.com"], q
     [user] = client.get("/admin/users", params={"q": "aigerim"}, headers=actors.admin).json()
-    assert set(user) == {"id", "email", "full_name", "role", "is_active", "created_at"}
+    assert set(user) == {"id", "email", "full_name", "role", "is_active", "email_verified", "created_at"}
     assert (user["role"], user["is_active"]) == ("attendee", True)
 
 

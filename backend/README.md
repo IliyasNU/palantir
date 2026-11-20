@@ -89,7 +89,12 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `POST /auth/login` | public | JSON `{email, password}` → `{access_token, refresh_token, token_type}` |
 | `POST /auth/token` | public | same, as OAuth2 form (`username` = email); used by the `/docs` "Authorize" button |
 | `POST /auth/refresh` | public | JSON `{refresh_token}` → new token pair |
-| `GET /auth/me` | logged in | current user |
+| `POST /auth/logout` | public | JSON `{refresh_token}` → `204`; that refresh token stops working, other sessions stay |
+| `GET /auth/me` | logged in | current user, including `email_verified` |
+| `POST /auth/verify-email` | public | JSON `{token}` from the verification email → user; `400 INVALID_TOKEN` |
+| `POST /auth/resend-verification` | logged in | `202`; sends a new link unless already verified |
+| `POST /auth/forgot-password` | public | JSON `{email}` → `202` for any address; emails a reset link to an active account |
+| `POST /auth/reset-password` | public | JSON `{token, new_password}` → `204`; ends every session; the link works once; `400 INVALID_TOKEN` |
 | `POST /organizer-profiles` | organizer | one profile per organizer (409 if it exists) |
 | `GET /organizer-profiles/me` | organizer | 404 until created |
 | `PUT` or `PATCH /organizer-profiles/me` | organizer | partial update: only sent fields change |
@@ -98,6 +103,7 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `GET /events` | public | published events |
 | `GET /events/{id}` | public or owner/admin | draft details are restricted |
 | `POST /events/{id}/publish` or `/cancel` | owner or admin | state transitions |
+| `POST /events/{id}/unpublish` | owner or admin | published → draft, only while no tickets or pending orders exist (`409 EVENT_HAS_TICKETS`); draft is a no-op |
 | `POST /events/{id}/tickets` | authenticated | `201` new ticket, `200` existing ticket |
 | `GET /tickets/me` or `/tickets/{id}` | authenticated | ownership enforced; `status` is `active`, `cancelled` or `refunded` |
 | `GET /tickets/{id}/pdf` | holder of the ticket or admin | one A4 page with the same QR as the screen; `409` for a closed ticket or a cancelled event |
@@ -109,11 +115,56 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `POST /events/{id}/check-ins/{check_in_id}/undo` | owner or admin | `{request_id}`; keeps the row as history, the ticket can be scanned again |
 | `GET /events/{id}/attendance` | staff, owner or admin | `{event_id, capacity, tickets_issued, checked_in}` |
 | `GET /events/{id}/attendees?q=` | staff, owner or admin | name/e-mail search, `q` ≥ 3 chars, ≤ 20 results, masked e-mail, ticket `status`, current `check_in_id` + `qr_payload` |
-| `PUT` or `PATCH /events/{id}` | owner or admin | partial update |
+| `PUT` or `PATCH /events/{id}` | owner or admin | partial update; a cancelled event can't change (`409 EVENT_CANCELLED`); once started, date and capacity are fixed (`409 EVENT_STARTED`); a new date must be in the future (`422 DATE_IN_PAST`) |
 
 Send the access token as `Authorization: Bearer <token>`. Use paths exactly as written (no trailing slash).
 Datetimes are ISO 8601; values without a timezone are treated as UTC and responses are always UTC.
 Errors: 401 missing/invalid/expired token · 403 wrong role or not the owner · 404 not found · 409 conflict · 422 validation.
+
+## Email (BE-3)
+
+Registration emails a verification link and `forgot-password` emails a reset link.
+Links open the web app: `FRONTEND_URL/verify-email?token=...` and `FRONTEND_URL/reset-password?token=...`; the page posts the token to the matching endpoint.
+Set `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS` (true) and `EMAIL_FROM` to send real mail.
+Without `SMTP_HOST` the API writes each email, link included, to its log instead; in production it logs only that the email was not sent.
+Emails are sent after the response, so an SMTP failure is logged and never fails the request.
+
+To see every email in a local inbox (the defense demo), start Mailpit with the `mail` Compose profile:
+
+```bash
+# from the repository root
+SMTP_HOST=mailpit SMTP_PORT=1025 SMTP_STARTTLS=false docker compose --profile mail up --build
+```
+
+The inbox is at <http://localhost:8025>; Mailpit keeps the messages and delivers nothing outside the machine.
+`forgot-password` and `resend-verification` accept one request a minute and then answer `429 TOO_MANY_REQUESTS` with `Retry-After: 60`.
+The reset limit is keyed by the address, registered or not, so it reveals no accounts; the verification limit is per account.
+
+Logout ends only the session whose refresh token it receives: other devices stay signed in, and the access token of that session keeps working until it expires (30 minutes).
+To end every session, reset the password.
+
+## Notifications (BE-3a, BE-3b, BE-3c)
+
+Revision `0008` adds `notifications`. Each notification is shown in the app and emailed to the user.
+`notify(...)` in `app/notifications.py` adds the row inside the caller's transaction; the email is sent from a worker thread only after that transaction commits, so a rolled-back change sends nothing.
+If the mail server is down the email is logged as failed and the notification stays in the app.
+
+| Kind | When | Email |
+| --- | --- | --- |
+| `ticket.issued` | a free claim creates a ticket (`201`); a repeated claim (`200`) sends nothing | with the ticket PDF attached |
+| `event.updated` | a published event's title, date or location changes | to every holder of an active ticket |
+| `event.cancelled` | a published event is cancelled; cancelling again sends nothing | to every holder of an active ticket |
+| `order.paid` | `POST /orders/{id}/pay` with `success` issues the ticket | to the buyer, with the amount and the ticket PDF attached |
+| `payment.failed` | `POST /orders/{id}/pay` with `failure` releases the seat | to the buyer |
+
+Each order sends at most one of the two: a repeated pay returns the first result and sends nothing, and expiry, cancellation or a refused payment send nothing.
+
+| Method & path | Access | Notes |
+|---|---|---|
+| `GET /notifications/me?unread=&limit=&offset=` | logged in | yours, newest first; `limit` ≤ 100 (default 50); `unread=true` hides read ones |
+| `POST /notifications/{id}/read` | owner | sets `read_at` once; `404 NOTIFICATION_NOT_FOUND` for someone else's |
+
+A notification has `id`, `kind`, `title`, `body`, `link` (web path such as `/tickets/12` or `/events/3`), `created_at` and `read_at`.
 
 ## Ticket types and action log (P1)
 
@@ -219,7 +270,7 @@ Set the API process variable `CAMPAIGN_WEB_ORIGIN` to the public HTTPS origin of
 
 A code from another event returns 404 PROMO_NOT_FOUND. Ineligible codes return 409 with PROMO_NOT_STARTED, PROMO_EXPIRED, PROMO_DISABLED, PROMO_NOT_APPLICABLE or PROMO_EXHAUSTED. Event, ticket type, ownership and suspension checks retain their existing errors. Invalid request fields return the usual 422 validation array.
 
-Migration `0007` follows `0006`. Existing orders receive zero discount. Downgrade refuses to drop campaign data. The quota includes paid orders and live reservations. Payment failure, cancellation and expiry release a use. Checkout fixes the price at reservation time. Percentage discounts round half up to one tiyn, fixed discounts stop at the ticket price, and the organizer pays the processing fee on the discounted total.
+Migration `0009` follows `0008`. Existing orders receive zero discount. Downgrade refuses to drop campaign data. The quota includes paid orders and live reservations. Payment failure, cancellation and expiry release a use. Checkout fixes the price at reservation time. Percentage discounts round half up to one tiyn, fixed discounts stop at the ticket price, and the organizer pays the processing fee on the discounted total.
 
 ## Simulated paid sales and orders (P2)
 
@@ -367,7 +418,7 @@ docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -
 docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -f work/compose.w2-pg16-icu.yml exec backend alembic current
 ```
 
-Compose applies `alembic upgrade head` before starting the API. Expect `0005 (head)` and `/health` HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
+Compose applies `alembic upgrade head` before starting the API. Expect `0008 (head)` and `/health` HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
 
 Run this SQL **in the database used by the API** and retain the actual output with the tested commit:
 

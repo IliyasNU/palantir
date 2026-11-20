@@ -52,6 +52,6 @@ def test_campaign_downgrade_guard(scratch_database):
             db.execute(text("INSERT INTO campaigns(event_id,name,code,token,kind,value,max_uses,enabled) "
                             "VALUES (:e,'Demo','ABC','opaque','percent',5,1,true)"), {"e": eid})
         with pytest.raises(RuntimeError, match="campaign data"):
-            command.downgrade(config, "0006")
+            command.downgrade(config, "0008")
     finally:
         engine.dispose()

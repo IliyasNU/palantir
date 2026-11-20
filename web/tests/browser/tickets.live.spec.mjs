@@ -45,6 +45,17 @@ test('real visitor claims, reopens and presents the exact backend ticket QR', as
   const png = PNG.sync.read(Buffer.from((await qr.getAttribute('src')).split(',')[1], 'base64'));
   expect(jsQR(new Uint8ClampedArray(png.data), png.width, png.height)?.data === ticket.qr_payload,
     'Decoded QR must exactly match the server payload (values omitted from errors)').toBe(true);
+  // The full-screen view shows the same backend payload, and Esc returns to the ticket.
+  const opener = page.getByRole('button', { name: 'Открыть QR-код на весь экран' });
+  await opener.click();
+  const large = page.getByRole('dialog').getByRole('img', { name: 'Крупный QR-код билета для проверки на входе' });
+  await expect(large).toBeVisible();
+  const big = PNG.sync.read(Buffer.from((await large.getAttribute('src')).split(',')[1], 'base64'));
+  expect(jsQR(new Uint8ClampedArray(big.data), big.width, big.height)?.data === ticket.qr_payload,
+    'The full-screen QR must exactly match the server payload (values omitted from errors)').toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(opener).toBeFocused();
 
   // Same-session page navigation, never a page.goto/reload that would intentionally log out.
   await page.getByRole('link', { name: 'Открыть событие', exact: true }).click();
@@ -71,5 +82,5 @@ test('real visitor claims, reopens and presents the exact backend ticket QR', as
   await expect(qr).toHaveCount(0);
   await page.getByRole('button', { name: 'Выйти', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Войти и открыть билет' })).toBeVisible();
-  console.log('Real ticket flow: registration, login/me, claim 201, repeat 200, foreign 404, exact PNG QR decode, sold-out reopening, cancellation, logout.');
+  console.log('Real ticket flow: registration, login/me, claim 201, repeat 200, foreign 404, exact PNG QR decode (also full screen), sold-out reopening, cancellation, logout.');
 });

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "BiletFlow Staff",
+    "name": "BiletFlow",
     "slug": "biletflow-staff",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -21,7 +21,8 @@
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "scheme": "biletflow-staff"
   }

@@ -1,9 +1,9 @@
-"""P3 campaign links and order discount snapshots. Revision 0007 follows 0006."""
+"""P3 campaign links and order discount snapshots. Revision 0009 follows 0008."""
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0007"
-down_revision = "0006"
+revision = "0009"
+down_revision = "0008"
 branch_labels = depends_on = None
 
 original_money = ("subtotal_tiyn > 0 AND total_tiyn = subtotal_tiyn AND processing_fee_tiyn >= 0 "
@@ -46,7 +46,7 @@ def upgrade():
 
 def downgrade():
     if op.get_bind().execute(sa.text("SELECT count(*) FROM campaigns")).scalar_one():
-        raise RuntimeError("Cannot downgrade below 0007: campaign data would be lost")
+        raise RuntimeError("Cannot downgrade below 0009: campaign data would be lost")
     with op.batch_alter_table("orders") as batch:
         batch.drop_constraint(op.f("ck_orders_order_money_valid"), type_="check")
         batch.drop_constraint("fk_orders_campaign_id_campaigns", type_="foreignkey")
