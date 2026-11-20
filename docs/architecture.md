@@ -236,6 +236,11 @@ erDiagram
 | `GET /events/{id}/action-log` | the event's organizer, or an admin |
 | `GET /admin/users`, `POST /admin/users/{id}/suspend\|reactivate` | admin |
 | `GET /admin/events`, `POST /admin/events/{id}/suspend\|reactivate`, `GET /admin/action-log` | admin |
+| `POST /support/cases`, `GET /support/cases/mine` | any logged-in user (an `organizer` case needs the organizer role) |
+| `GET /support/cases/{id}`, `GET\|POST /support/cases/{id}/messages` | the case's requester or one of its handlers; everyone else gets `404` |
+| `PATCH /support/cases/{id}` | a handler; the requester may only set `resolved` |
+| `GET /events/{id}/support-cases` | the event's organizer, or an admin |
+| `GET /admin/support-cases` | admin |
 
 ## Notifications
 
@@ -296,6 +301,7 @@ notification rows remain.
   `USER_NOT_FOUND`, `STAFF_CHANGED`, `FORBIDDEN`, `INVALID_TICKET`, `ALREADY_CHECKED_IN`, `REQUEST_ID_CONFLICT`,
   `QUERY_TOO_SHORT`, `TICKET_CANCELLED`, `TICKET_REFUNDED`, `TICKET_CHECKED_IN`, `CHECK_IN_UNDONE`,
   `CHECK_IN_NOT_FOUND`, `CHECK_IN_ALREADY_UNDONE`, `UNDO_NOT_ALLOWED`, `EVENT_SUSPENDED`, `CANNOT_SUSPEND_SELF`,
+  `CASE_NOT_FOUND`, `CONTEXT_REQUIRED`, `CONTEXT_MISMATCH`, `CATEGORY_NOT_ALLOWED`, `INVALID_ASSIGNEE`,
   `EVENT_STARTED`, `DATE_IN_PAST`, `EVENT_HAS_TICKETS`.
 * `GET /events/{id}/attendance` returns `capacity` and `tickets_issued` from the event row and `checked_in` as a
   `COUNT` of its `check_ins` that are not undone, all read in one statement. `GET /events/{id}/attendees?q=` searches the event's ticket
@@ -404,6 +410,43 @@ same everywhere:
   `POST /admin/users/{id}/suspend` and `POST /admin/users/{id}/reactivate`. Both are idempotent.
 - **Platform actions** that belong to no event are written with `record_action(db, event_id=None, ...)` into
   `action_logs`, in the transaction of the change. There is no separate admin table.
+
+### Support cases (SRS 4.13)
+
+Migration `0010` adds `support_cases` and `support_messages`. It is numbered after `0007` (account e-mail),
+`0008` (notifications) and `0009` (promo codes). Until those are merged it follows `0006`; once `0009` is
+merged it is re-pointed there, so one head remains.
+
+| Kind | Opened by | Handled by | Context |
+|---|---|---|---|
+| `attendee` | any logged-in user | the event's organizer, or an admin | at least one of `event_id`, `order_id`, `ticket_id` |
+| `organizer` | an organizer | admins | optionally one of the organizer's own events |
+
+* **Context is checked and completed on the server.** A `ticket_id` must be the requester's ticket and supplies
+  the event and, for a paid ticket, its order. An `order_id` must be the requester's order and supplies the event
+  and its ticket once paid. An `event_id` alone must be visible to the requester. Ids that do not belong together
+  are `422 CONTEXT_MISMATCH`; an attendee case with none is `422 CONTEXT_REQUIRED`. A ticket or order of their own
+  ties the requester to the event, so a ticket holder can still ask for help after the event is suspended.
+* **Access.** A case is visible to its requester and its handlers only. Anyone else, including the event's
+  check-in staff and other organizers, gets `404 CASE_NOT_FOUND` on every case route, so the response does not
+  reveal that the case exists. Lists never show other people's cases: `mine` is the requester's own, the event list
+  is for the event's managers, and the admin list is for admins.
+* **Thread.** `support_messages` rows are never edited or deleted. Each stores `author_side` (`requester` or
+  `staff`) as written. Clients read by periodic refresh: `GET /support/cases/{id}/messages?after_id=` returns only
+  newer messages, and lists carry `last_message_at` and `last_message_by` so a client can show a new reply without
+  loading the thread. There is no WebSocket.
+* **Statuses.** `open`, `in_progress`, `waiting_for_customer`, `resolved`. Handlers set any of them and assign the
+  case to someone who handles it (`422 INVALID_ASSIGNEE` otherwise). The requester may only set `resolved`. A reply
+  from the requester moves `waiting_for_customer` to `in_progress` and `resolved` to `open`; a reply from staff
+  changes no status.
+* **Concurrency.** Every write locks the case row, so a reply and a status change of the same case are applied in
+  turn, message time follows message id, and the case always points at its newest message.
+* **History.** `support_case.opened`, `support_case.status_changed` (`open -> in_progress`) and
+  `support_case.assigned` are recorded in `action_logs` in the same transaction, with the case's event, or no event
+  for a platform case. Descriptions hold the category or the status change only, never the subject, message text or
+  an e-mail address. The thread itself is the record of what was said.
+* **Not included yet.** E-mail on a new reply or status change waits for the e-mail module of the account branch.
+  Responses show the requester's name and a masked e-mail (`al***@example.com`).
 
 ## Not built yet
 

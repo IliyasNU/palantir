@@ -11,6 +11,7 @@ from app.models.user import User
 from app.models.ticket_type import TicketType
 from app.models.action_log import ActionLog
 from app.models.order import Order, PaidSalesActivation
+from app.models.support import SupportCase, SupportMessage
 from app.models.email_throttle import EmailThrottle
 from app.models.notification import Notification
 from app.models.revoked_token import RevokedToken
