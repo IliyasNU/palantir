@@ -191,6 +191,7 @@ test('an organizer creates and updates its public profile', async ({ page }) => 
 
 test('an organizer assigns and removes event staff', async ({ page }) => {
   let staff = [];
+  await page.route(`${base}/events/mine`, (route) => route.fulfill({ json: [draft] }));
   await page.route(`${base}/events/9`, (route) => route.fulfill({ json: draft }));
   await page.route(`${base}/events/9/staff`, (route) => {
     const method = route.request().method();
