@@ -214,7 +214,7 @@ erDiagram
 | `GET /staff/events` | any logged-in user (lists what they may scan; may be `[]`) |
 | `POST /organizer-profiles`, `GET /organizer-profiles/me`, `PUT\|PATCH /organizer-profiles/me` | organizer |
 | `POST /events`, `GET /events/mine` | organizer |
-| `PUT\|PATCH /events/{id}`, `POST /events/{id}/publish`, `POST /events/{id}/cancel` | the event's organizer, or an admin |
+| `PUT\|PATCH /events/{id}`, `POST /events/{id}/publish`, `POST /events/{id}/unpublish`, `POST /events/{id}/cancel` | the event's organizer, or an admin |
 | `GET\|POST /events/{id}/staff`, `DELETE /events/{id}/staff/{user_id}` | the event's organizer, or an admin |
 | `POST /events/{id}/check-in` | the event's assigned staff, its organizer, or an admin |
 | `POST /events/{id}/check-ins/{check_in_id}/undo` | the event's organizer, or an admin |
@@ -238,7 +238,8 @@ erDiagram
 ## Tickets and check-in
 
 * Events start as `draft`, become `published` (ticketing and check-in open) and can be `cancelled` (final).
-  Publishing is a conditional update, so it can never overwrite a concurrent cancel.
+  Publishing is a conditional update, so it can never overwrite a concurrent cancel. A published event that
+  nobody holds a seat at can go back to `draft` (see "Editing and unpublishing").
 * Claiming a ticket takes an event seat with `UPDATE events SET tickets_issued = tickets_issued + 1
   WHERE ... AND tickets_issued < capacity`; the check constraint backs it up. P1 reserves the type's
   seat in the same transaction.
@@ -271,7 +272,8 @@ erDiagram
   `EVENT_NOT_PUBLISHED`, `EVENT_CANCELLED`, `SOLD_OUT`, `CAPACITY_BELOW_ISSUED`, `TICKET_NOT_FOUND`,
   `USER_NOT_FOUND`, `STAFF_CHANGED`, `FORBIDDEN`, `INVALID_TICKET`, `ALREADY_CHECKED_IN`, `REQUEST_ID_CONFLICT`,
   `QUERY_TOO_SHORT`, `TICKET_CANCELLED`, `TICKET_REFUNDED`, `TICKET_CHECKED_IN`, `CHECK_IN_UNDONE`,
-  `CHECK_IN_NOT_FOUND`, `CHECK_IN_ALREADY_UNDONE`, `UNDO_NOT_ALLOWED`, `EVENT_SUSPENDED`, `CANNOT_SUSPEND_SELF`.
+  `CHECK_IN_NOT_FOUND`, `CHECK_IN_ALREADY_UNDONE`, `UNDO_NOT_ALLOWED`, `EVENT_SUSPENDED`, `CANNOT_SUSPEND_SELF`,
+  `EVENT_STARTED`, `DATE_IN_PAST`, `EVENT_HAS_TICKETS`.
 * `GET /events/{id}/attendance` returns `capacity` and `tickets_issued` from the event row and `checked_in` as a
   `COUNT` of its `check_ins` that are not undone, all read in one statement. `GET /events/{id}/attendees?q=` searches the event's ticket
   holders by name or e-mail (case-insensitive substring, `q` at least 3 characters after trimming, `%`/`_` literal,
@@ -300,6 +302,34 @@ two concurrent requests cannot allocate more seats than the event has.
 The caller adds the record in the transaction that creates or changes a type. The owner
 and administrators can read the event's history. The API exposes no write operation on
 the history itself.
+
+### Editing and unpublishing (BE-1)
+
+Every edit (`PATCH`/`PUT /events/{id}`) reads the event under its row lock, so it sees a cancel that committed
+first. The rules hold for organizers and admins alike; access is checked before them, so someone who may not
+manage the event gets `403` and learns nothing about its state.
+
+| Event state | What can change |
+|---|---|
+| `cancelled` | Nothing: `409 EVENT_CANCELLED`. Its ticket types can't be created or edited either. |
+| started (`date` is now or earlier) | Title, description and location. A different `date` or `capacity` is `409 EVENT_STARTED`. |
+| not started | Everything, but a new `date` must be in the future (`422 DATE_IN_PAST`). |
+
+Sending a field's current value again is not a change, so a form that resubmits every field works on a started
+event. `capacity` still can't drop below `tickets_issued` (`409 CAPACITY_BELOW_ISSUED`). Event creation does not
+check the date yet.
+
+`POST /events/{id}/unpublish` takes a `published` event back to `draft`; it is then hidden from the public, the
+staff app and ticket claims, and can be published again. It is allowed only while `tickets_issued` is `0`.
+That counter includes pending checkout holds, which are expired first, so lapsed holds don't block it.
+Otherwise the answer is `409 EVENT_HAS_TICKETS`: an event people hold tickets for should be cancelled, which
+notifies them, not hidden. Cancelled and refunded tickets don't count. A draft is a no-op; a cancelled event is
+`409 EVENT_CANCELLED`. The change is recorded as `event.unpublished`. Suspension, paid-sales activation, ticket
+types and staff are left as they are.
+
+Unpublish takes the same exclusive row lock as ticket claims and checkout. A claim that committed first leaves
+a seat, so unpublish is refused; a claim that comes later finds a draft in its conditional `UPDATE` and is refused
+(`EVENT_NOT_PUBLISHED`) without taking a seat. A draft therefore never holds a seat.
 
 ### Admin suspension and the full event timeline
 

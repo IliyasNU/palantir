@@ -98,6 +98,7 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `GET /events` | public | published events |
 | `GET /events/{id}` | public or owner/admin | draft details are restricted |
 | `POST /events/{id}/publish` or `/cancel` | owner or admin | state transitions |
+| `POST /events/{id}/unpublish` | owner or admin | published → draft, only while no tickets or pending orders exist (`409 EVENT_HAS_TICKETS`); draft is a no-op |
 | `POST /events/{id}/tickets` | authenticated | `201` new ticket, `200` existing ticket |
 | `GET /tickets/me` or `/tickets/{id}` | authenticated | ownership enforced; `status` is `active`, `cancelled` or `refunded` |
 | `GET /tickets/{id}/pdf` | holder of the ticket or admin | one A4 page with the same QR as the screen; `409` for a closed ticket or a cancelled event |
@@ -109,7 +110,7 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `POST /events/{id}/check-ins/{check_in_id}/undo` | owner or admin | `{request_id}`; keeps the row as history, the ticket can be scanned again |
 | `GET /events/{id}/attendance` | staff, owner or admin | `{event_id, capacity, tickets_issued, checked_in}` |
 | `GET /events/{id}/attendees?q=` | staff, owner or admin | name/e-mail search, `q` ≥ 3 chars, ≤ 20 results, masked e-mail, ticket `status`, current `check_in_id` + `qr_payload` |
-| `PUT` or `PATCH /events/{id}` | owner or admin | partial update |
+| `PUT` or `PATCH /events/{id}` | owner or admin | partial update; a cancelled event can't change (`409 EVENT_CANCELLED`); once started, date and capacity are fixed (`409 EVENT_STARTED`); a new date must be in the future (`422 DATE_IN_PAST`) |
 
 Send the access token as `Authorization: Bearer <token>`. Use paths exactly as written (no trailing slash).
 Datetimes are ISO 8601; values without a timezone are treated as UTC and responses are always UTC.
