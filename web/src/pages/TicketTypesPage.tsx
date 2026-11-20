@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, Navigate, useParams } from 'react-router';
 import { api, ApiError } from '../api';
 import { useAuth } from '../auth/AuthProvider';
 import { authLink } from '../auth/returnTo';
 import { Page } from '../components/Page';
 import { formatEventDate } from '../events/catalog';
-import { parseEventId, readEventDetails } from '../events/details';
-import type { EventDetails } from '../events/details';
+import { parseEventId } from '../events/details';
+import { eventPhase, isClosedPhase, readManagedEvent } from '../organizer/model';
+import type { ManagedEvent } from '../organizer/model';
 import { emptyTicketTypeDraft, readTicketTypes, ticketTypeDraft, ticketTypeError, ticketTypePayload, ticketTypePrice } from '../ticket-types/model';
 import type { TicketType, TicketTypeDraft } from '../ticket-types/model';
 
@@ -25,7 +26,7 @@ export function TicketTypesPage() {
 }
 
 function TypeManagement({ eventId, request }: { eventId: number; request: typeof api.request }) {
-  const [event, setEvent] = useState<EventDetails | null>(null);
+  const [event, setEvent] = useState<ManagedEvent | null>(null);
   const [types, setTypes] = useState<TicketType[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -42,7 +43,7 @@ function TypeManagement({ eventId, request }: { eventId: number; request: typeof
     setLoading(true);
     setLoadError(null);
     Promise.all([
-      request(`/events/${eventId}`, { signal: controller.signal }).then((payload) => readEventDetails(payload, eventId)),
+      request(`/events/${eventId}`, { signal: controller.signal }).then((payload) => readManagedEvent(payload, eventId)),
       request(`/events/${eventId}/ticket-types/manage`, { signal: controller.signal }).then((payload) => readTicketTypes(payload, eventId)),
     ]).then(([loadedEvent, loadedTypes]) => {
       if (!controller.signal.aborted) { setEvent(loadedEvent); setTypes(loadedTypes); }
@@ -98,6 +99,7 @@ function TypeManagement({ eventId, request }: { eventId: number; request: typeof
   if (loadError) return <div className="notice notice-error" role="alert"><p>{loadError}</p>
     <button className="button" type="button" onClick={() => setRevision((previous) => previous + 1)}>Повторить</button></div>;
   if (!event) return null;
+  if (isClosedPhase(eventPhase(event))) return <Navigate replace to={`/organizer/events/${eventId}/history`} />;
   const allocated = types.reduce((sum, type) => sum + type.quantity, 0);
   return <>
     <div className="content-card type-management-summary">

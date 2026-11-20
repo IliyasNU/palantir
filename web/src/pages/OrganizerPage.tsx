@@ -5,9 +5,10 @@ import { authLink } from '../auth/returnTo';
 import { Page } from '../components/Page';
 import { formatEventDate } from '../events/catalog';
 import { eventStatusLabel } from '../events/details';
-import { canOrganize, organizerError, readManagedEvents } from '../organizer/model';
-import type { ManagedEvent } from '../organizer/model';
-import { useT } from '../i18n';
+import { canOrganize, eventPhase, eventPhases, isClosedPhase, organizerError, readManagedEvents } from '../organizer/model';
+import type { EventPhase, ManagedEvent } from '../organizer/model';
+import { historyCopy } from '../organizer/history-copy';
+import { useLocale, useT } from '../i18n';
 
 type State = { kind: 'loading' } | { kind: 'ready'; events: ManagedEvent[] } | { kind: 'error'; error: unknown };
 
@@ -30,16 +31,19 @@ export function OrganizerGate({ allowed, returnTo }: { allowed: boolean; returnT
 
 export function OrganizerPage() {
   const text = useT().organizer;
+  const history = historyCopy[useLocale()];
   const { user, request } = useAuth();
   const allowed = canOrganize(user);
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  const [phase, setPhase] = useState<EventPhase>('upcoming');
+  const visible = state.kind === 'ready' ? state.events.filter(event => eventPhase(event) === phase) : [];
 
   useEffect(() => {
     if (!allowed) return;
     const controller = new AbortController();
     request('/events/mine', { signal: controller.signal }).then((payload) => {
-      setState({ kind: 'ready', events: readManagedEvents(payload) });
+      if (!controller.signal.aborted) setState({ kind: 'ready', events: readManagedEvents(payload) });
     }).catch((error: unknown) => {
       if (!controller.signal.aborted && !(error instanceof Error && error.name === 'AbortError')) {
         setState({ kind: 'error', error });
@@ -57,6 +61,12 @@ export function OrganizerPage() {
             <Link className="button" to="/organizer/events/new">{text.list.create}</Link>
             <Link className="text-link" to="/organizer/profile">{text.profile.title}</Link>
           </p>
+          <div className="organizer-links" role="group" aria-label={history.phasesLabel}>
+            {eventPhases.map(value => (
+              <button className={value === phase ? 'button' : 'button button-secondary'} type="button"
+                key={value} aria-pressed={value === phase} onClick={() => setPhase(value)}>{history.phases[value]}</button>
+            ))}
+          </div>
           {state.kind === 'loading' ? <p role="status">{text.list.loading}</p>
             : state.kind === 'error' ? (
               <div className="notice notice-error" role="alert">
@@ -66,9 +76,9 @@ export function OrganizerPage() {
                   {text.list.retry}
                 </button>
               </div>
-            ) : state.events.length === 0 ? <p role="status">{text.list.empty}</p> : (
+            ) : visible.length === 0 ? <p role="status">{state.events.length === 0 ? text.list.empty : history.emptyPhase}</p> : (
               <ul className="organizer-events">
-                {state.events.map((event) => (
+                {visible.map((event) => (
                   <li key={event.id}>
                     <h3>{event.title}</h3>
                     <dl className="event-facts">
@@ -80,9 +90,14 @@ export function OrganizerPage() {
                       <dt>{text.list.issued}</dt><dd>{event.tickets_issued ?? text.list.unknown}</dd>
                     </dl>
                     <p className="organizer-links">
-                      <Link className="text-link" to={`/organizer/events/${event.id}/edit`} aria-label={`${text.list.edit}: ${event.title}`}>{text.list.edit}</Link>
-                      <Link className="text-link" to={`/organizer/events/${event.id}/ticket-types`} aria-label={`${text.list.ticketTypes}: ${event.title}`}>{text.list.ticketTypes}</Link>
-                      <Link className="text-link" to={`/events/${event.id}`} aria-label={`${text.list.open}: ${event.title}`}>{text.list.open}</Link>
+                      {isClosedPhase(phase)
+                        ? <Link className="text-link" to={`/organizer/events/${event.id}/history`}
+                          aria-label={`${history.open}: ${event.title}`}>{history.open}</Link>
+                        : <>
+                          <Link className="text-link" to={`/organizer/events/${event.id}/edit`} aria-label={`${text.list.edit}: ${event.title}`}>{text.list.edit}</Link>
+                          <Link className="text-link" to={`/organizer/events/${event.id}/ticket-types`} aria-label={`${text.list.ticketTypes}: ${event.title}`}>{text.list.ticketTypes}</Link>
+                          <Link className="text-link" to={`/events/${event.id}`} aria-label={`${text.list.open}: ${event.title}`}>{text.list.open}</Link>
+                        </>}
                     </p>
                   </li>
                 ))}
