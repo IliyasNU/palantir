@@ -28,6 +28,27 @@ docker compose exec backend python -m scripts.create_admin --email admin@example
 docker compose exec db psql -U palantir -d palantir -c "\dt"
 ```
 
+### Seed a local demo
+
+Run after the migrations on a disposable development database:
+
+```bash
+docker compose exec backend python -m scripts.seed_demo
+# Or from backend/ with your own development DATABASE_URL:
+python -m scripts.seed_demo
+```
+
+Save the randomly generated passwords from the first run. It prints logins for an admin, two
+organizers, the staff member assigned to **Demo | Active check-in**, and three attendees. A
+second run leaves the rows, dates and passwords as they are. The command refuses to run with
+`ENVIRONMENT=production` and stops if a demo email already belongs to an existing account.
+
+**Demo | Upcoming checkout** has free and paid ticket types, two completed demo payments, a
+promo campaign and an attendee support thread. **Demo | Active check-in** has an admitted
+ticket (attendee A), an unused ticket (attendee B) and a ticket marked refunded (attendee C)
+for scanner demos. The refunded admission carries no financial transaction. The organizers
+also have past, draft, cancelled and suspended events to explore.
+
 ## Run tests locally (no Docker, no PostgreSQL needed)
 
 Tests use an in-memory SQLite database. Python 3.11+ recommended.
