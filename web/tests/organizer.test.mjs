@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ApiError } from '../src/api/client.ts';
 import { safeReturnTo } from '../src/auth/returnTo.ts';
-import { canManageEvents, canOrganize, emptyEventDraft, eventDraft, eventPayload, localInputValue, organizerError, readManagedEvent, readManagedEvents } from '../src/organizer/model.ts';
+import { canManageEvents, canOrganize, emptyEventDraft, emptyOrganizerProfileDraft, eventDraft, eventPayload, localInputValue, organizerProfileDraft, organizerProfilePayload, organizerError, readManagedEvent, readManagedEvents, readOrganizerProfile, readStaffMembers, staffError } from '../src/organizer/model.ts';
 import { messages } from '../src/i18n/messages.ts';
 
 const organizerText = messages.ru.organizer;
@@ -76,11 +76,67 @@ test('management errors are shown by API code', () => {
   assert.doesNotMatch(organizerError(new Error('private stack')), /private/);
 });
 
+test('organizer profile is validated, trimmed and converted to the API payload', () => {
+  const profile = {
+    id: 4, user_id: 3, organization_name: 'NU Robotics',
+    description: 'Student club', contact_email: 'club@example.com',
+    contact_phone: '+7 701 123 45 67', website: 'https://example.com',
+    created_at: '2030-01-01T00:00:00Z', updated_at: '2030-01-01T00:00:00Z',
+  };
+  assert.deepEqual(organizerProfileDraft(profile), {
+    organization_name: 'NU Robotics', description: 'Student club',
+    contact_email: 'club@example.com', contact_phone: '+7 701 123 45 67', website: 'https://example.com',
+  });
+  assert.deepEqual(emptyOrganizerProfileDraft(), {
+    organization_name: '', description: '', contact_email: '', contact_phone: '', website: '',
+  });
+  assert.deepEqual(organizerProfilePayload({
+    organization_name: ' NU Robotics ',
+    description: '  ',
+    contact_email: '',
+    contact_phone: ' ',
+    website: ' ',
+  }), {
+    organization_name: 'NU Robotics', description: null,
+    contact_email: null, contact_phone: null, website: null,
+  });
+  for (const bad of [
+    { ...emptyOrganizerProfileDraft(), organization_name: 'A' },
+    { organization_name: 'Club', description: '', contact_email: 'not-email', contact_phone: '', website: '' },
+    { organization_name: 'Club', description: '', contact_email: '', contact_phone: 'abc', website: '' },
+    { organization_name: 'Club', description: '', contact_email: '', contact_phone: '', website: 'ftp://example.com' },
+  ]) {
+    assert.throws(() => organizerProfilePayload(bad), (error) => error instanceof ApiError && error.kind === 'validation');
+  }
+  assert.equal(readOrganizerProfile(profile).organization_name, 'NU Robotics');
+  for (const bad of [null, {}, { ...profile, id: '4' }, { ...profile, contact_email: 123 }]) {
+    assert.throws(() => readOrganizerProfile(bad), (error) => error instanceof ApiError && error.kind === 'response');
+  }
+});
+
+test('staff lists and failures use strict contracts and localized API codes', () => {
+  const member = {
+    user_id: 12, email: 'staff@example.com', full_name: 'Staff Member',
+    created_at: '2030-01-01T00:00:00Z',
+  };
+  assert.deepEqual(readStaffMembers([member]), [member]);
+  assert.deepEqual(readStaffMembers([]), []);
+  for (const bad of [null, {}, [{ ...member, user_id: '12' }], [{ ...member, email: null }], [null]]) {
+    assert.throws(() => readStaffMembers(bad), (error) => error instanceof ApiError && error.kind === 'response');
+  }
+  const unknown = new ApiError('server text', { kind: 'http', status: 404, code: 'USER_NOT_FOUND' });
+  const forbidden = new ApiError('server text', { kind: 'http', status: 403, code: 'FORBIDDEN' });
+  assert.equal(staffError(unknown), organizerText.staff.userNotFound);
+  assert.equal(staffError(forbidden), organizerText.staff.forbidden);
+  assert.equal(staffError(new ApiError('Network lost', { kind: 'network' })), 'Network lost');
+});
+
 test('organizer routes are allowed after login; near misses are not', () => {
-  for (const route of ['/organizer', '/organizer/', '/organizer/events/new', '/organizer/events/42/edit', '/organizer/events/42/ticket-types']) {
+  for (const route of ['/organizer', '/organizer/', '/organizer/profile', '/organizer/events/new', '/organizer/events/42/edit', '/organizer/events/42/ticket-types']) {
     assert.equal(safeReturnTo(route), route);
   }
-  for (const route of ['/organizer/events', '/organizer/events/0/edit', '/organizer/events/42', '/organizer/events/new/edit', '/organizer/events/42/delete',
+  // '/organizer/5' comes from Sanzhar's first version of this test: no route lives directly under /organizer.
+  for (const route of ['/organizer/5', '/organizer/events', '/organizer/events/0/edit', '/organizer/events/42', '/organizer/events/new/edit', '/organizer/events/42/delete',
     '/organizerx', '/organizer//events/new', '/organizer?next=//evil.test', '/admin', '/admin/users']) {
     assert.equal(safeReturnTo(route), '/events', route);
   }

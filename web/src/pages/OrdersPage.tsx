@@ -33,6 +33,7 @@ export function OrderView({ initial }: { initial: Order }) {
     <h2>Заказ №{order.id} · {statusLabels[order.status]}</h2>
     <p>{order.attendee_name} · {order.attendee_email}</p>
     <p>Цена билета: {ticketTypePrice(order.subtotal_tiyn)}</p>
+    {order.promo_code && <p>Промокод {order.promo_code} · скидка {ticketTypePrice(order.discount_tiyn ?? 0)}</p>}
     <p>Комиссия из выручки организатора: {ticketTypePrice(order.processing_fee_tiyn)}</p>
     <p><strong>Итого покупателю: {ticketTypePrice(order.total_tiyn)}</strong></p>
     {error && <p className="notice notice-error" role="alert">{error}</p>}

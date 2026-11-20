@@ -18,6 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.audit import record_action
+from app.campaigns import campaign_qr_payload
 from app.dependencies.auth import CurrentUser
 from app.dependencies.db import DbSession
 from app.db.base import utcnow
@@ -111,6 +112,8 @@ def check_in(event_id: int, payload: CheckInRequest, db: DbSession, current_user
     if event.status == EventStatus.DRAFT.value:
         raise api_error(status.HTTP_409_CONFLICT, "EVENT_NOT_PUBLISHED", "Event is not published yet")
 
+    if campaign_qr_payload(payload.qr_payload):
+        raise api_error(409, "CAMPAIGN_QR_NOT_TICKET", "Это QR акции, а не билет")
     ticket = None
     if "\x00" not in payload.qr_payload:  # PostgreSQL text cannot hold NUL, so no ticket can match it
         ticket = _lock_ticket(db, Ticket.qr_payload == payload.qr_payload, Ticket.event_id == event.id)

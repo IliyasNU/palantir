@@ -140,6 +140,23 @@ test('the ticket PDF is downloaded from the API with the session token and keeps
   expect(await decodedQr(page)).toBe(ticket.qr_payload);
 });
 
+test('the embedded mobile page hands the authenticated ticket PDF to the app', async ({ page }) => {
+  const pdf = Buffer.from('%PDF-1.3\n% embedded ticket 21\n%%EOF\n');
+  await page.addInitScript(() => {
+    window.ReactNativeWebView = { postMessage: message => { window.sharedTicket = JSON.parse(message); } };
+  });
+  await page.route(`${base}/tickets/21`, route => route.fulfill({ json: { ...ticket, status: 'active' } }));
+  await page.route(`${base}/tickets/21/pdf`, route => {
+    expect(route.request().headers().authorization).toBe('Bearer test-token');
+    return route.fulfill({ contentType: 'application/pdf', body: pdf });
+  });
+  await login(page, '/tickets/21');
+  await page.getByRole('button', { name: 'Скачать билет в PDF' }).click();
+  await expect.poll(() => page.evaluate(() => window.sharedTicket)).toEqual({
+    type: 'biletflow-ticket-pdf', ticketId: 21, base64: pdf.toString('base64'),
+  });
+});
+
 test('a refused or malformed PDF is an error message, not a download', async ({ page }) => {
   let reply = { status: 409, json: { detail: { code: 'TICKET_REFUNDED', message: 'Ticket was refunded' } } };
   let downloads = 0;

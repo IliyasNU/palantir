@@ -1,5 +1,6 @@
 """Import every model here so they are all registered on ``Base.metadata``
 (Alembic and ``create_all`` rely on this)."""
+from app.models.campaign import Campaign, CampaignType
 from app.models.check_in import CheckIn
 from app.models.event import Event, EventStatus
 from app.models.event_staff import EventStaff
@@ -11,8 +12,11 @@ from app.models.ticket_type import TicketType
 from app.models.action_log import ActionLog
 from app.models.order import Order, PaidSalesActivation
 from app.models.support import SupportCase, SupportMessage
+from app.models.email_throttle import EmailThrottle
+from app.models.notification import Notification
+from app.models.revoked_token import RevokedToken
 
 __all__ = [
     "CheckIn", "Event", "EventStaff", "EventStatus", "OrganizerProfile", "Role", "RoleName", "Ticket", "TicketStatus",
-    "User", "TicketType", "ActionLog",
+    "User", "TicketType", "ActionLog", "RevokedToken", "EmailThrottle", "Notification",
 ]

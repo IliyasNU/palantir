@@ -227,6 +227,12 @@ npx playwright test --config playwright.isolation.config.mjs
 
 Результаты реальных браузерных проверок авторизации, билетов и восстановления API приведены в [отчёте аудита](../docs/integration-audit.md).
 
+## Промокоды и QR акции (P3)
+
+На странице `/organizer/events/{id}/campaigns` владелец события или администратор создаёт скидку, выбирает типы билетов, задаёт срок и лимит. Здесь же можно скачать SVG с надписью «Это не билет», выключить акцию и посмотреть выручку и использования. На страницу ведёт ссылка из управления типами билетов.
+
+Ссылка из QR открывает событие и сохраняется при входе в аккаунт. Можно также ввести код вручную при оформлении платного билета. До резерва посетитель видит подтверждённые сервером промокод, скидку и итог. Если лимит закончился между просмотром и заказом, сервер отказывает, и посетитель может убрать код. Для сканирования с телефона нужно настроить доступный HTTPS-адрес сайта в `CAMPAIGN_WEB_ORIGIN` на API.
+
 ## Account, organizer, administration and languages
 
 The header offers Russian, Kazakh and English. The choice persists in localStorage. Session tokens remain in memory, so a full reload requires signing in again. The browser, API and mobile app must use the same backend and database. An account registered as an attendee has no organizer role. The organizer pages read the role returned by `GET /auth/me`.

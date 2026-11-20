@@ -1,12 +1,9 @@
 """support cases and their message threads (SRS 4.13)
 
-Revision 0010 in the team's merge order: 0007 (account e-mail, #21), 0008 (notifications, #27) and
-0009 (promo codes, #28) come first. Until those are merged it follows 0006, the current head of
-integration/biletflow-e2e, so the branch stays migratable. When 0009 is merged, ``down_revision`` here
-becomes ``"0009"`` so one head remains; if this merges earlier, the migration merged after it re-points instead.
+Revision 0010 follows the promo campaign migration.
 
 Revision ID: 0010
-Revises: 0006
+Revises: 0009
 Create Date: 2026-11-15
 """
 from typing import Sequence, Union
@@ -15,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0010"
-down_revision: Union[str, None] = "0006"
+down_revision: Union[str, None] = "0009"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

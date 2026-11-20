@@ -6,8 +6,8 @@ import { useAuth } from '../auth/AuthProvider';
 import { useSubmission } from '../auth/useSubmission';
 import { Page } from '../components/Page';
 import { eventStatusLabel, parseEventId } from '../events/details';
-import { canManageEvents, canOrganize, emptyEventDraft, eventDraft, eventPayload, organizerError, readManagedEvent } from '../organizer/model';
-import type { EventDraft, ManagedEvent } from '../organizer/model';
+import { canManageEvents, canOrganize, emptyEventDraft, eventDraft, eventPayload, organizerError, readManagedEvent, readStaffMembers, staffError } from '../organizer/model';
+import type { EventDraft, ManagedEvent, StaffMember } from '../organizer/model';
 import { useT } from '../i18n';
 import { OrganizerGate } from './OrganizerPage';
 
@@ -69,6 +69,87 @@ function EventForm({ original, onSaved }: { original?: ManagedEvent; onSaved: (e
         </button>
       </fieldset>
     </form>
+  );
+}
+
+function StaffManager({ event }: { event: ManagedEvent }) {
+  const text = useT().organizer;
+  const { request } = useAuth();
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [email, setEmail] = useState('');
+  const [pending, setPending] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'assign' | 'remove' | null>(null);
+  const [removingUserId, setRemovingUserId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    request(`/events/${event.id}/staff`, { signal: controller.signal })
+      .then((payload) => { if (!controller.signal.aborted) setStaff(readStaffMembers(payload)); })
+      .catch((failure: unknown) => { if (!controller.signal.aborted) setError(staffError(failure)); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [event.id, request]);
+
+  async function assign(formEvent: FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    if (pending) return;
+    setPending(true); setPendingAction('assign'); setError(null); setNotice(null);
+    try {
+      await request(`/events/${event.id}/staff`, { method: 'POST', body: { email: email.trim() } });
+      setEmail('');
+      setStaff(readStaffMembers(await request(`/events/${event.id}/staff`)));
+      setNotice(text.staff.assigned);
+    } catch (failure: unknown) {
+      setError(staffError(failure));
+    } finally {
+      setPending(false);
+      setPendingAction(null);
+    }
+  }
+
+  async function remove(userId: number) {
+    if (pending) return;
+    setPending(true); setPendingAction('remove'); setRemovingUserId(userId); setError(null); setNotice(null);
+    try {
+      await request(`/events/${event.id}/staff/${userId}`, { method: 'DELETE' });
+      setStaff((current) => current.filter((member) => member.user_id !== userId));
+      setNotice(text.staff.removed);
+    } catch (failure: unknown) {
+      setError(staffError(failure));
+    } finally {
+      setPending(false);
+      setPendingAction(null);
+      setRemovingUserId(null);
+    }
+  }
+
+  return (
+    <section className="content-card" aria-labelledby="event-staff">
+      <h2 id="event-staff">{text.staff.heading}</h2>
+      {error && <div className="notice notice-error" role="alert"><p>{error}</p></div>}
+      {notice && <div className="notice notice-success" role="status"><p>{notice}</p></div>}
+      <form className="auth-form" onSubmit={assign} noValidate>
+        <fieldset disabled={pending}>
+          <label htmlFor="staff-email">{text.staff.email}</label>
+          <input id="staff-email" type="email" value={email} onChange={(change) => setEmail(change.target.value)} required />
+          <button className="button" type="submit" disabled={!email.trim()}>{pendingAction === 'assign' ? text.staff.assigning : text.staff.add}</button>
+        </fieldset>
+      </form>
+      {loading ? <p>{text.staff.loading}</p> : staff.length === 0
+        ? <p>{text.staff.empty}</p>
+        : <ul>{staff.map((member) => (
+          <li key={member.user_id}>
+            <strong>{member.full_name}</strong> — {member.email}{' '}
+            <button className="text-button" type="button" disabled={pending} onClick={() => void remove(member.user_id)}>
+              {removingUserId === member.user_id ? text.staff.removing : text.staff.remove}
+            </button>
+          </li>
+        ))}</ul>}
+    </section>
   );
 }
 
@@ -175,6 +256,7 @@ function EventEditor({ id }: { id: string | undefined }) {
             <>
               {notice && <div className="notice notice-success" role="status"><p>{text.editor[notice]}</p></div>}
               <StatusActions event={load.event} onChanged={(event, message) => { setLoad({ kind: 'ready', event }); setNotice(message); }} />
+              <StaffManager event={load.event} />
               <div className="content-card">
                 <h2>{load.event.title}</h2>
                 <EventForm key={load.event.id} original={load.event}

@@ -6,7 +6,7 @@ from app.audit import read_actions, record_action
 from app.dependencies.action_log import LogFilters
 from app.dependencies.auth import CurrentUser, OptionalUser
 from app.dependencies.db import DbSession
-from app.dependencies.events import ensure_can_manage, get_event_or_404, is_visible
+from app.dependencies.events import ensure_can_manage, ensure_editable, get_event_or_404, is_visible
 from app.errors import api_error
 from app.models import TicketType
 from app.schemas.common import to_utc
@@ -43,6 +43,7 @@ def create_ticket_type(event_id: int, payload: TicketTypeCreate, db: DbSession, 
     if payload.event_id is not None and payload.event_id != event_id:
         raise api_error(404, "EVENT_NOT_FOUND", "Ticket type event does not match the route")
     event = lock_event(db, event_id)
+    ensure_editable(event)
     expire_event_orders(db, event_id)
     check_allocation(db, event, payload.quantity)
     ticket_type = TicketType(event_id=event_id, **payload.model_dump(exclude={"event_id"}))
@@ -63,6 +64,7 @@ def update_ticket_type(event_id: int, type_id: int, payload: TicketTypeUpdate, d
     event = get_event_or_404(db, event_id)
     ensure_can_manage(event, current_user)
     event = lock_event(db, event_id)
+    ensure_editable(event)
     expire_event_orders(db, event_id)
     ticket_type = db.scalar(select(TicketType).where(TicketType.id == type_id, TicketType.event_id == event_id)
                             .with_for_update().execution_options(populate_existing=True))

@@ -3,16 +3,18 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
+from app import notifications
 from app.audit import record_action
 from app.db.base import utcnow
 from app.dependencies.auth import CurrentUser, OptionalUser
 from app.dependencies.db import DbSession
-from app.dependencies.events import ensure_can_manage, get_event_or_404, is_visible
+from app.dependencies.events import ensure_can_manage, ensure_editable, get_event_or_404, is_visible
 from app.dependencies.roles import OrganizerUser
 from app.errors import api_error
 from app.models import Event, EventStatus
 from app.schemas.common import to_utc
 from app.schemas.event import EventCreate, EventRead, EventUpdate
+from app.ticket_pdf import venue_time
 from app.ticket_types import create_default_type, lock_event, resize_default_or_check_allocation
 from app.order_inventory import expire_event_orders, refresh_inventory
 
@@ -23,6 +25,20 @@ def _capacity_below_issued() -> HTTPException:
     return api_error(
         status.HTTP_409_CONFLICT, "CAPACITY_BELOW_ISSUED", "Capacity cannot be lower than the tickets already issued"
     )
+
+
+def _ensure_schedule_change_allowed(event: Event, changes: dict) -> None:
+    """Date and capacity rules. Sending the current value again is not a change and is always allowed."""
+    now = utcnow()
+    new_date = to_utc(changes["date"]) if "date" in changes else None
+    moves_date = new_date is not None and new_date != to_utc(event.date)
+    resizes = "capacity" in changes and changes["capacity"] != event.capacity
+    if to_utc(event.date) <= now and (moves_date or resizes):
+        raise api_error(
+            status.HTTP_409_CONFLICT, "EVENT_STARTED", "The event has started: its date and capacity cannot change"
+        )
+    if moves_date and new_date <= now:
+        raise api_error(422, "DATE_IN_PAST", "The new date must be in the future")
 
 
 def _describe_changes(event: Event, changes: dict) -> str:
@@ -39,6 +55,18 @@ def _describe_changes(event: Event, changes: dict) -> str:
         elif old != new:
             parts.append(f"capacity: {old} -> {new}" if field == "capacity" else f"{field}: changed")
     return "; ".join(parts)
+
+
+def _holder_changes(event: Event, changes: dict) -> list[str]:
+    """The edits a ticket holder must hear about: name, time and place."""
+    lines = []
+    if "title" in changes and changes["title"] != event.title:
+        lines.append(f"Новое название: {changes['title']}")
+    if "date" in changes and to_utc(changes["date"]) != to_utc(event.date):
+        lines.append(f"Новое время: {venue_time(changes['date'])}")
+    if "location" in changes and changes["location"] != event.location:
+        lines.append(f"Новое место: {changes['location']}")
+    return lines
 
 
 @router.get("", response_model=list[EventRead])
@@ -90,23 +118,33 @@ def get_event(event_id: int, db: DbSession, current_user: OptionalUser):
 @router.patch("/{event_id}", response_model=EventRead)
 @router.put("/{event_id}", response_model=EventRead)
 def update_event(event_id: int, payload: EventUpdate, db: DbSession, current_user: CurrentUser):
-    """Edit an event (owner or admin). Only the fields you send are changed (PUT and PATCH behave the same)."""
+    """Edit an event (owner or admin). Only the fields you send are changed (PUT and PATCH behave the same).
+
+    A cancelled event cannot be edited. Once the event has started its date and capacity are fixed; the texts
+    and the location can still be corrected. A new date must be in the future.
+    """
     event = get_event_or_404(db, event_id)
     ensure_can_manage(event, current_user)
     changes = payload.model_dump(exclude_unset=True)
+    # Every edit reads the event under its row lock, so a cancel that commits first is always seen.
+    event = lock_event(db, event_id)
+    ensure_editable(event)
+    _ensure_schedule_change_allowed(event, changes)
     if "capacity" in changes:
-        event = lock_event(db, event_id)
         expire_event_orders(db, event_id)
     if changes.get("capacity", event.capacity) < event.tickets_issued:
         raise _capacity_below_issued()
     if "capacity" in changes:
         resize_default_or_check_allocation(db, event, changes["capacity"], current_user.id)
     described = _describe_changes(event, changes)
+    holder_changes = _holder_changes(event, changes) if event.status == EventStatus.PUBLISHED.value else []
     for field, value in changes.items():
         setattr(event, field, value)
     if described:
         record_action(db, event_id=event.id, actor_id=current_user.id, action="event.updated", entity_type="event",
                       entity_id=event.id, description=described)
+    if holder_changes:
+        notifications.event_updated(db, event.id, event.title, holder_changes)
     try:
         db.commit()
     except IntegrityError:  # a ticket was issued between the check above and the commit
@@ -140,6 +178,37 @@ def publish_event(event_id: int, db: DbSession, current_user: CurrentUser):
     return event
 
 
+@router.post("/{event_id}/unpublish", response_model=EventRead)
+def unpublish_event(event_id: int, db: DbSession, current_user: CurrentUser):
+    """Take a published event back to draft (owner or admin). Unpublishing a draft is a no-op.
+
+    Only an event nobody holds a seat at can be unpublished: ``tickets_issued`` counts active tickets and pending
+    orders, and while it is above zero the answer is ``409 EVENT_HAS_TICKETS`` (cancel the event instead).
+    The row lock serialises this with ticket claims and checkout: a claim that committed first leaves a seat
+    and blocks the unpublish; a claim that comes later finds a draft and is refused without taking a seat.
+    """
+    event = get_event_or_404(db, event_id)
+    ensure_can_manage(event, current_user)
+    event = lock_event(db, event_id)
+    expire_event_orders(db, event_id)  # lapsed checkout holds must not keep the event published
+    if event.status == EventStatus.CANCELLED.value:
+        raise api_error(status.HTTP_409_CONFLICT, "EVENT_CANCELLED", "A cancelled event cannot be unpublished")
+    if event.status == EventStatus.PUBLISHED.value:
+        db.flush()
+        db.refresh(event)  # the counter may have just dropped when expired holds were released
+        if event.tickets_issued > 0:
+            raise api_error(
+                status.HTTP_409_CONFLICT, "EVENT_HAS_TICKETS",
+                "The event has issued tickets or pending orders; cancel it instead",
+            )
+        event.status = EventStatus.DRAFT.value
+        record_action(db, event_id=event.id, actor_id=current_user.id, action="event.unpublished",
+                      entity_type="event", entity_id=event.id, description="Unpublished the event back to draft")
+    db.commit()
+    db.refresh(event)
+    return event
+
+
 @router.post("/{event_id}/cancel", response_model=EventRead)
 def cancel_event(event_id: int, db: DbSession, current_user: CurrentUser):
     """Stop ticketing and check-in for good. Cancelling twice is a no-op."""
@@ -150,6 +219,7 @@ def cancel_event(event_id: int, db: DbSession, current_user: CurrentUser):
         event.status = EventStatus.CANCELLED.value
         record_action(db, event_id=event.id, actor_id=current_user.id, action="event.cancelled", entity_type="event",
                       entity_id=event.id, description="Cancelled the event")
+        notifications.event_cancelled(db, event.id, event.title)
     db.commit()
     db.refresh(event)
     return event

@@ -2,7 +2,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, HttpUrl, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_DEV_SECRET = "dev-only-secret-change-me-0123456789abcdef"
@@ -19,6 +19,15 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "Palantir API"
+    campaign_web_origin: HttpUrl = HttpUrl("https://localhost:5173")
+
+    @field_validator("campaign_web_origin")
+    @classmethod
+    def https_origin(cls, value: HttpUrl) -> HttpUrl:
+        if (value.scheme != "https" or value.username or value.password or value.path not in ("", "/")
+                or value.query is not None or value.fragment is not None):
+            raise ValueError("CAMPAIGN_WEB_ORIGIN must be an HTTPS origin")
+        return value
     environment: Literal["development", "test", "production"] = "development"
 
     # Docker Compose overrides this with the `db` hostname.
@@ -34,6 +43,19 @@ class Settings(BaseSettings):
 
     # Comma-separated list of browser origins allowed to call the API (CORS).
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
+
+    # Email links open the web app here.
+    frontend_url: str = "http://localhost:5173"
+    email_verify_expire_hours: int = Field(default=48, gt=0)
+    password_reset_expire_minutes: int = Field(default=60, gt=0)
+
+    # Empty SMTP_HOST: emails are logged instead of sent (bodies only outside production).
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_starttls: bool = True
+    email_from: str = "BiletFlow <no-reply@biletflow.local>"
 
     @property
     def cors_origins_list(self) -> list[str]:

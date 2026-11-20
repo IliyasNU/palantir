@@ -25,8 +25,10 @@ class Order(Base):
     __table_args__ = (
         UniqueConstraint("buyer_id", "request_id", name="uq_orders_buyer_request"),
         CheckConstraint("status IN ('pending', 'paid', 'failed', 'cancelled', 'expired')", name="order_status_valid"),
-        CheckConstraint("subtotal_tiyn > 0 AND total_tiyn = subtotal_tiyn AND processing_fee_tiyn >= 0 "
-                        "AND processing_fee_tiyn <= subtotal_tiyn", name="order_money_valid"),
+        CheckConstraint("subtotal_tiyn > 0 AND discount_tiyn >= 0 AND total_tiyn >= 0 AND total_tiyn = subtotal_tiyn - discount_tiyn "
+                        "AND ((campaign_id IS NULL AND promo_code IS NULL AND discount_tiyn = 0) OR "
+                        "(campaign_id IS NOT NULL AND promo_code IS NOT NULL)) AND processing_fee_tiyn >= 0 "
+                        "AND processing_fee_tiyn <= total_tiyn", name="order_money_valid"),
         CheckConstraint("(status = 'paid') = (ticket_id IS NOT NULL)", name="order_ticket_paid"),
         Index("uq_orders_pending_buyer_event", "event_id", "buyer_id", unique=True,
               postgresql_where=text("status = 'pending'"), sqlite_where=text("status = 'pending'")),
@@ -40,6 +42,9 @@ class Order(Base):
     attendee_name: Mapped[str] = mapped_column(String(200))
     attendee_email: Mapped[str] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(20), default="pending")
+    campaign_id: Mapped[Optional[int]] = mapped_column(ForeignKey("campaigns.id"), index=True)
+    promo_code: Mapped[Optional[str]] = mapped_column(String(20))
+    discount_tiyn: Mapped[int] = mapped_column(Integer, server_default="0")
     subtotal_tiyn: Mapped[int] = mapped_column(Integer)
     processing_fee_tiyn: Mapped[int] = mapped_column(Integer)
     total_tiyn: Mapped[int] = mapped_column(Integer)

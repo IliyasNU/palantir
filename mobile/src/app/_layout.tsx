@@ -22,8 +22,10 @@ function Navigation() {
         contentStyle: { backgroundColor: '#f6f8fc' },
         headerRight: () => <LanguagePicker />,
       }}>
-        <Stack.Screen name="index" options={{ title: 'BiletFlow Staff' }} />
-        <Stack.Screen name="events" options={{ title: copy.eventsTitle, headerBackVisible: false }} />
+        <Stack.Screen name="index" options={{ title: 'BiletFlow' }} />
+        <Stack.Screen name="portal" options={{ title: 'BiletFlow', headerRight: () => null }} />
+        <Stack.Screen name="staff" options={{ title: 'BiletFlow Staff' }} />
+        <Stack.Screen name="events" options={{ title: copy.eventsTitle }} />
         <Stack.Screen name="scan" options={{ title: copy.scanTitle }} />
       </Stack>
     </>

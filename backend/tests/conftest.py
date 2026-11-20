@@ -27,6 +27,14 @@ from app.models import Role, User  # noqa: E402
 from tests.helpers import DEFAULT_PASSWORD, event_payload  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def inline_email_worker(monkeypatch):
+    """Deliver notification emails on the test thread: the in-memory database has one shared connection."""
+    from app import notifications
+
+    monkeypatch.setattr(notifications, "_submit", lambda fn, *args: fn(*args))
+
+
 @pytest.fixture()
 def engine():
     engine = create_engine(

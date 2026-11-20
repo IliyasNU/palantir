@@ -88,6 +88,21 @@ function TicketPdf({ id, request }: { id: number; request: typeof api.request })
       const file = await request<Blob>(`/tickets/${id}/pdf`, { blob: true });
       if (!mounted.current) return;
       if (file.type !== 'application/pdf' || file.size === 0) throw new ApiError((m) => m.tickets.badFile, { kind: 'response' });
+      // Native WebViews do not reliably download a browser-local blob URL.
+      const bridge = (window as Window & { ReactNativeWebView?: { postMessage: (data: string) => void } }).ReactNativeWebView;
+      if (typeof bridge?.postMessage === 'function') {
+        if (file.size > 2 * 1024 * 1024) throw new ApiError((m) => m.tickets.badFile, { kind: 'response' });
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Missing PDF'));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(file);
+        });
+        if (mounted.current) bridge.postMessage(JSON.stringify({
+          type: 'biletflow-ticket-pdf', ticketId: id, base64: dataUrl.slice(dataUrl.indexOf(',') + 1),
+        }));
+        return;
+      }
       const url = URL.createObjectURL(file);
       const link = document.createElement('a');
       link.href = url;

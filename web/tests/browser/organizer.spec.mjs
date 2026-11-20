@@ -20,6 +20,11 @@ const go = (page, path) => page.evaluate((target) => {
   history.pushState(null, '', target);
   dispatchEvent(new PopStateEvent('popstate'));
 }, path);
+const waitForStaff = async (page) => {
+  const staff = page.getByRole('region', { name: 'Сотрудники события' });
+  await expect(staff).toBeVisible();
+  await expect(staff).not.toContainText('Загружаем сотрудников…');
+};
 
 test('an organizer creates a draft, publishes it, edits it and cancels it at 375px', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });
@@ -38,6 +43,7 @@ test('an organizer creates a draft, publishes it, edits it and cancels it at 375
     current = { ...current, ...route.request().postDataJSON(), updated_at: '2030-01-02T00:00:00Z' };
     return route.fulfill({ json: current });
   });
+  await page.route(`${base}/events/9/staff`, (route) => route.fulfill({ json: [] }));
   for (const action of ['publish', 'cancel']) {
     await page.route(`${base}/events/9/${action}`, (route) => {
       expect(route.request().method()).toBe('POST');
@@ -69,6 +75,7 @@ test('an organizer creates a draft, publishes it, edits it and cancels it at 375
   await page.getByLabel('Вместимость', { exact: true }).fill('50');
   await page.getByRole('button', { name: 'Создать черновик' }).click();
   await expect(page).toHaveURL('/organizer/events/9/edit');
+  await waitForStaff(page);
   expect(calls).toEqual([['POST /events', { title: 'Вечер джаза', description: null, date: '2030-07-15T12:00:00.000Z', location: 'Orange Hall', capacity: 50 }]]);
   await expect(page.getByRole('status')).toHaveText('Черновик создан. Проверьте данные и опубликуйте событие.');
   const status = page.getByRole('region', { name: 'Статус и публикация' });
@@ -128,9 +135,11 @@ test('API refusals are shown by code and a missing event is not editable', async
     ? route.fulfill({ json: { ...draft, status: 'published', tickets_issued: 40, suspended: true } })
     : route.fulfill({ status: 409, json: { detail: { code: 'CAPACITY_BELOW_ISSUED', message: 'Capacity cannot be lower than the tickets already issued' } } })));
   await page.route(`${base}/events/404`, (route) => route.fulfill({ status: 404, json: { detail: { code: 'EVENT_NOT_FOUND', message: 'Event not found' } } }));
+  await page.route(`${base}/events/9/staff`, (route) => route.fulfill({ json: [] }));
   await login(page, 'organizer');
   await go(page, '/organizer/events/9/edit');
   await expect(page.getByRole('region', { name: 'Статус и публикация' })).toContainText('Событие заблокировано администратором и скрыто от посетителей.');
+  await waitForStaff(page);
   await page.getByLabel('Вместимость', { exact: true }).fill('10');
   await page.getByRole('button', { name: 'Сохранить изменения' }).click();
   await expect(page.getByRole('alert')).toHaveText('Вместимость нельзя сделать меньше числа уже выданных билетов.');
@@ -139,6 +148,79 @@ test('API refusals are shown by code and a missing event is not editable', async
   await expect(page.getByRole('status')).toHaveText('Такого события нет или оно вам недоступно.');
   await go(page, '/organizer/events/abc/edit');
   await expect(page.getByRole('status')).toHaveText('Такого события нет или оно вам недоступно.');
+});
+
+test('an organizer creates and updates its public profile', async ({ page }) => {
+  let profile = null;
+  await page.route(`${base}/organizer-profiles/me`, (route) => {
+    if (route.request().method() === 'GET') {
+      return profile ? route.fulfill({ json: profile })
+        : route.fulfill({ status: 404, json: { detail: { code: 'ORGANIZER_PROFILE_NOT_FOUND', message: 'Organizer profile not found' } } });
+    }
+    if (route.request().method() === 'PATCH') {
+      profile = { ...profile, ...route.request().postDataJSON(), updated_at: '2030-01-02T00:00:00Z' };
+      return route.fulfill({ json: profile });
+    }
+    return route.abort();
+  });
+  await page.route(`${base}/organizer-profiles`, (route) => {
+    expect(route.request().method()).toBe('POST');
+    profile = {
+      id: 4, user_id: 3, organization_name: 'NU Robotics',
+      description: 'Student club', contact_email: 'club@example.com',
+      contact_phone: '+7 701 123 45 67', website: 'https://example.com',
+      created_at: '2030-01-01T00:00:00Z', updated_at: '2030-01-01T00:00:00Z',
+      ...route.request().postDataJSON(),
+    };
+    return route.fulfill({ status: 201, json: profile });
+  });
+
+  await login(page, 'organizer', '/organizer/profile');
+  await expect(page).toHaveURL('/organizer/profile');
+  await page.getByLabel('Название организации', { exact: true }).fill('NU Robotics');
+  await page.getByLabel('Сайт', { exact: true }).fill('https://example.com');
+  await page.getByRole('button', { name: 'Создать профиль' }).click();
+  await expect(page.getByRole('status')).toHaveText('Профиль организатора создан.');
+
+  await page.getByLabel('Название организации', { exact: true }).fill('NU Robotics Club');
+  await page.getByRole('button', { name: 'Сохранить профиль' }).click();
+  await expect(page.getByRole('status')).toHaveText('Профиль сохранён.');
+  await expect(page.getByLabel('Название организации', { exact: true })).toHaveValue('NU Robotics Club');
+});
+
+test('an organizer assigns and removes event staff', async ({ page }) => {
+  let staff = [];
+  await page.route(`${base}/events/9`, (route) => route.fulfill({ json: draft }));
+  await page.route(`${base}/events/9/staff`, (route) => {
+    const method = route.request().method();
+    if (method === 'GET') return route.fulfill({ json: staff });
+    if (method === 'POST') {
+      expect(route.request().postDataJSON()).toEqual({ email: 'staff@example.com' });
+      staff = [{ user_id: 12, email: 'staff@example.com', full_name: 'Fixture staff',
+        created_at: '2030-01-01T00:00:00Z' }];
+      return route.fulfill({ status: 201, json: staff[0] });
+    }
+    return route.abort();
+  });
+
+  await login(page, 'organizer');
+  await go(page, '/organizer/events/9/edit');
+  await waitForStaff(page);
+  await expect(page.getByText('Сотрудники ещё не назначены.', { exact: true })).toBeVisible();
+
+  await page.getByLabel('Email сотрудника', { exact: true }).fill('staff@example.com');
+  await page.getByRole('button', { name: 'Назначить', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText('Сотрудник назначен.');
+  await expect(page.getByText('Fixture staff', { exact: true })).toBeVisible();
+
+  await page.route(`${base}/events/9/staff/12`, (route) => {
+    expect(route.request().method()).toBe('DELETE');
+    staff = [];
+    return route.fulfill({ status: 204, body: '' });
+  });
+  await page.getByRole('button', { name: 'Отозвать доступ', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText('Доступ сотрудника отозван.');
+  await expect(page.getByText('Сотрудники ещё не назначены.', { exact: true })).toBeVisible();
 });
 
 test('visitors and guests cannot open the cabinet; an admin can edit an event but has no cabinet', async ({ page }) => {
@@ -155,9 +237,11 @@ test('visitors and guests cannot open the cabinet; an admin can edit an event bu
   await expect(page.getByLabel('Название', { exact: true })).toHaveCount(0);
 
   await page.route(`${base}/events/9`, (route) => route.fulfill({ json: draft }));
+  await page.route(`${base}/events/9/staff`, (route) => route.fulfill({ json: [] }));
   await login(page, 'admin');
   await expect(page.getByRole('alert')).toContainText('У вас нет прав для доступа к кабинету организатора.');
   await go(page, '/organizer/events/9/edit');
+  await waitForStaff(page);
   await expect(page.getByLabel('Название', { exact: true })).toHaveValue('Вечер джаза');
   expect(requested).toEqual([]);
 });

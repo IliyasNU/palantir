@@ -7,6 +7,7 @@ export interface Order {
   status: keyof typeof statusLabels; attendee_name: string; attendee_email: string;
   subtotal_tiyn: number; processing_fee_tiyn: number; total_tiyn: number;
   ticket_id: number | null; expires_at: string; simulation: true;
+  discount_tiyn?: number; promo_code?: string | null; campaign_id?: number | null;
 }
 export interface Activation {
   event_id: number; activated: boolean; paid_sales_suspended: boolean; activation_fee_tiyn: number;
@@ -23,7 +24,10 @@ export function readOrder(value: unknown): Order {
   if (!record(value) || !integer(value.id, 1) || !integer(value.event_id, 1) || !integer(value.ticket_type_id, 1)
     || !integer(value.buyer_id, 1) || typeof value.status !== 'string' || !Object.hasOwn(statusLabels, value.status)
     || typeof value.attendee_name !== 'string' || typeof value.attendee_email !== 'string'
-    || !integer(value.subtotal_tiyn, 1) || !integer(value.total_tiyn, 1) || value.total_tiyn !== value.subtotal_tiyn
+    || !integer(value.subtotal_tiyn, 1) || !integer(value.total_tiyn) || !integer(value.discount_tiyn ?? 0)
+    || value.total_tiyn !== value.subtotal_tiyn - Number(value.discount_tiyn ?? 0)
+    || (value.campaign_id != null ? !integer(value.campaign_id, 1) || typeof value.promo_code !== 'string' || !/^BF-[A-F0-9]{12}$/.test(value.promo_code)
+      : value.promo_code != null || Number(value.discount_tiyn ?? 0) !== 0)
     || !integer(value.processing_fee_tiyn) || value.processing_fee_tiyn > value.total_tiyn
     || (value.ticket_id !== null && !integer(value.ticket_id, 1))
     || ((value.status === 'paid') !== (value.ticket_id !== null)) || value.simulation !== true
@@ -46,6 +50,9 @@ export function readActivation(value: unknown): Activation {
 export function orderError(error: unknown): string {
   if (error instanceof ApiError) {
     const messages: Record<string, string> = {
+      PROMO_NOT_FOUND: 'Промокод не найден для этого события.', PROMO_EXPIRED: 'Срок действия промокода истёк.',
+      PROMO_DISABLED: 'Кампания выключена.', PROMO_EXHAUSTED: 'Лимит использований промокода исчерпан.',
+      PROMO_NOT_STARTED: 'Акция ещё не началась.', PROMO_NOT_APPLICABLE: 'Промокод не подходит для этого типа билета.',
       CLOSED_TICKET_EXISTS: 'У вас уже был билет на это событие. Повторная покупка после отмены пока недоступна.',
       ACTIVE_TICKET_EXISTS: 'У вас уже есть билет на это событие.',
       PENDING_ORDER_EXISTS: 'У вас есть незавершённый заказ. Откройте «Мои заказы».',

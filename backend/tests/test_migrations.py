@@ -257,3 +257,26 @@ def test_0010_adds_support_cases_to_existing_data_and_refuses_to_drop_them(tmp_p
     command.downgrade(config, "-1")
     assert not ({"support_cases", "support_messages"} & set(inspect(engine).get_table_names()))
     engine.dispose()
+
+
+def test_existing_users_start_unverified_with_valid_tokens_and_downgrade_to_0006(tmp_path):
+    url = f"sqlite:///{tmp_path / 'migration_0007.db'}"
+    config = alembic_config(url)
+    engine = create_engine(url)
+    command.upgrade(config, "0006")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users (email, full_name, hashed_password, role_id) "
+                "SELECT 'old@example.com', 'Old', 'x', id FROM roles WHERE name = 'attendee'"
+            )
+        )
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        row = connection.execute(text("SELECT email_verified_at, token_version FROM users")).one()
+    assert tuple(row) == (None, 0)  # tokens issued before 0007 carry no `ver`, which counts as 0
+
+    command.downgrade(config, "0006")
+    assert "revoked_tokens" not in inspect(engine).get_table_names()
+    assert "token_version" not in {column["name"] for column in inspect(engine).get_columns("users")}
+    engine.dispose()
