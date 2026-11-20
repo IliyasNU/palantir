@@ -69,7 +69,8 @@ test('editing price preserves a sales window with sub-minute precision', () => {
 
 test('only the exact ticket-type management route is allowed after login', () => {
   assert.equal(safeReturnTo('/organizer/events/42/ticket-types'), '/organizer/events/42/ticket-types');
-  for (const path of ['/organizer/events/0/ticket-types', '/organizer/events/01/ticket-types', '/organizer/events/42/orders',
+  assert.equal(safeReturnTo('/organizer/events/42/orders'), '/organizer/events/42/orders');
+  for (const path of ['/organizer/events/0/ticket-types', '/organizer/events/01/ticket-types', '/organizer/events/0/orders',
     '/organizer/events/42/ticket-types?returnTo=//evil.test', '//organizer/events/42/ticket-types']) assert.equal(safeReturnTo(path), '/events');
   assert.match(ticketTypeError(new ApiError('server', { kind: 'http', status: 409, code: 'TICKET_TYPES_CAPACITY' })), /вместимость/);
 });

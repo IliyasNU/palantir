@@ -28,6 +28,27 @@ docker compose exec backend python -m scripts.create_admin --email admin@example
 docker compose exec db psql -U palantir -d palantir -c "\dt"
 ```
 
+### Seed a local demo
+
+Run after the migrations on a disposable development database:
+
+```bash
+docker compose exec backend python -m scripts.seed_demo
+# Or from backend/ with your own development DATABASE_URL:
+python -m scripts.seed_demo
+```
+
+Save the randomly generated passwords from the first run. It prints logins for an admin, two
+organizers, the staff member assigned to **Demo | Active check-in**, and three attendees. A
+second run leaves the rows, dates and passwords as they are. The command refuses to run with
+`ENVIRONMENT=production` and stops if a demo email already belongs to an existing account.
+
+**Demo | Upcoming checkout** has free and paid ticket types, two completed demo payments, a
+promo campaign and an attendee support thread. **Demo | Active check-in** has an admitted
+ticket (attendee A), an unused ticket (attendee B) and a ticket marked refunded (attendee C)
+for scanner demos. The refunded admission carries no financial transaction. The organizers
+also have past, draft, cancelled and suspended events to explore.
+
 ## Run tests locally (no Docker, no PostgreSQL needed)
 
 Tests use an in-memory SQLite database. Python 3.11+ recommended.
@@ -295,7 +316,7 @@ Downgrade refuses if any orders, activation rows or profile confirmations would 
 | `POST /orders/{id}/pay` | Buyer only | `{outcome: "success" or "failure"}`; first terminal result wins |
 | `POST /orders/{id}/cancel` | Buyer only | Release a pending order once; terminal states are returned unchanged |
 | `GET /orders/me`, `GET /orders/{id}` | Buyer only | Own orders, including terminal orders; another buyer's order is 404 even to admins |
-| `GET /events/{id}/orders/summary` | Owner/admin | Demo gross sales, fees, refunds (0 until P5), estimated payout |
+| `GET /events/{id}/orders/summary` | Owner/admin | Demo gross sales, fees, refunds, estimated payout |
 
 `EventRead.paid_sales_available` exposes only whether public paid checkout is available, not
 the organizer's private checklist. Activation requires a paid type, confirmed profile identity,
@@ -353,9 +374,8 @@ or sweep, not at a timer interrupt. Clients must not infer valid payment from th
 
 Attendee name/email are order contact snapshots. Ownership, PDF holder identity and check-in
 continue to use the authenticated account. P2 does not introduce transferable tickets.
-Existing ticket cancellation/refund routes still change admission state only; financial refunds
-and adjustments to order totals belong to P5. The P2 sales summary reports refunds as zero.
-Ticket delivery email belongs to B4 and should hook after a new paid ticket commits, once only.
+Paid-order emails are queued on payment and sent after commit. See **Order refunds (P5)** for
+refund accounting and the organizer's order management routes.
 
 Run `pytest -q tests` and, separately, the full `pytest -q e2e` against a disposable PostgreSQL 16
 ICU `und`, UTF8 instance. The P2 e2e tests cover buyer/free/paid races, payment vs expiry and
@@ -379,6 +399,56 @@ locally. P2 browser flows use HTTP fixtures; PostgreSQL e2e uses the real API, i
 PDF and check-in. Physical phone/printing and the actual demo database remain unverified.
 One earlier browser run timed out during login in the existing PDF refusal test; it passed in
 the final full run without a test change. These checks are agent verification, not a teammate review.
+
+## Organizer analytics (P6)
+
+`GET /events/{id}/analytics` returns an organizer's event report. Administrators can read any
+event. Other accounts receive `404 EVENT_NOT_FOUND`. Optional `date_from` and `date_to` are
+inclusive UTC calendar dates. Optional `ticket_type_id` must belong to the event.
+Reversed dates return `422 INVALID_DATE_RANGE`.
+
+The period groups settled orders by payment timestamp and free registrations by ticket issue
+timestamp. The financial figures use original order amounts. Gross before discount minus
+discounts equals charges. Net revenue is charges minus refunds. Estimated payout also subtracts
+fees on payments kept. Refunds are attributed to the original sale day so each row reconciles.
+The P2 summary retains its charged gross field and additionally exposes gross before discount,
+discounts and net revenue.
+
+Sold counts active paid tickets and active free registrations. Attendance counts active check-ins
+on those tickets. Absent is sold minus checked in. Campaign redemptions count orders still paid,
+attributed tickets count active tickets, and attributed revenue reflects discounts and refunds.
+Current availability uses active tickets plus unexpired holds across all dates. The selected ticket
+type narrows both capacity and availability when supplied.
+
+Analytics makes read-only aggregate queries, without locking inventory or making schema changes.
+
+## Order refunds (P5)
+
+Event create and update accept an optional `refund_policy` (plain text, up to 2000 characters).
+Public event responses include the policy. A blank value clears it. It describes the organizer's
+terms. The API authorizes refund actions by event ownership and ticket state.
+
+| Route | Result |
+| --- | --- |
+| `GET /events/{id}/orders/manage` | Orders and free registrations for the event. |
+| `POST /tickets/{id}/cancel` | Cancels a free registration and releases its seat. |
+| `POST /events/{id}/orders/{order_id}/refund` | Full simulated refund of the amount paid, including any campaign discount. Retries return the existing refund. |
+| `POST /events/{id}/orders/refund-all` | Refunds all remaining paid orders after event cancellation. Returns `refunded_count` and `refunds_tiyn` for this call. |
+
+Owners and admins can manage event orders. A suspended event refuses changes with
+`EVENT_SUSPENDED`. The legacy ticket close routes refuse a paid ticket with
+`PAID_ORDER_REQUIRES_REFUND` so admission and order accounting stay in sync. A checked-in
+ticket must be undone first (`TICKET_CHECKED_IN`). A bulk refund rolls back all changes if
+any ticket still has an active check-in. New scans of refunded tickets at published events
+return `TICKET_REFUNDED`. Cancelled events retain their event-wide `EVENT_CANCELLED` response.
+
+The event lock precedes ticket locks. The refund keeps the historical ticket ID and payment
+amounts, sets `refunded_at`, records the action and queues `REFUND_COMPLETED` in the same
+transaction. The notification's email is handled by the existing post-commit worker.
+The summary totals original charges on paid and refunded orders, subtracts actual refunds and
+charges processing fees only on orders that remain paid. All amounts are integer tiyn.
+
+Migration `0011` follows `0010`. Its downgrade refuses to discard existing refunds or policies.
 
 ## Support cases (SRS 4.13)
 

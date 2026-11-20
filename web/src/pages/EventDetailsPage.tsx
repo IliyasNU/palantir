@@ -4,6 +4,7 @@ import { caseSourcePath } from '../support/model';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { isCampaignToken } from '../campaigns/model';
 import { usePromoQuote } from '../campaigns/usePromoQuote';
+import { orderError } from '../orders/model';
 import { api, ApiError, getErrorMessage } from '../api';
 import { Page } from '../components/Page';
 import { useAuth } from '../auth/AuthProvider';
@@ -88,6 +89,8 @@ function EventContent({ id, request, guest }: { id: string | undefined; request:
           {event.status === 'draft' && <div className="notice" role="status">{t.event.draft}</div>}
           <h2>{t.event.about}</h2>
           <p className="event-description">{event.description?.trim() ? event.description : t.event.noDescription}</p>
+          <h2>{t.orders.policy}</h2>
+          <p className="event-description">{event.refund_policy || t.orders.noPolicy}</p>
           <dl className="event-facts">
             <dt>{t.catalog.when}</dt>
             <dd><time dateTime={event.date}>{formatEventDate(event.date)}</time><span className="field-hint">{t.event.localTime}</span></dd>
@@ -109,13 +112,14 @@ function EventContent({ id, request, guest }: { id: string | undefined; request:
             })}</ul> : <p>{t.event.noTypes}</p>}
           </section>}
           {/* Do not hide/disable this slot when full: an existing ticket may still be opened. */}
-          {token && <p role={promo?.error ? 'alert' : 'status'}>{promo?.error ?? (promo?.quote
-            ? 'Промокод ' + promo.quote.code + ' · выберите платный билет, чтобы увидеть скидку.'
-            : 'Проверяем промокод…')}</p>}
+          {token && <p role={promo && 'error' in promo ? 'alert' : 'status'}>{promo && 'error' in promo
+            ? orderError(promo.error) : promo?.quote
+              ? t.orders.checkout.eventPromo(promo.quote.code) : t.orders.checkout.checkingPromo}</p>}
           <EventActions event={event} remainingSeats={available} returnTo={returnTo} campaignToken={isCampaignToken(token) ? token : undefined} />
           <p><Link className="text-link" to={caseSourcePath('event', event.id)}>{t.support.contact}</Link></p>
           {user && (user.role === 'admin' || user.id === event.organizer_id) && <p>
             <Link className="text-link" to={`/organizer/events/${event.id}/ticket-types`}>{t.event.manageTypes}</Link>
+            {' · '}<Link className="text-link" to={`/organizer/events/${event.id}/analytics`}>{t.analytics.title}</Link>
           </p>}
         </article>
       )}

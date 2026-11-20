@@ -50,17 +50,15 @@ SRS 4.4 gap. Order contact snapshots do not change account ownership or the exis
 
 Creation is idempotent on `(buyer_id, request_id)` with a payload-match check. A partial unique
 index also permits at most one pending order per buyer/event. Confirmation is idempotent on
-the order ID: the first terminal outcome wins. Paid orders have a unique ticket FK and a CHECK
-constraint requires exactly paid orders to have a ticket. APIs never create tickets for pending,
-failed, cancelled or expired orders. Financial refunds are outside P2; existing admission-only
-ticket cancellation/refund routes do not rewrite the order or pretend that money was returned.
+the order ID: the first terminal outcome wins. A unique ticket FK is required for paid and refunded
+orders. Pending, failed, cancelled and expired orders have no ticket.
 
 Fees are coded demo defaults, not new platform settings: activation 500000 tiyn, processing
 300 bps deducted from organizer proceeds. Round half up with `(amount * bps + 5000) // 10000`.
 The buyer's total equals the ticket price. Orders retain the applied rate and rounded fee.
-The summary reports gross paid totals, fees, zero refunds and gross minus fees as estimated payout.
+The summary reports original charges, simulated refunds, fees on payments kept, and the estimated payout.
 
-### Campaign attribution (P3) and delivery or refund extensions
+### Campaign attribution and simulated refunds
 
 A campaign belongs to one event. The server issues a shareable opaque link and a separate human-readable code.
 The QR opens the event. Public preview resolves the token and then calculates a quote for the selected ticket type.
@@ -72,10 +70,10 @@ Attribution survives failed and expired attempts. A campaign's order count inclu
 orders. Paid orders supply redemptions, ticket count, gross value, discounts, net sales and organizer proceeds
 after the processing fee. Reports read order rows so a retried confirmation has no second financial effect.
 
-P5 can extend the order lifecycle for financial refunds and
-connect existing admission-state transitions under the same event lock, recording refund
-amounts and adjusting the organizer summary. B4 may send
-a delivery message after a newly paid order commits, with its own deduplication keyed by order ID.
+A full refund takes the same event lock as checkout, followed by the ticket lock used by check-in.
+It preserves the original order and ticket association, releases the seat once and writes the
+audit entries and notification before commit. Check-in and refund cannot both succeed for the
+same ticket. A cancelled event's bulk action commits all its remaining paid refunds together.
 
 Verification covers unit denials/checklists/rounding/ownership, real PostgreSQL races and
 counter-to-row reconciliation, populated migration and downgrade guards, and browser fixtures

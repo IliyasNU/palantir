@@ -5,9 +5,9 @@ const api = 'http://localhost:8000';
 const time = '2030-01-01T00:00:00Z';
 const roleIds = { attendee: 4, organizer: 7, admin: 9, staff: 10 };
 const event = { id: 42, title: eventDetails.title, status: 'published' };
-const order = { id: 81, event_id: 42, ticket_type_id: 1, buyer_id: 4, status: 'paid', attendee_name: 'Fixture attendee',
+const order = { id: 81, event_id: 42, ticket_type_id: 1, buyer_id: 4, status: 'refunded', attendee_name: 'Fixture attendee',
   attendee_email: 'attendee@example.com', subtotal_tiyn: 10050, processing_fee_tiyn: 302, total_tiyn: 10050,
-  ticket_id: 21, expires_at: time, simulation: true };
+  ticket_id: 21, expires_at: time, refunded_at: time, simulation: true };
 const ticket = { id: 21, event_id: 42, attendee_id: 4, qr_payload: 'fixture-qr', created_at: time, checked_in_at: null,
   event: { ...event, date: eventDetails.date, location: eventDetails.location } };
 const contact = 'Обратиться в поддержку';
@@ -52,7 +52,7 @@ async function fillCase(page, category, subject, message) {
 for (const [type, id, path] of [['event', 42, '/events/42'], ['order', 81, '/orders/81'], ['ticket', 21, '/tickets/21']]) {
   test(`attendee raises a case from the ${type} and sends only that source ID`, async ({ page }) => {
     const detail = caseFixture({ context: {
-      event, order: type === 'event' ? null : { id: 81, total_tiyn: 10050, status: 'paid' },
+      event, order: type === 'event' ? null : { id: 81, total_tiyn: 10050, status: order.status },
       ticket: type === 'ticket' ? { id: 21, status: 'active' } : null,
     } });
     for (const [endpoint, json] of [['/events/42', eventDetails], ['/orders/81', order], ['/tickets/21', ticket], ['/tickets/me', []]]) {
@@ -83,6 +83,10 @@ for (const [type, id, path] of [['event', 42, '/events/42'], ['order', 81, '/ord
       await signIn(page, source, 'attendee', true);
     } else {
       await signIn(page, path, 'attendee');
+      if (type === 'order') {
+        await expect(page.getByRole('status')).toContainText('Билет больше не действует.');
+        await expect(page.getByRole('link', { name: 'Открыть билет' })).toHaveCount(0);
+      }
       await page.getByRole('link', { name: contact, exact: true }).click();
       await expect(page).toHaveURL(source);
     }

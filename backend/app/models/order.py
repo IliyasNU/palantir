@@ -1,4 +1,4 @@
-"""Demo orders reserve inventory; only paid orders have a ticket."""
+"""Demo orders reserve inventory; paid and refunded orders keep their issued ticket."""
 from datetime import datetime
 from typing import Optional
 
@@ -24,12 +24,16 @@ class Order(Base):
     __tablename__ = "orders"
     __table_args__ = (
         UniqueConstraint("buyer_id", "request_id", name="uq_orders_buyer_request"),
-        CheckConstraint("status IN ('pending', 'paid', 'failed', 'cancelled', 'expired')", name="order_status_valid"),
+        CheckConstraint(
+            "status IN ('pending', 'paid', 'failed', 'cancelled', 'expired', 'refunded')",
+            name="order_status_valid",
+        ),
         CheckConstraint("subtotal_tiyn > 0 AND discount_tiyn >= 0 AND total_tiyn >= 0 AND total_tiyn = subtotal_tiyn - discount_tiyn "
                         "AND ((campaign_id IS NULL AND promo_code IS NULL AND discount_tiyn = 0) OR "
                         "(campaign_id IS NOT NULL AND promo_code IS NOT NULL)) AND processing_fee_tiyn >= 0 "
                         "AND processing_fee_tiyn <= total_tiyn", name="order_money_valid"),
-        CheckConstraint("(status = 'paid') = (ticket_id IS NOT NULL)", name="order_ticket_paid"),
+        CheckConstraint("(status IN ('paid', 'refunded')) = (ticket_id IS NOT NULL)", name="order_ticket_paid"),
+        CheckConstraint("(status = 'refunded') = (refunded_at IS NOT NULL)", name="order_refund_recorded"),
         Index("uq_orders_pending_buyer_event", "event_id", "buyer_id", unique=True,
               postgresql_where=text("status = 'pending'"), sqlite_where=text("status = 'pending'")),
     )
@@ -53,3 +57,4 @@ class Order(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    refunded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

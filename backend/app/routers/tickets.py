@@ -1,7 +1,7 @@
-"""Free tickets: claim one per event, list and view your own, cancel or mark refunded.
+"""Tickets: claim a free ticket, list and view your own, or close a free ticket.
 
 ``cancelled`` and ``refunded`` are admission states of one ticket: such a ticket can never be checked in.
-Tickets are free, so no payment exists here; marking a ticket refunded records the state only and moves no money.
+Paid tickets are closed through the corresponding order refund.
 """
 import secrets
 from typing import Optional
@@ -20,9 +20,11 @@ from app.dependencies.events import can_manage, ensure_not_suspended, get_event_
 from app.dependencies.roles import is_admin
 from app.errors import api_error
 from app.models import Event, EventStatus, Ticket, TicketStatus, TicketType, User
+from app.models.order import Order
 from app.schemas.ticket import TicketRead
 from app.schemas.ticket_type import TicketClaimRequest
 from app.ticket_pdf import build_ticket_pdf
+from app.ticket_lifecycle import TICKET_STATE_ERRORS, close_ticket, lock_ticket
 from app.ticket_types import select_claim_type
 from app.ticket_types import lock_event
 from app.order_inventory import ensure_no_pending_order, expire_event_orders
@@ -30,12 +32,6 @@ from app.order_inventory import ensure_no_pending_order, expire_event_orders
 router = APIRouter(tags=["tickets"])
 
 QR_PAYLOAD_PREFIX = "biletflow:ticket:v1:"
-
-
-_STATE_CODES = {
-    TicketStatus.CANCELLED.value: ("TICKET_CANCELLED", "Ticket was cancelled"),
-    TicketStatus.REFUNDED.value: ("TICKET_REFUNDED", "Ticket was refunded"),
-}
 
 
 def new_qr_payload() -> str:
@@ -177,7 +173,7 @@ def get_ticket_pdf(ticket_id: int, db: DbSession, current_user: CurrentUser):
     """The printable ticket with the same QR as the screen. Only a ticket that can still admit is printed."""
     ticket = _readable_ticket(db, ticket_id, current_user)
     if ticket.status != TicketStatus.ACTIVE.value:
-        raise api_error(status.HTTP_409_CONFLICT, *_STATE_CODES[ticket.status])
+        raise api_error(status.HTTP_409_CONFLICT, *TICKET_STATE_ERRORS[ticket.status])
     if ticket.event.status == EventStatus.CANCELLED.value:
         raise api_error(status.HTTP_409_CONFLICT, "EVENT_CANCELLED", "Event is cancelled")
     attendee = db.get(User, ticket.attendee_id)
@@ -204,44 +200,12 @@ def _close_ticket(db: Session, ticket_id: int, user: User, target: TicketStatus,
             status.HTTP_403_FORBIDDEN, "FORBIDDEN", "Only the event organizer or an admin can mark a ticket refunded"
         )
 
-    # Same lock order as check-in: the event row, then the ticket row. The exclusive event lock waits for
-    # scans in flight, and the ticket lock makes a parallel scan of this ticket see the result.
-    db.execute(select(Event.id).where(Event.id == ticket.event_id).with_for_update())
-    ticket = db.scalar(
-        select(Ticket).where(Ticket.id == ticket_id).with_for_update(of=Ticket)
-        .execution_options(populate_existing=True)
-    )
-    if ticket.status == target.value:
-        db.rollback()
-        return db.get(Ticket, ticket_id)
-    if ticket.status != TicketStatus.ACTIVE.value:
-        db.rollback()
-        raise api_error(status.HTTP_409_CONFLICT, *_STATE_CODES[ticket.status])
-    if ticket.check_in is not None:
-        db.rollback()
-        raise api_error(
-            status.HTTP_409_CONFLICT, "TICKET_CHECKED_IN", "The ticket is checked in; undo the check-in first"
-        )
-
-    ticket.status = target.value
-    ticket.status_changed_at = utcnow()
-    ticket.status_changed_by_id = user.id
-    db.execute(
-        update(Event)
-        .where(Event.id == ticket.event_id)
-        .values(tickets_issued=Event.tickets_issued - 1)
-        .execution_options(synchronize_session=False)
-    )
-    db.execute(
-        update(TicketType).where(TicketType.id == ticket.ticket_type_id)
-        .values(tickets_issued=TicketType.tickets_issued - 1)
-        .execution_options(synchronize_session=False)
-    )
-    record_action(
-        db, event_id=ticket.event_id, actor_id=user.id, action=f"ticket.{target.value}", entity_type="ticket",
-        entity_id=ticket.id,
-        description=f"Ticket {target.value} by {'event management' if manager else 'its attendee'}",
-    )
+    event = lock_event(db, ticket.event_id)
+    ensure_not_suspended(event)
+    ticket = lock_ticket(db, ticket_id)
+    if db.scalar(select(Order.id).where(Order.ticket_id == ticket_id)) is not None:
+        raise api_error(409, "PAID_ORDER_REQUIRES_REFUND", "Refund the paid order to close its ticket")
+    close_ticket(db, ticket, user.id, target, manager=manager)
     db.commit()
     db.expire_all()  # the event counter changed outside the ORM
     return db.get(Ticket, ticket_id)
@@ -255,5 +219,5 @@ def cancel_ticket(ticket_id: int, db: DbSession, current_user: CurrentUser):
 
 @router.post("/tickets/{ticket_id}/refund", response_model=TicketRead)
 def refund_ticket(ticket_id: int, db: DbSession, current_user: CurrentUser):
-    """Mark a ticket refunded (the event's organizer or an admin). Records the admission state; moves no money."""
+    """Invalidate a free ticket through the legacy ticket refund endpoint (organizer or admin)."""
     return _close_ticket(db, ticket_id, current_user, TicketStatus.REFUNDED, owner_allowed=False)

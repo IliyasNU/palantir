@@ -52,5 +52,25 @@ class OrderRead(BaseModel):
     created_at: UTCDateTime
     expires_at: UTCDateTime
     completed_at: Optional[UTCDateTime]
+    refunded_at: Optional[UTCDateTime]
     simulation: bool = True
     demo_notice: str = DEMO_NOTICE
+
+
+class FreeRegistrationRead(BaseModel):
+    id: int
+    attendee_name: str
+    attendee_email: str
+    status: str
+    ticket_type_id: int
+    checked_in_at: Optional[UTCDateTime]
+
+
+class EventOrdersRead(BaseModel):
+    orders: list[OrderRead]
+    free_registrations: list[FreeRegistrationRead]
+
+
+class BulkRefundRead(BaseModel):
+    refunded_count: int
+    refunds_tiyn: int

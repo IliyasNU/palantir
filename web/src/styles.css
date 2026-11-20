@@ -181,6 +181,26 @@ html:has(.qr-fullscreen[open]) { overflow: hidden; }
 .type-audit li { margin-block: 14px; }
 .type-audit li p { margin-block: 4px; }
 
+.analytics-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 145px), 1fr));
+  gap: 12px;
+  align-items: end;
+}
+.analytics-filters label { min-width: 0; }
+.analytics-filters input, .analytics-filters select { display: block; width: 100%; min-width: 0; margin-top: 4px; }
+.analytics-filters select { min-height: 46px; padding: 10px 12px; border: 1px solid #839885; border-radius: 8px; font: inherit; }
+.analytics-filters [role="alert"] { grid-column: 1 / -1; }
+.analytics-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 125px), 1fr));
+  gap: 16px 24px;
+}
+.analytics-metrics dt { color: #536153; }
+.analytics-metrics dd { margin: 4px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+.analytics-chart { display: block; width: 100%; max-width: 480px; height: auto; margin: 12px 0; fill: #254e38; }
+.analytics-chart + .table-scroll { margin-top: 16px; }
+
 @media (max-width: 640px) {
   .container { width: calc(100% - 36px); }
   .header-content { align-items: flex-start; flex-direction: column; gap: 18px; padding-block: 20px; }

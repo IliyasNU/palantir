@@ -100,6 +100,7 @@ export function ticketErrorMessage(error: unknown): string {
       case 'TICKET_CANCELLED': return current().tickets.cancelledError;
       case 'TICKET_REFUNDED': return current().tickets.refundedError;
       case 'TICKET_CHECKED_IN': return current().tickets.checkedIn;
+      case 'PAID_ORDER_REQUIRES_REFUND': return current().orders.errors.PAID_ORDER_REQUIRES_REFUND;
       case 'PENDING_ORDER_EXISTS': return 'У вас есть незавершённый платный заказ. Откройте «Мои заказы» и завершите или отмените его.';
     }
     if (error.code?.startsWith('TICKET_TYPE_') || error.code === 'PAID_TICKETS_NOT_SUPPORTED') return ticketTypeError(error);

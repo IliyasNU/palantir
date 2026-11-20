@@ -30,7 +30,7 @@ export function OrganizerGate({ allowed, returnTo }: { allowed: boolean; returnT
 }
 
 export function OrganizerPage() {
-  const { organizer: text, support } = useT();
+  const { organizer: text, support, orders, analytics } = useT();
   const history = historyCopy[useLocale()];
   const { user, request } = useAuth();
   const allowed = canOrganize(user);
@@ -101,6 +101,8 @@ export function OrganizerPage() {
                           <Link className="text-link" to={`/organizer/events/${event.id}/ticket-types`} aria-label={`${text.list.ticketTypes}: ${event.title}`}>{text.list.ticketTypes}</Link>
                           <Link className="text-link" to={`/events/${event.id}`} aria-label={`${text.list.open}: ${event.title}`}>{text.list.open}</Link>
                         </>}
+                      <Link className="text-link" to={`/organizer/events/${event.id}/orders`} aria-label={`${orders.manage.title}: ${event.title}`}>{orders.manage.title}</Link>
+                      <Link className="text-link" to={`/organizer/events/${event.id}/analytics`} aria-label={`${analytics.title}: ${event.title}`}>{analytics.title}</Link>
                     </p>
                   </li>
                 ))}

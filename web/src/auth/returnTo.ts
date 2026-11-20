@@ -7,7 +7,7 @@ export function safeReturnTo(value: unknown): string {
   if (/^\/events\/[1-9]\d*\/checkout\?type=[1-9]\d*(?:&campaign=pc_[0-9a-f]{32})?$/.test(value)) return value;
   if (/^\/organizer\/?$/.test(value)) return value;
   if (/^\/organizer\/profile\/?$/.test(value)) return value;
-  if (/^\/organizer\/events\/(?:new|[1-9]\d*\/(?:ticket-types|activation|campaigns|edit|history|support))\/?$/.test(value)) return value;
+  if (/^\/organizer\/events\/(?:new|[1-9]\d*\/(?:ticket-types|activation|campaigns|orders|analytics|edit|history|support))\/?$/.test(value)) return value;
   if (/^\/(?:support(?:\/cases\/[1-9]\d*)?|admin\/support)\/?$/.test(value)) return value;
   if (value === '/support/new?kind=organizer') return value;
   const supportSource = value.match(/^\/support\/new\?(?:event|order|ticket)=([1-9]\d*)$/);
