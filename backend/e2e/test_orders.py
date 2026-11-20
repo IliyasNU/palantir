@@ -88,7 +88,7 @@ def test_payment_races_expiry_and_repeats(api, paid_shop, sql, db_engine, expire
     oid = result.json()["id"]
     if expired:
         with db_engine.begin() as db:
-            db.execute(text("UPDATE orders SET expires_at=now()-interval '1 second' WHERE id=:id"), {"id": oid})
+            db.execute(text("UPDATE orders SET expires_at=created_at-interval '1 minute' WHERE id=:id"), {"id": oid})
     responses = run_concurrently([
         lambda c: c.post(f"/orders/{oid}/pay", headers=s["buyer"].headers, json={"outcome": "success"}),
         lambda c: c.get(f"/orders/{oid}", headers=s["buyer"].headers),
@@ -154,7 +154,7 @@ def test_expiry_command_releases_once(api, paid_shop, db_engine, sql):
     s = paid_shop
     oid = api.post(f"/events/{s['eid']}/orders", headers=s["buyer"].headers, json=s["body"]()).json()["id"]
     with db_engine.begin() as db:
-        db.execute(text("UPDATE orders SET expires_at=now()-interval '1 second' WHERE id=:id"), {"id": oid})
+        db.execute(text("UPDATE orders SET expires_at=created_at-interval '1 minute' WHERE id=:id"), {"id": oid})
     main()
     main()
     assert sql("SELECT status FROM orders WHERE id=:id", id=oid) == "expired"
@@ -183,7 +183,7 @@ def test_confirmation_waiting_for_event_lock_rechecks_expiry(api, paid_shop, db_
                 time.sleep(.02)
             else:
                 pytest.fail("Both confirmations must wait for the held event lock")
-            holder.execute(text("UPDATE orders SET expires_at=now()-interval '1 second' WHERE id=:id"), {"id": oid})
+            holder.execute(text("UPDATE orders SET expires_at=created_at-interval '1 minute' WHERE id=:id"), {"id": oid})
         results = [first.result(), second.result()]
     assert all(r.status_code == 409 and r.json()["detail"]["code"] == "ORDER_EXPIRED" for r in results)
     assert sql("SELECT count(*) FROM tickets WHERE event_id=:id", id=s["eid"]) == 0
