@@ -248,13 +248,13 @@ def test_0010_adds_support_cases_to_existing_data_and_refuses_to_drop_them(tmp_p
     with pytest.raises(Exception, match="attendee_case_has_event|CHECK"), engine.begin() as connection:
         connection.execute(text(SUPPORT_CASE.format(kind="attendee", event_id="NULL")))
 
-    # One step down, so the test keeps working when 0010 is re-pointed after 0009.
+    # Downgrade through later revisions to exercise the support migration's own guard.
     with pytest.raises(RuntimeError, match="Cannot downgrade below 0010"):
-        command.downgrade(config, "-1")
+        command.downgrade(config, "0009")
     with engine.begin() as connection:
         connection.execute(text("DELETE FROM support_messages"))
         connection.execute(text("DELETE FROM support_cases"))
-    command.downgrade(config, "-1")
+    command.downgrade(config, "0009")
     assert not ({"support_cases", "support_messages"} & set(inspect(engine).get_table_names()))
     engine.dispose()
 

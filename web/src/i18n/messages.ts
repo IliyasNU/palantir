@@ -2,7 +2,10 @@
  * Every text of the web interface in Russian, Kazakh and English. Russian is the source: the other
  * languages must define exactly the same keys, which the Messages type enforces at compile time.
  */
+import { orderEn, orderKk, orderRu } from './order-messages.ts';
+
 const ru = {
+  orders: orderRu,
   common: {
     skip: 'Перейти к содержимому',
     brandLabel: 'BiletFlow — события',
@@ -447,6 +450,7 @@ type Widen<T> = T extends string ? string
 export type Messages = Widen<typeof ru>;
 
 const kk: Messages = {
+  orders: orderKk,
   common: {
     skip: 'Мазмұнға өту', brandLabel: 'BiletFlow — іс-шаралар', navLabel: 'Негізгі навигация', events: 'Іс-шаралар', myTickets: 'Менің билеттерім', myOrders: 'Менің тапсырыстарым',
     logout: 'Шығу', login: 'Кіру', register: 'Тіркелу',
@@ -638,6 +642,7 @@ const kk: Messages = {
 };
 
 const en: Messages = {
+  orders: orderEn,
   common: {
     skip: 'Skip to content', brandLabel: 'BiletFlow — events', navLabel: 'Main navigation', events: 'Events', myTickets: 'My tickets', myOrders: 'My orders',
     logout: 'Sign out', login: 'Sign in', register: 'Sign up',

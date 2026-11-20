@@ -1,9 +1,10 @@
-"""Simulated checkout. Lock order: event, orders; issuance and payment commit together."""
+"""Simulated checkout and refunds. Lock the event before reading mutable order or ticket state."""
 from datetime import timedelta
 
 from fastapi import APIRouter, HTTPException, Response
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app import notifications
 from app.audit import record_action
@@ -14,12 +15,13 @@ from app.dependencies.auth import CurrentUser
 from app.dependencies.db import DbSession
 from app.dependencies.events import ensure_can_manage, ensure_not_suspended
 from app.errors import api_error
-from app.models import Event, Ticket, TicketType
+from app.models import CheckIn, Event, EventStatus, Ticket, TicketStatus, TicketType, User
 from app.models.order import Order
 from app.order_inventory import ensure_no_pending_order, expire_event_orders, refresh_inventory, release_order
 from app.paid_sales import activation_state
 from app.schemas.common import to_utc
-from app.schemas.order import OrderCreate, OrderRead, PaymentRequest
+from app.schemas.order import BulkRefundRead, EventOrdersRead, OrderCreate, OrderRead, PaymentRequest
+from app.ticket_lifecycle import close_ticket, lock_ticket
 from app.ticket_types import lock_event
 
 router = APIRouter(tags=["demo orders"])
@@ -194,10 +196,93 @@ def orders_summary(event_id: int, db: DbSession, user: CurrentUser):
     event = lock_event(db, event_id)
     ensure_can_manage(event, user)
     expire_event_orders(db, event_id)
-    gross, fees = db.execute(select(func.coalesce(func.sum(Order.total_tiyn), 0),
-                                   func.coalesce(func.sum(Order.processing_fee_tiyn), 0))
-                             .where(Order.event_id == event_id, Order.status == "paid")).one()
+    paid = Order.status == "paid"
+    refunded = Order.status == "refunded"
+    gross, fees, refunds = db.execute(
+        select(
+            func.coalesce(func.sum(Order.total_tiyn).filter(or_(paid, refunded)), 0),
+            func.coalesce(func.sum(Order.processing_fee_tiyn).filter(paid), 0),
+            func.coalesce(func.sum(Order.total_tiyn).filter(refunded), 0),
+        ).where(Order.event_id == event_id)
+    ).one()
     db.commit()
     return {"event_id": event_id, "gross_sales_tiyn": gross, "processing_fees_tiyn": fees,
-            "refunds_tiyn": 0, "estimated_payout_tiyn": gross - fees,
+            "refunds_tiyn": refunds, "estimated_payout_tiyn": gross - fees - refunds,
             "simulation": True, "demo_notice": DEMO_NOTICE}
+
+
+def event_orders_access(db: Session, event_id: int, user: User) -> Event:
+    event = lock_event(db, event_id)
+    ensure_can_manage(event, user)
+    ensure_not_suspended(event)
+    return event
+
+
+@router.get("/events/{event_id}/orders/manage", response_model=EventOrdersRead)
+def manage_event_orders(event_id: int, db: DbSession, user: CurrentUser):
+    event_orders_access(db, event_id, user)
+    expire_event_orders(db, event_id)
+
+    orders = db.scalars(select(Order).where(Order.event_id == event_id).order_by(Order.id.desc())).all()
+    has_order = select(Order.id).where(Order.ticket_id == Ticket.id).exists()
+    free_registrations = db.execute(
+        select(
+            Ticket.id, User.full_name.label("attendee_name"), User.email.label("attendee_email"),
+            Ticket.status, Ticket.ticket_type_id, CheckIn.checked_in_at,
+        )
+        .join(User, User.id == Ticket.attendee_id)
+        .outerjoin(CheckIn, and_(CheckIn.ticket_id == Ticket.id, CheckIn.undone_at.is_(None)))
+        .where(Ticket.event_id == event_id, ~has_order)
+        .order_by(Ticket.id.desc())
+    ).mappings().all()
+    db.commit()
+    return {"orders": orders, "free_registrations": free_registrations}
+
+
+def refund_paid_order(db: Session, event: Event, order: Order, actor: User) -> None:
+    """Refund inside the caller's transaction while holding the event lock."""
+    if order.status == "refunded":
+        return
+    if order.status != "paid" or order.ticket_id is None:
+        raise api_error(409, "ORDER_NOT_PAID", "Only a paid order can be refunded")
+
+    ticket = lock_ticket(db, order.ticket_id)
+    if ticket.event_id != event.id or ticket.attendee_id != order.buyer_id:
+        raise api_error(409, "ORDER_TICKET_MISMATCH", "The issued ticket does not match this order")
+    # An order may still be paid if the legacy ticket endpoint closed its ticket before P5.
+    close_ticket(db, ticket, actor.id, TicketStatus.REFUNDED, manager=True, reconcile_paid_refund=True)
+    order.status = "refunded"
+    order.refunded_at = utcnow()
+    record_action(
+        db, event_id=event.id, actor_id=actor.id, action="order.refunded", entity_type="order",
+        entity_id=order.id, description=f"Full demo refund: {order.total_tiyn} tiyn",
+    )
+    notifications.refund_completed(db, db.get(User, order.buyer_id), order, event)
+
+
+@router.post("/events/{event_id}/orders/{order_id}/refund", response_model=OrderRead)
+def refund_order(event_id: int, order_id: int, db: DbSession, user: CurrentUser):
+    event = event_orders_access(db, event_id, user)
+    order = db.scalar(select(Order).where(Order.id == order_id, Order.event_id == event_id))
+    if order is None:
+        raise api_error(404, "ORDER_NOT_FOUND", "Order not found at this event")
+    refund_paid_order(db, event, order, user)
+    db.commit()
+    return order
+
+
+@router.post("/events/{event_id}/orders/refund-all", response_model=BulkRefundRead)
+def refund_all_orders(event_id: int, db: DbSession, user: CurrentUser):
+    event = event_orders_access(db, event_id, user)
+    if event.status != EventStatus.CANCELLED.value:
+        raise api_error(409, "EVENT_NOT_CANCELLED", "Bulk refunds require a cancelled event")
+    orders = db.scalars(select(Order).where(Order.event_id == event_id, Order.status == "paid").order_by(Order.id)).all()
+    try:
+        for order in orders:
+            refund_paid_order(db, event, order, user)
+    except HTTPException:
+        # Roll back both any prior refunds and the notifications queued on this session.
+        db.rollback()
+        raise
+    db.commit()
+    return {"refunded_count": len(orders), "refunds_tiyn": sum(order.total_tiyn for order in orders)}

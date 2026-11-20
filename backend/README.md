@@ -295,7 +295,7 @@ Downgrade refuses if any orders, activation rows or profile confirmations would 
 | `POST /orders/{id}/pay` | Buyer only | `{outcome: "success" or "failure"}`; first terminal result wins |
 | `POST /orders/{id}/cancel` | Buyer only | Release a pending order once; terminal states are returned unchanged |
 | `GET /orders/me`, `GET /orders/{id}` | Buyer only | Own orders, including terminal orders; another buyer's order is 404 even to admins |
-| `GET /events/{id}/orders/summary` | Owner/admin | Demo gross sales, fees, refunds (0 until P5), estimated payout |
+| `GET /events/{id}/orders/summary` | Owner/admin | Demo gross sales, fees, refunds, estimated payout |
 
 `EventRead.paid_sales_available` exposes only whether public paid checkout is available, not
 the organizer's private checklist. Activation requires a paid type, confirmed profile identity,
@@ -353,9 +353,8 @@ or sweep, not at a timer interrupt. Clients must not infer valid payment from th
 
 Attendee name/email are order contact snapshots. Ownership, PDF holder identity and check-in
 continue to use the authenticated account. P2 does not introduce transferable tickets.
-Existing ticket cancellation/refund routes still change admission state only; financial refunds
-and adjustments to order totals belong to P5. The P2 sales summary reports refunds as zero.
-Ticket delivery email belongs to B4 and should hook after a new paid ticket commits, once only.
+Paid-order emails are queued on payment and sent after commit. See **Order refunds (P5)** for
+refund accounting and the organizer's order management routes.
 
 Run `pytest -q tests` and, separately, the full `pytest -q e2e` against a disposable PostgreSQL 16
 ICU `und`, UTF8 instance. The P2 e2e tests cover buyer/free/paid races, payment vs expiry and
@@ -379,6 +378,34 @@ locally. P2 browser flows use HTTP fixtures; PostgreSQL e2e uses the real API, i
 PDF and check-in. Physical phone/printing and the actual demo database remain unverified.
 One earlier browser run timed out during login in the existing PDF refusal test; it passed in
 the final full run without a test change. These checks are agent verification, not a teammate review.
+
+## Order refunds (P5)
+
+Event create and update accept an optional `refund_policy` (plain text, up to 2000 characters).
+Public event responses include the policy. A blank value clears it. It describes the organizer's
+terms. The API authorizes refund actions by event ownership and ticket state.
+
+| Route | Result |
+| --- | --- |
+| `GET /events/{id}/orders/manage` | Orders and free registrations for the event. |
+| `POST /tickets/{id}/cancel` | Cancels a free registration and releases its seat. |
+| `POST /events/{id}/orders/{order_id}/refund` | Full simulated refund of the amount paid, including any campaign discount. Retries return the existing refund. |
+| `POST /events/{id}/orders/refund-all` | Refunds all remaining paid orders after event cancellation. Returns `refunded_count` and `refunds_tiyn` for this call. |
+
+Owners and admins can manage event orders. A suspended event refuses changes with
+`EVENT_SUSPENDED`. The legacy ticket close routes refuse a paid ticket with
+`PAID_ORDER_REQUIRES_REFUND` so admission and order accounting stay in sync. A checked-in
+ticket must be undone first (`TICKET_CHECKED_IN`). A bulk refund rolls back all changes if
+any ticket still has an active check-in. New scans of refunded tickets at published events
+return `TICKET_REFUNDED`. Cancelled events retain their event-wide `EVENT_CANCELLED` response.
+
+The event lock precedes ticket locks. The refund keeps the historical ticket ID and payment
+amounts, sets `refunded_at`, records the action and queues `REFUND_COMPLETED` in the same
+transaction. The notification's email is handled by the existing post-commit worker.
+The summary totals original charges on paid and refunded orders, subtracts actual refunds and
+charges processing fees only on orders that remain paid. All amounts are integer tiyn.
+
+Migration `0011` follows `0010`. Its downgrade refuses to discard existing refunds or policies.
 
 ## Support cases (SRS 4.13)
 

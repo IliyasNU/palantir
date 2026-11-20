@@ -11,6 +11,7 @@ export interface EventDetails {
   organizer_id: number;
   title: string;
   description: string | null;
+  refund_policy?: string | null;
   date: string;
   location: string;
   status: EventStatus | null;
@@ -51,6 +52,7 @@ export function readEventDetails(payload: unknown, expectedId: number): EventDet
   if (event.id !== expectedId || organizerId === null
     || typeof event.title !== 'string' || !event.title.trim()
     || (event.description !== null && typeof event.description !== 'string')
+    || (event.refund_policy != null && typeof event.refund_policy !== 'string')
     || typeof event.location !== 'string'
     || !isDate(event.date) || !isDate(event.created_at) || !isDate(event.updated_at)) throw fail();
 
@@ -59,6 +61,7 @@ export function readEventDetails(payload: unknown, expectedId: number): EventDet
     organizer_id: organizerId,
     title: event.title,
     description: event.description,
+    ...(event.refund_policy === undefined ? {} : { refund_policy: event.refund_policy }),
     date: event.date,
     location: event.location,
     status: event.status === 'draft' || event.status === 'published' || event.status === 'cancelled' ? event.status : null,

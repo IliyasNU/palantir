@@ -49,7 +49,7 @@ def _ensure_schedule_change_allowed(event: Event, changes: dict) -> None:
 def _describe_changes(event: Event, changes: dict) -> str:
     """What an edit really changes, for the history. Capacity and date show both values; texts only that they changed."""
     parts = []
-    for field in ("capacity", "date", "location", "title", "description"):
+    for field in ("capacity", "date", "location", "title", "description", "refund_policy"):
         if field not in changes:
             continue
         old, new = getattr(event, field), changes[field]
@@ -205,6 +205,8 @@ def update_event(event_id: int, payload: EventUpdate, db: DbSession, current_use
     # Every edit reads the event under its row lock, so a cancel that commits first is always seen.
     event = lock_event(db, event_id)
     ensure_editable(event)
+    if "refund_policy" in changes:
+        ensure_not_suspended(event)
     _ensure_schedule_change_allowed(event, changes)
     if "capacity" in changes:
         expire_event_orders(db, event_id)

@@ -12,12 +12,78 @@ async function login(page, destination, role = 'attendee') {
   await expect(page).toHaveURL(destination);
 }
 
+const paidOrder = {
+  id: 81, event_id: 42, buyer_id: 17, ticket_type_id: 1, status: 'paid',
+  attendee_name: 'Refund Buyer', attendee_email: 'buyer@example.com',
+  subtotal_tiyn: 10050, processing_fee_tiyn: 302, total_tiyn: 10050,
+  ticket_id: 91, expires_at: '2030-01-01T10:00:00Z', simulation: true, refunded_at: null,
+};
+
+test('organizer must confirm a single or event-wide refund and can cancel a free registration', async ({ page }) => {
+  const writes = [];
+  let orders = [paidOrder, { ...paidOrder, id: 82, ticket_id: 92 }];
+  let free = [{ id: 93, attendee_name: 'Free Guest', attendee_email: 'free@example.com', status: 'active',
+    ticket_type_id: 2, checked_in_at: null }];
+  const refundedAt = '2030-01-01T09:00:00Z';
+  await page.route(`${base}/events/42`, (r) => r.fulfill({ json: { ...eventDetails, status: 'cancelled' } }));
+  await page.route(`${base}/events/42/orders/manage`, (r) => r.fulfill({ json: { orders, free_registrations: free } }));
+  await page.route(`${base}/events/42/orders/81/refund`, (r) => {
+    expect(r.request().method()).toBe('POST');
+    writes.push('single');
+    orders = orders.map(order => order.id === 81 ? { ...order, status: 'refunded', refunded_at: refundedAt } : order);
+    return r.fulfill({ json: orders[0] });
+  });
+  await page.route(`${base}/events/42/orders/refund-all`, (r) => {
+    expect(r.request().method()).toBe('POST');
+    writes.push('bulk');
+    orders = orders.map(order => ({ ...order, status: 'refunded', refunded_at: refundedAt }));
+    return r.fulfill({ json: { refunded_count: 1, refunds_tiyn: 10050 } });
+  });
+  await page.route(`${base}/tickets/93/cancel`, (r) => {
+    expect(r.request().method()).toBe('POST');
+    writes.push('free');
+    free = [{ ...free[0], status: 'cancelled' }];
+    return r.fulfill({ json: free[0] });
+  });
+  await login(page, '/organizer/events/42/orders', 'organizer');
+  const single = page.getByRole('listitem').filter({ hasText: /Заказ №81/ }).getByRole('button', { name: 'Вернуть оплату', exact: true });
+  page.once('dialog', async dialog => {
+    expect(dialog.message()).toContain('100,50');
+    await dialog.dismiss();
+  });
+  await single.click();
+  expect(writes).toEqual([]);
+  page.once('dialog', dialog => dialog.accept());
+  await single.click();
+  await expect(single).toHaveCount(0);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Вернуть оплату по всем заказам', exact: true }).click();
+  await expect(page.getByText(/Заказов обработано/)).toContainText('100,50');
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Отменить регистрацию', exact: true }).click();
+  await expect(page.getByText('Регистрация отменена.', { exact: true })).toBeVisible();
+  expect(writes).toEqual(['single', 'bulk', 'free']);
+});
+
+test('attendee sees a refund amount without a usable ticket action', async ({ page }) => {
+  await page.route(`${base}/orders/81`, (r) => r.fulfill({
+    json: { ...paidOrder, status: 'refunded', refunded_at: '2030-01-01T09:00:00Z' },
+  }));
+  await login(page, '/orders/81');
+  await expect(page.getByRole('heading', { name: /Возврат выполнен/ })).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('Возвращено 100,50');
+  await expect(page.getByRole('link', { name: 'Открыть билет' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'English' }).click();
+  await expect(page.getByRole('status')).toContainText('100.50');
+});
+
 for (const outcome of ['success', 'failure']) {
   test(`paid buy flow ${outcome} has server totals and simulation labels`, async ({ page }) => {
     const kind = { ...timedTicketType, price_tiyn: 10050, sales_start: null, sales_end: null };
     let order;
     await page.route(`${base}/tickets/me`, (r) => r.fulfill({ json: [] }));
-    await page.route(`${base}/events/42`, (r) => r.fulfill({ json: { ...eventDetails, ticket_types: [kind], paid_sales_available: true } }));
+    const refundPolicy = 'Полный демо-возврат по запросу организатору.';
+    await page.route(`${base}/events/42`, (r) => r.fulfill({ json: { ...eventDetails, refund_policy: refundPolicy, ticket_types: [kind], paid_sales_available: true } }));
     await page.route(`${base}/events/42/orders`, (r) => {
       const body = r.request().postDataJSON();
       expect(body.request_id).toMatch(/^[0-9a-f-]{36}$/);
@@ -32,8 +98,10 @@ for (const outcome of ['success', 'failure']) {
       return r.fulfill({ json: order });
     });
     await login(page, '/events/42');
+    await expect(page.getByText(refundPolicy, { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Купить', exact: true }).click();
     await expect(page).toHaveURL('/events/42/checkout?type=1');
+    await expect(page.getByText(refundPolicy, { exact: true })).toBeVisible();
     await expect(page.getByText('Демонстрационная оплата, деньги не списываются', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Продолжить к оплате' }).click();
     await expect(page).toHaveURL('/orders/81');
