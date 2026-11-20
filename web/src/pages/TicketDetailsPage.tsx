@@ -11,6 +11,7 @@ import { ticketTypeNamePolicy } from '../ticket-types/model';
 import { readTicket, ticketErrorMessage, ticketPdfName, ticketState } from '../tickets/model';
 import type { Ticket } from '../tickets/model';
 import { TicketQr, TicketQrFullscreen } from '../tickets/TicketQr';
+import { caseSourcePath } from '../support/model';
 
 export function TicketDetailsPage() {
   const t = useT().tickets;
@@ -26,8 +27,7 @@ export function TicketDetailsPage() {
 }
 
 function TicketContent({ id, request }: { id: number; request: typeof api.request }) {
-  const t = useT().tickets;
-  const retryLabel = useT().common.retry;
+  const { tickets: t, common: { retry: retryLabel }, support } = useT();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [notFound, setNotFound] = useState(false);
@@ -68,7 +68,10 @@ function TicketContent({ id, request }: { id: number; request: typeof api.reques
     {!usable && !closed && !ticket.checked_in_at && ticket.event.status !== 'cancelled' && <p role="status">{t.unavailable}</p>}
     {printable && <TicketPdf id={ticket.id} request={request} />}
     {cancellable && <CancelTicket id={ticket.id} request={request} onCancelled={setTicket} />}
-    <Link className="text-link" to={`/events/${ticket.event_id}`}>{t.openEvent}</Link>
+    <div className="organizer-links">
+      <Link className="text-link" to={`/events/${ticket.event_id}`}>{t.openEvent}</Link>
+      <Link className="text-link" to={caseSourcePath('ticket', ticket.id)}>{support.contact}</Link>
+    </div>
   </article>;
 }
 

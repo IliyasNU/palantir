@@ -22,6 +22,9 @@ import { ManageOrdersPage } from './pages/ManageOrdersPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { ActivationPage } from './pages/ActivationPage';
 import { OrganizerProfilePage } from './pages/OrganizerProfilePage';
+import { NewSupportCase } from './support/NewSupportCase';
+import { SupportHome } from './support/SupportHome';
+import { SupportThread } from './support/SupportThread';
 
 export function App() {
   return (
@@ -41,6 +44,11 @@ export function App() {
         <Route path="tickets/:id" element={<TicketDetailsPage />} />
         <Route path="admin" element={<AdminPage />} />
         <Route path="admin/:section" element={<AdminPage />} />
+        <Route path="admin/support" element={<SupportHome queue="admin" />} />
+        <Route path="support" element={<SupportHome queue="mine" />} />
+        <Route path="support/new" element={<NewSupportCase />} />
+        <Route path="support/cases/:id" element={<SupportThread />} />
+        <Route path="organizer/events/:id/support" element={<SupportHome queue="event" />} />
         <Route path="organizer/events/:id/ticket-types" element={<TicketTypesPage />} />
         <Route path="organizer" element={<OrganizerPage />} />
         <Route path="organizer/profile" element={<OrganizerProfilePage />} />
