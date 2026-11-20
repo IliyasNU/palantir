@@ -3,8 +3,10 @@
  * languages must define exactly the same keys, which the Messages type enforces at compile time.
  */
 import { orderEn, orderKk, orderRu } from './order-messages.ts';
+import { analyticsEn, analyticsKk, analyticsRu } from './analytics-messages.ts';
 
 const ru = {
+  analytics: analyticsRu,
   orders: orderRu,
   common: {
     skip: 'Перейти к содержимому',
@@ -477,6 +479,7 @@ type Widen<T> = T extends string ? string
 export type Messages = Widen<typeof ru>;
 
 const kk: Messages = {
+  analytics: analyticsKk,
   orders: orderKk,
   common: {
     skip: 'Мазмұнға өту', brandLabel: 'BiletFlow — іс-шаралар', navLabel: 'Негізгі навигация', events: 'Іс-шаралар', myTickets: 'Менің билеттерім', myOrders: 'Менің тапсырыстарым',
@@ -696,6 +699,7 @@ const kk: Messages = {
 };
 
 const en: Messages = {
+  analytics: analyticsEn,
   orders: orderEn,
   common: {
     skip: 'Skip to content', brandLabel: 'BiletFlow — events', navLabel: 'Main navigation', events: 'Events', myTickets: 'My tickets', myOrders: 'My orders',

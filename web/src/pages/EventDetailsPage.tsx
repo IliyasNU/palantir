@@ -117,6 +117,7 @@ function EventContent({ id, request, guest }: { id: string | undefined; request:
           <EventActions event={event} remainingSeats={available} returnTo={returnTo} campaignToken={isCampaignToken(token) ? token : undefined} />
           {user && (user.role === 'admin' || user.id === event.organizer_id) && <p>
             <Link className="text-link" to={`/organizer/events/${event.id}/ticket-types`}>{t.event.manageTypes}</Link>
+            {' · '}<Link className="text-link" to={`/organizer/events/${event.id}/analytics`}>{t.analytics.title}</Link>
           </p>}
         </article>
       )}
