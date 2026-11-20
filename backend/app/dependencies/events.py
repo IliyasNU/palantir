@@ -47,6 +47,15 @@ def is_visible(event: Event, user: Optional[User]) -> bool:
     return True
 
 
+def ensure_editable(event: Event) -> None:
+    """A cancelled event is final: neither it nor its ticket types can change any more (``409 EVENT_CANCELLED``).
+
+    Call it on the event row read under ``lock_event``, so a cancel that commits first is always seen.
+    """
+    if event.status == EventStatus.CANCELLED.value:
+        raise api_error(status.HTTP_409_CONFLICT, "EVENT_CANCELLED", "A cancelled event cannot be edited")
+
+
 def ensure_not_suspended(event: Event) -> None:
     """Refuse to sell or issue anything at a suspended event: ``409 EVENT_SUSPENDED``.
 

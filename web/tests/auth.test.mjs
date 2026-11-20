@@ -147,6 +147,12 @@ test('new store starts anonymous (no persistence)', async () => {
 
 test('return destination allows only event routes and survives auth links', () => {
   for (const path of ['/events', '/events/42', '/events/42/']) assert.equal(safeReturnTo(path), path);
+  for (const path of ['/organizer', '/organizer/', '/organizer/profile', '/organizer/profile/', '/organizer/events/new', '/organizer/events/42/edit', '/organizer/events/42/ticket-types']) {
+    assert.equal(safeReturnTo(path), path);
+  }
+  for (const path of ['/organizer/events', '/organizer/profile/extra', '/organizerx', '/organizer//profile']) {
+    assert.equal(safeReturnTo(path), '/events');
+  }
   for (const path of [undefined, '//evil.test', 'https://evil.test', '/\\evil.test', '/events/../login', '/login', '/register', '/events/%2f%2fevil', '/events/1?next=https://evil.test', '/events/1\n']) {
     assert.equal(safeReturnTo(path), '/events');
   }
@@ -167,4 +173,16 @@ test('registration rejects whitespace names and passwords above bcrypt UTF-8 lim
 test('auth forms show clear wrong-password and duplicate-email messages', () => {
   assert.match(authErrorMessage(new ApiError('Incorrect email or password', { kind: 'http', status: 401 }), 'login'), /Неверный email или пароль/);
   assert.match(authErrorMessage(new ApiError('Conflict', { kind: 'http', status: 409 }), 'register'), /email уже зарегистрирован/);
+});
+
+test('return destination allows /organizer and rejects unknown routes like /admin', () => {
+  assert.equal(safeReturnTo('/organizer'), '/organizer');
+  assert.equal(safeReturnTo('/admin'), '/events');
+
+  let destination = '/organizer';
+  for (const page of ['/login', '/register', '/login']) {
+    const url = new URL(authLink(page, destination), 'http://localhost:5173');
+    destination = safeReturnTo(url.searchParams.get('returnTo'));
+    assert.equal(destination, '/organizer');
+  }
 });

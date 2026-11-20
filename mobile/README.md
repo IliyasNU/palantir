@@ -1,10 +1,12 @@
-# BiletFlow Staff
+# BiletFlow Mobile
 
-Iliyas's part of Team Palantir's project. Three screens: sign in, choose an event, scan a ticket. The scan screen also holds the attendance totals, manual search and the undo action. This is a small Expo + TypeScript client, with no offline admission or payment features.
+The home screen opens four sections. **Attendee** opens the catalog, orders, and tickets, including the full-screen ticket QR and the PDF. **Organizer** opens the event cabinet, publishing, ticket types, and demo sales activation. **Administrator** opens moderation and the action log. These three sections use the same BiletFlow web app inside the phone. **Staff** opens the native camera scanner, attendance totals, manual search, and admission undo.
+
+Sign in with the account for the chosen section. Selecting a section does not grant permissions. The web and scanner sessions are separate. Both must use the same running backend and database.
 
 ## Current status
 
-- Delivery candidate: [PR #26](https://github.com/IliyasNU/palantir/pull/26), targeting `integration/biletflow-e2e`. The implementation is ready for review; the PR has not been merged. The [device results](DEVICE-RESULTS.md) separate Iliyas's iPhone checks on 13 November 2026 from the remaining Android and extended device checks.
+- The [device results](DEVICE-RESULTS.md) cover the staff version from [PR #26](https://github.com/IliyasNU/palantir/pull/26). Use the exercise below to verify the new home and embedded screens on a phone.
 - Start the backend in the same integration checkout. Follow the [root setup](../README.md) and [API contract](API.md).
 - Sign-in confirms the staff account through `GET /auth/me`. The tokens and account ID stay in memory. After restarting the app, sign in again.
 - The server's default access-token lifetime is 30 minutes. While the app is in front, it schedules renewal before expiry. Event loading and scanning can recover from a 401 with the refresh token; totals, search and undo offer session recovery. Renewal must belong to the current account, and a late response from an older session cannot clear a newer login. If renewal is refused, sign in again; a network failure does not prove the session is invalid.
@@ -24,7 +26,7 @@ Open “Найти вручную” to search by name or email using at least t
 
 ## Cancelled and refunded tickets, undo
 
-Use the backend in this integration candidate. Ticket states and undo were introduced in migration `0003`; the candidate's current migration head is `0004`. Apply all migrations before testing. The server PDF route and web download action are also present.
+Use the backend in the same integration checkout and apply `alembic upgrade head` before testing. Ticket states and undo were introduced in migration `0003`. The server PDF route and web download action are also present.
 
 - A cancelled ticket and a refunded ticket each get their own rejection message, different from the message for a cancelled event. Neither can be admitted. “Refunded” is an admission state set by the organizer; tickets are free and no payment is involved.
 - The organizer of the event, or an admin, sees “Отменить вход” on an admitted search result and on a fresh confirmation. It asks for confirmation, then removes the admission. The ticket can be scanned again afterwards. Assigned staff do not see the action, and the server refuses it for them.
@@ -34,6 +36,10 @@ Use the backend in this integration candidate. Ticket states and undo were intro
 ## Run on a phone
 
 Use Node.js 22.18+ or 24 LTS and npm. The project uses Expo SDK 58.
+
+1. Start the API as described in the [root setup](../README.md#2-запустить-postgresql-и-api). For a phone on the same Wi-Fi, bind the API to the LAN, and add the exact web origin (for example, `http://192.168.1.100:5173`) to the API's `CORS_ORIGINS`. Retain existing origins needed by other clients.
+2. From `web/`, set `VITE_API_URL` in `.env.local` to the phone-reachable API URL. Run `npm ci` and `npm run dev -- --host 0.0.0.0`. Open that web address in the phone's browser once to verify it is reachable.
+3. Set both addresses in `mobile/.env`. For example, `EXPO_PUBLIC_WEB_URL=http://192.168.1.100:5173` and `EXPO_PUBLIC_API_URL=http://192.168.1.100:8000`. Substitute your actual LAN IP. When using a published web app, set `EXPO_PUBLIC_WEB_URL` to its root HTTPS origin. The release build requires HTTPS for the web origin.
 
 ```bash
 cd mobile
@@ -47,9 +53,9 @@ Set `EXPO_PUBLIC_API_URL` to the team's shared HTTPS backend address. For local 
 
 Keep the API port in the address: with the default setup, omitting `:8000` sends requests to the wrong port even on the same Wi-Fi. Before signing in, open `http://<computer-LAN-IP>:8000/health` in the phone's browser and check for `status: ok` and `database: up`. If it is unreachable, check the running backend, IP address and firewall, then restart Expo after correcting `.env`.
 
-Open the Expo QR with a compatible Expo Go app. Allow camera access. Restart Expo after changing `.env`. Ask the organizer to publish a test event and assign your account through `POST /events/{event_id}/staff`. Use a separate attendee account to claim a test ticket in the web interface. The QR must encode exactly the returned `qr_payload` string. Both clients must use the same API and database.
+Open the Expo QR with Expo Go that supports SDK 58. Restart Expo after changing `.env`. In **Organizer**, publish a test event. Assign a test staff account through `POST /events/{event_id}/staff`. On the first phone, use **Attendee** to claim a ticket, open its full-screen QR, and confirm that the PDF opens the native share sheet. On the second phone, use **Staff** to sign in, grant camera access, open the event, and scan the first phone's QR twice. Confirm one admission and one duplicate refusal. Use **Administrator** with a test admin account to check the moderation screen, and with an attendee account to check that access is denied.
 
-Use HTTPS for the shared server. `EXPO_PUBLIC_*` values are included in the app, so put only the API address there, never passwords or tokens. The app does not save or log ticket QR payloads.
+Use HTTPS for the shared web and API servers. `EXPO_PUBLIC_*` values are included in the app, so put only service addresses there. The QR scanner does not store scanned QR payloads on disk. The PDF button writes the print-ready file to the app cache for the system share sheet.
 
 ## Check the code
 
