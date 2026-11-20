@@ -46,6 +46,34 @@ def counters(db, shop, expected, tickets=0):
     assert db.scalar(select(func.count()).select_from(Ticket).where(Ticket.event_id == shop["eid"])) == tickets
 
 
+def test_organizer_can_close_a_free_registration_but_cannot_bypass_a_paid_refund(client, shop, login_as, db):
+    base = f"/events/{shop['eid']}"
+    _, other = login_as("another-guest@example.com")
+    free_ticket = client.post(base + "/tickets", headers=other, json={"ticket_type_id": shop["free"]})
+    assert free_ticket.status_code == 201, free_ticket.text
+    free_id = free_ticket.json()["id"]
+    shop["activate"]()
+    order_id = shop["checkout"]().json()["id"]
+    paid = client.post(f"/orders/{order_id}/pay", json={"outcome": "success"}, headers=shop["auth"])
+    assert paid.status_code == 200, paid.text
+    paid_id = paid.json()["ticket_id"]
+    assert client.get(base + "/orders/manage", headers=shop["auth"]).status_code == 403
+    response = client.get(base + "/orders/manage", headers=shop["org"])
+    assert response.status_code == 200, response.text
+    assert [ticket["id"] for ticket in response.json()["free_registrations"]] == [free_id]
+    assert [order["id"] for order in response.json()["orders"]] == [order_id]
+    for action in ("cancel", "refund"):
+        bypass = client.post(f"/tickets/{paid_id}/{action}", headers=shop["org"])
+        assert bypass.status_code == 409 and bypass.json()["detail"]["code"] == "PAID_ORDER_REQUIRES_REFUND"
+    cancelled = client.post(f"/tickets/{free_id}/cancel", headers=shop["org"])
+    assert cancelled.status_code == 200 and cancelled.json()["status"] == "cancelled"
+    counters(db, shop, 1, tickets=2)
+    assert db.get(TicketType, shop["free"]).tickets_issued == 0
+    assert db.scalar(select(func.count()).select_from(ActionLog).where(
+        ActionLog.event_id == shop["eid"], ActionLog.action == "ticket.cancelled", ActionLog.entity_id == free_id,
+    )) == 1
+
+
 @pytest.mark.parametrize("amount,expected", [(1, 0), (16, 0), (17, 1), (50, 2), (99, 3), (10050, 302), (2147483647, 64424509)])
 def test_integer_fee_rounding(amount, expected):
     assert processing_fee(amount) == expected

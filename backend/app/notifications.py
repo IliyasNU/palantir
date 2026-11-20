@@ -126,6 +126,15 @@ def payment_failed(db: Session, user: User, order: Order, event: Event) -> None:
     )
 
 
+def refund_completed(db: Session, user: User, order: Order, event: Event) -> None:
+    notify(
+        db, user, "REFUND_COMPLETED", f"Возврат по заказу №{order.id} выполнен",
+        f"По заказу №{order.id} на «{event.title}» выполнен демонстрационный возврат {_tenge(order.total_tiyn)}.\n"
+        "Реальные деньги не переводились. Билет по этому заказу больше не даёт права на вход.",
+        link=f"/orders/{order.id}",
+    )
+
+
 def event_updated(db: Session, event_id: int, title: str, changes: list[str]) -> None:
     notify_ticket_holders(
         db, event_id, "event.updated", f"Изменения в событии «{title}»",

@@ -39,7 +39,8 @@ def assert_counts(sql, eid):
     assert sql("SELECT count(*) FROM ticket_types tt WHERE tt.event_id=:id AND tt.tickets_issued <> "
                "(SELECT count(*) FROM tickets t WHERE t.ticket_type_id=tt.id AND t.status='active') + "
                "(SELECT count(*) FROM orders o WHERE o.ticket_type_id=tt.id AND o.status='pending')", id=eid) == 0
-    assert sql("SELECT count(*) FROM orders WHERE event_id=:id AND ((status='paid') <> (ticket_id IS NOT NULL))", id=eid) == 0
+    assert sql("SELECT count(*) FROM orders WHERE event_id=:id AND "
+               "((status IN ('paid', 'refunded')) <> (ticket_id IS NOT NULL))", id=eid) == 0
 
 
 def test_two_buyers_race_last_paid_seat(api, register, paid_shop, sql):

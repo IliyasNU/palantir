@@ -14,6 +14,7 @@ export interface ManagedEvent extends EventDetails {
 export interface EventDraft {
   title: string;
   description: string;
+  refund_policy?: string;
   /** Value of a datetime-local input: local wall time without a zone. */
   date: string;
   location: string;
@@ -159,12 +160,14 @@ export function organizerProfilePayload(draft: OrganizerProfileDraft): Record<st
 
 export function eventDraft(event: EventDetails): EventDraft {
   return { title: event.title, description: event.description ?? '', date: localInputValue(event.date),
+    ...(event.refund_policy === undefined ? {} : { refund_policy: event.refund_policy ?? '' }),
     location: event.location, capacity: event.capacity === null ? '' : String(event.capacity) };
 }
 
 export interface EventPayload {
   title: string;
   description: string | null;
+  refund_policy?: string | null;
   date: string;
   location: string;
   capacity: number;
@@ -179,9 +182,11 @@ export function eventPayload(draft: EventDraft, original?: EventDetails): Partia
   const title = draft.title.trim();
   const location = draft.location.trim();
   const description = draft.description.trim();
+  const policy = draft.refund_policy?.trim() || null;
   const length = (value: string) => [...value].length;
   if (length(title) < 3 || length(title) > 200) issues.push(localIssue('title', (m) => m.organizer.validation.title));
   if (length(description) > 5000) issues.push(localIssue('description', (m) => m.organizer.validation.description));
+  if (policy && length(policy) > 2000) issues.push(localIssue('refund_policy', (m) => m.orders.policyTooLong));
   const sameDate = original !== undefined && draft.date === localInputValue(original.date);
   const time = Date.parse(draft.date);
   if (!sameDate && (!draft.date || !Number.isFinite(time))) issues.push(localIssue('date', (m) => m.organizer.validation.date));
@@ -194,10 +199,12 @@ export function eventPayload(draft: EventDraft, original?: EventDetails): Partia
 
   const payload: EventPayload = { title, description: description || null,
     date: sameDate ? original.date : new Date(time).toISOString(), location, capacity };
+  if (policy !== null) payload.refund_policy = policy;
   if (!original) return payload;
   const changed: Partial<EventPayload> = {};
   if (payload.title !== original.title) changed.title = payload.title;
   if (payload.description !== (original.description?.trim() || null)) changed.description = payload.description;
+  if (draft.refund_policy !== undefined && policy !== (original.refund_policy?.trim() || null)) changed.refund_policy = policy;
   if (!sameDate && Date.parse(payload.date) !== Date.parse(original.date)) changed.date = payload.date;
   if (payload.location !== original.location) changed.location = payload.location;
   if (payload.capacity !== original.capacity) changed.capacity = payload.capacity;

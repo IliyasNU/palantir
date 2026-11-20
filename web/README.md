@@ -264,6 +264,17 @@ The language switch covers these pages, the public event and ticket flow, dates 
 
 The language switch shows each language's own name ("Қазақша", "Русский", "English") as its visible text, so the accessible name matches what is seen (WCAG 2.5.3). axe does not judge Kazakh wording; native review is still needed.
 
+## Возвраты и бесплатные регистрации (P5)
+
+Условия возврата настраиваются при создании или редактировании события. Посетитель видит их
+на странице события и при оформлении заказа.
+
+Ссылка «Заказы и возвраты» в кабинете открывает `/organizer/events/{id}/orders`. Организатор
+может отменить бесплатную регистрацию или подтвердить полный демо-возврат оплаченного
+заказа. Для отменённого события есть массовое действие. Если по билету уже прошли на входе,
+перед возвратом нужно отменить отметку. Во вкладке «Мои заказы» посетитель видит сумму и дату
+возврата, а в сводке активации обновляются возвраты и расчёт выплаты.
+
 ## P2 demo checkout
 
 Paid types on activated events lead from `/events/:id` to `/events/:id/checkout?type=:typeId`,

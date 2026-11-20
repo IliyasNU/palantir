@@ -30,6 +30,7 @@ class Event(Base):
     organizer_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[Optional[str]] = mapped_column(Text)
+    refund_policy: Mapped[Optional[str]] = mapped_column(String(2000))
     date: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # event start (stored in UTC)
     location: Mapped[str] = mapped_column(String(255))
     capacity: Mapped[int] = mapped_column(Integer)

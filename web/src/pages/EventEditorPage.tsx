@@ -28,13 +28,13 @@ function Problem({ error }: { error: unknown }) {
 }
 
 function EventForm({ original, onSaved }: { original?: ManagedEvent; onSaved: (event: ManagedEvent, changed: boolean) => void }) {
-  const text = useT().organizer;
+  const { organizer: text, orders } = useT();
   const { request } = useAuth();
   const { pending, error, submit } = useSubmission();
   const [draft, setDraft] = useState<EventDraft>(() => (original ? eventDraft(original) : emptyEventDraft()));
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const field = (name: keyof EventDraft) => ({
-    name, value: draft[name],
+    name, value: draft[name] ?? '',
     onChange: (event: { target: { value: string } }) => setDraft((current) => ({ ...current, [name]: event.target.value })),
   });
 
@@ -57,6 +57,10 @@ function EventForm({ original, onSaved }: { original?: ManagedEvent; onSaved: (e
         <input id="event-title" {...field('title')} required maxLength={200} />
         <label htmlFor="event-description">{text.editor.description}</label>
         <textarea id="event-description" {...field('description')} rows={5} maxLength={5000} />
+        <label htmlFor="event-refund-policy">{orders.policy}</label>
+        <textarea id="event-refund-policy" {...field('refund_policy')} rows={3}
+          aria-describedby="event-refund-policy-hint" />
+        <p className="field-hint" id="event-refund-policy-hint">{orders.policyHint}</p>
         <label htmlFor="event-date">{text.editor.date}</label>
         <input id="event-date" type="datetime-local" {...field('date')} required aria-describedby="event-date-hint" />
         <p className="field-hint" id="event-date-hint">{text.editor.dateHint(zone)}</p>
@@ -154,7 +158,7 @@ function StaffManager({ event }: { event: ManagedEvent }) {
 }
 
 function StatusActions({ event, onChanged }: { event: ManagedEvent; onChanged: (event: ManagedEvent, notice: Notice) => void }) {
-  const text = useT().organizer;
+  const { organizer: text, orders } = useT();
   const { request } = useAuth();
   const { pending, error, submit } = useSubmission();
   const [confirming, setConfirming] = useState(false);
@@ -207,6 +211,7 @@ function StatusActions({ event, onChanged }: { event: ManagedEvent; onChanged: (
       )}
       <p className="organizer-links">
         <Link className="text-link" to={`/organizer/events/${event.id}/ticket-types`}>{text.list.ticketTypes}</Link>
+        {' '}<Link className="text-link" to={`/organizer/events/${event.id}/orders`}>{orders.manage.title}</Link>
         <Link className="text-link" to={`/events/${event.id}`}>{text.list.open}</Link>
       </p>
     </section>
