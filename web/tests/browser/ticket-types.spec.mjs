@@ -150,4 +150,18 @@ test('organizer creates a paid type, edits its price and hides it', async ({ pag
   await page.getByRole('button', { name: 'Сохранить изменения' }).click();
   await expect(page.getByRole('row').filter({ hasText: 'VIP' })).toContainText('Скрыт');
   await expect(page.getByRole('region', { name: 'Журнал изменений типов' })).toContainText('ticket_type.updated');
+
+  await page.getByRole('button', { name: 'English', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ticket types');
+  await expect(page.getByLabel('Price in tiyn')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Edit VIP' })).toBeVisible();
+  await expect(page.getByRole('row').filter({ hasText: 'VIP' })).toContainText('Hidden');
+  await expect(page.getByText('Ticket type changes saved.', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Қазақша', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Билет түрлері');
+  await expect(page.getByLabel('Бағасы тиынмен')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'VIP түрін өңдеу' })).toBeVisible();
+  await expect(page.getByText('Билет түрінің өзгерістері сақталды.', { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(path);
 });

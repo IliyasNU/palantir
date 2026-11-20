@@ -7,35 +7,38 @@ import { authLink } from '../auth/returnTo';
 import { Page } from '../components/Page';
 import { formatEventDate } from '../events/catalog';
 import { parseEventId } from '../events/details';
+import { useT } from '../i18n';
 import { eventPhase, isClosedPhase, readManagedEvent } from '../organizer/model';
 import type { ManagedEvent } from '../organizer/model';
 import { emptyTicketTypeDraft, readTicketTypes, ticketTypeDraft, ticketTypeError, ticketTypePayload, ticketTypePrice } from '../ticket-types/model';
 import type { TicketType, TicketTypeDraft } from '../ticket-types/model';
 
 export function TicketTypesPage() {
+  const t = useT().ticketTypeManagement;
   const { id } = useParams<{ id: string }>();
   const { user, request } = useAuth();
   const eventId = parseEventId(id);
   const returnTo = `/organizer/events/${id}/ticket-types`;
-  return <Page eyebrow="Организатор · типы билетов" title="Типы билетов" description="Количество, сроки продаж и доступность каждого типа.">
-    {eventId === null ? <p role="status">Событие не найдено.</p>
-      : !user ? <p><Link className="button" to={authLink('/login', returnTo)}>Войти для управления типами</Link></p>
-        : user.role !== 'organizer' && user.role !== 'admin' ? <p role="status">Управление доступно организатору события и администратору.</p>
+  return <Page eyebrow={t.eyebrow} title={t.title} description={t.description}>
+    {eventId === null ? <p role="status">{t.eventNotFound}</p>
+      : !user ? <p><Link className="button" to={authLink('/login', returnTo)}>{t.signIn}</Link></p>
+        : user.role !== 'organizer' && user.role !== 'admin' ? <p role="status">{t.access}</p>
           : <TypeManagement key={`${user.id}:${eventId}`} eventId={eventId} request={request} />}
   </Page>;
 }
 
 function TypeManagement({ eventId, request }: { eventId: number; request: typeof api.request }) {
+  const t = useT().ticketTypeManagement;
   const [event, setEvent] = useState<ManagedEvent | null>(null);
   const [types, setTypes] = useState<TicketType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<{ failure: unknown } | null>(null);
   const [revision, setRevision] = useState(0);
   const [editing, setEditing] = useState<number | null>(null);
   const [draft, setDraft] = useState<TicketTypeDraft>(emptyTicketTypeDraft);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<{ failure: unknown } | null>(null);
+  const [notice, setNotice] = useState<'created' | 'saved' | null>(null);
   const inFlight = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -48,8 +51,7 @@ function TypeManagement({ eventId, request }: { eventId: number; request: typeof
     ]).then(([loadedEvent, loadedTypes]) => {
       if (!controller.signal.aborted) { setEvent(loadedEvent); setTypes(loadedTypes); }
     }).catch((failure: unknown) => {
-      if (!controller.signal.aborted) setLoadError(failure instanceof ApiError && (failure.status === 403 || failure.status === 404)
-        ? 'Событие не найдено или у вас нет права управлять его типами.' : ticketTypeError(failure));
+      if (!controller.signal.aborted) setLoadError({ failure });
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [eventId, request, revision]);
@@ -83,72 +85,77 @@ function TypeManagement({ eventId, request }: { eventId: number; request: typeof
         method: editing === null ? 'POST' : 'PATCH', body: payload, signal: controller.signal,
       });
       if (!controller.signal.aborted) {
-        setNotice(editing === null ? 'Тип билета создан.' : 'Изменения типа сохранены.');
+        setNotice(editing === null ? 'created' : 'saved');
         clear();
         setRevision((previous) => previous + 1);
       }
     } catch (failure) {
-      if (!controller.signal.aborted) setError(ticketTypeError(failure));
+      if (!controller.signal.aborted) setError({ failure });
     } finally {
       if (!controller.signal.aborted) setSaving(false);
       if (inFlight.current === controller) inFlight.current = null;
     }
   }
 
-  if (loading) return <p role="status">Загружаем типы билетов…</p>;
-  if (loadError) return <div className="notice notice-error" role="alert"><p>{loadError}</p>
-    <button className="button" type="button" onClick={() => setRevision((previous) => previous + 1)}>Повторить</button></div>;
+  if (loading) return <p role="status">{t.loading}</p>;
+  if (loadError) {
+    const { failure } = loadError;
+    const unavailable = failure instanceof ApiError && (failure.status === 403 || failure.status === 404);
+    return <div className="notice notice-error" role="alert"><p>{unavailable ? t.eventUnavailable : ticketTypeError(failure)}</p>
+      <button className="button" type="button" onClick={() => setRevision((previous) => previous + 1)}>{t.retry}</button></div>;
+  }
   if (!event) return null;
   if (isClosedPhase(eventPhase(event))) return <Navigate replace to={`/organizer/events/${eventId}/history`} />;
   const allocated = types.reduce((sum, type) => sum + type.quantity, 0);
   return <>
     <div className="content-card type-management-summary">
       <h2>{event.title}</h2>
-      <p><Link to={`/organizer/events/${eventId}/activation`}>Активация и сводка демо-продаж</Link></p>
-      <p><Link to={`/organizer/events/${eventId}/campaigns`}>Промокампании и QR</Link></p>
-      <p>Вместимость: {event.capacity ?? 'неизвестна'} · распределено по типам: {allocated}</p>
-      <p>Первый бесплатный тип получает всю вместимость события. Чтобы добавить ещё один тип, сначала уменьшите количество первого. Выданные действующие билеты освобождать нельзя.</p>
-      <p>Скрытый тип остаётся в списке и в выданных билетах, но недоступен новым посетителям. Количество скрытых типов тоже входит в общую вместимость.</p>
-      <p><Link className="text-link" to={`/events/${eventId}`}>Открыть страницу события</Link></p>
+      <p><Link to={`/organizer/events/${eventId}/activation`}>{t.activation}</Link></p>
+      <p><Link to={`/organizer/events/${eventId}/campaigns`}>{t.campaigns}</Link></p>
+      <p>{t.capacity(event.capacity, allocated)}</p>
+      <p>{t.quotaHint}</p>
+      <p>{t.hiddenHint}</p>
+      <p><Link className="text-link" to={`/events/${eventId}`}>{t.openEvent}</Link></p>
     </div>
-    {notice && <p className="notice notice-success" role="status">{notice}</p>}
-    <section className="type-list" aria-label="Типы события">
-      <h2>Типы события</h2>
+    {notice && <p className="notice notice-success" role="status">{t[notice]}</p>}
+    <section className="type-list" aria-label={t.typeList}>
+      <h2>{t.typeList}</h2>
       {types.length ? <div className="table-scroll"><table className="ticket-types-table">
-        <thead><tr><th>Тип</th><th>Цена</th><th>Количество</th><th>Остаток</th><th>Доступность</th><th>Действие</th></tr></thead>
+        <thead><tr><th>{t.columns.type}</th><th>{t.columns.price}</th><th>{t.columns.quantity}</th>
+          <th>{t.columns.remaining}</th><th>{t.columns.visibility}</th><th>{t.columns.action}</th></tr></thead>
         <tbody>{types.map((type) => <tr key={type.id}>
           <td><strong>{type.name}</strong>{type.description && <p>{type.description}</p>}</td>
-          <td>{ticketTypePrice(type.price_tiyn)}</td><td>{type.quantity} (выдано {type.tickets_issued})</td><td>{type.remaining}</td>
-          <td>{type.hidden ? 'Скрыт' : 'Виден'}{type.price_tiyn > 0 && <p className="field-hint">Демо-продажи требуют активации</p>}</td>
-          <td><button className="text-button" type="button" disabled={saving} onClick={() => edit(type)} aria-label={`Редактировать ${type.name}`}>Редактировать</button></td>
+          <td>{ticketTypePrice(type.price_tiyn)}</td><td>{t.issued(type.quantity, type.tickets_issued)}</td><td>{type.remaining}</td>
+          <td>{type.hidden ? t.hidden : t.visible}{type.price_tiyn > 0 && <p className="field-hint">{t.paidHint}</p>}</td>
+          <td><button className="text-button" type="button" disabled={saving} onClick={() => edit(type)} aria-label={t.editNamed(type.name)}>{t.edit}</button></td>
         </tr>)}</tbody>
-      </table></div> : <p>Типов пока нет.</p>}
+      </table></div> : <p>{t.empty}</p>}
     </section>
-    <section className="content-card type-editor" aria-label="Настройки типа билета">
-      <h2>{editing === null ? 'Новый тип билета' : 'Изменение типа билета'}</h2>
+    <section className="content-card type-editor" aria-label={t.settings}>
+      <h2>{editing === null ? t.newType : t.editType}</h2>
       <form className="auth-form" onSubmit={(submission) => { void save(submission); }} aria-busy={saving}>
-        {error && <p className="notice notice-error" role="alert">{error}</p>}
+        {error && <p className="notice notice-error" role="alert">{ticketTypeError(error.failure)}</p>}
         <fieldset disabled={saving}>
-          <label htmlFor="type-name">Название типа</label>
+          <label htmlFor="type-name">{t.name}</label>
           <input id="type-name" value={draft.name} onChange={(input) => field('name', input.target.value)} required />
-          <label htmlFor="type-description">Описание типа</label>
+          <label htmlFor="type-description">{t.typeDescription}</label>
           <textarea id="type-description" value={draft.description} onChange={(input) => field('description', input.target.value)} rows={3} maxLength={5000} />
-          <label htmlFor="type-price">Цена в тиынах</label>
+          <label htmlFor="type-price">{t.price}</label>
           <input id="type-price" type="number" min="0" step="1" value={draft.price_tiyn} onChange={(input) => field('price_tiyn', input.target.value)} required aria-describedby="type-price-hint" />
-          <p className="field-hint" id="type-price-hint">100 тиынов = 1 ₸, 0 — бесплатно. Платные продажи требуют демо-активации.</p>
-          <label htmlFor="type-quantity">Количество билетов типа</label>
+          <p className="field-hint" id="type-price-hint">{t.priceHint}</p>
+          <label htmlFor="type-quantity">{t.quantity}</label>
           <input id="type-quantity" type="number" min="0" step="1" value={draft.quantity} onChange={(input) => field('quantity', input.target.value)} required />
-          <label htmlFor="type-sales-start">Начало продаж</label>
+          <label htmlFor="type-sales-start">{t.salesStart}</label>
           <input id="type-sales-start" type="datetime-local" value={draft.sales_start} onChange={(input) => field('sales_start', input.target.value)} />
-          <label htmlFor="type-sales-end">Конец продаж</label>
+          <label htmlFor="type-sales-end">{t.salesEnd}</label>
           <input id="type-sales-end" type="datetime-local" value={draft.sales_end} onChange={(input) => field('sales_end', input.target.value)} />
-          <p className="field-hint">Необязательные даты. Ввод — в часовом поясе браузера; сервер хранит UTC.</p>
-          <label htmlFor="type-order-limit">Лимит билетов на заказ</label>
+          <p className="field-hint">{t.windowHint}</p>
+          <label htmlFor="type-order-limit">{t.orderLimit}</label>
           <input id="type-order-limit" type="number" min="1" step="1" value={draft.order_limit} onChange={(input) => field('order_limit', input.target.value)} required />
-          <p className="field-hint">Лимит хранится для следующих этапов. Сейчас выдаётся один билет на посетителя на событие.</p>
-          <label className="type-checkbox"><input type="checkbox" checked={draft.hidden} onChange={(input) => field('hidden', input.target.checked)} /> Скрыть тип от посетителей</label>
-          <button className="button" type="submit">{saving ? 'Сохраняем…' : editing === null ? 'Создать тип' : 'Сохранить изменения'}</button>
-          {editing !== null && <button className="text-button" type="button" onClick={clear}>Отменить редактирование</button>}
+          <p className="field-hint">{t.orderLimitHint}</p>
+          <label className="type-checkbox"><input type="checkbox" checked={draft.hidden} onChange={(input) => field('hidden', input.target.checked)} /> {t.hide}</label>
+          <button className="button" type="submit">{saving ? t.saving : editing === null ? t.create : t.save}</button>
+          {editing !== null && <button className="text-button" type="button" onClick={clear}>{t.cancel}</button>}
         </fieldset>
       </form>
     </section>
@@ -159,8 +166,9 @@ function TypeManagement({ eventId, request }: { eventId: number; request: typeof
 interface AuditEntry { id: number; occurred_at: string; actor_id: number; action: string; description: string }
 
 function ActionLog({ eventId, request, revision }: { eventId: number; request: typeof api.request; revision: number }) {
+  const t = useT().ticketTypeManagement;
   const [entries, setEntries] = useState<AuditEntry[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ failure: unknown } | null>(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     const controller = new AbortController();
@@ -172,19 +180,19 @@ function ActionLog({ eventId, request, revision }: { eventId: number; request: t
         || !Number.isSafeInteger(entry.id) || entry.event_id !== eventId || !Number.isSafeInteger(entry.actor_id)
         || typeof entry.occurred_at !== 'string' || !Number.isFinite(Date.parse(entry.occurred_at))
         || typeof entry.action !== 'string' || typeof entry.description !== 'string')) {
-        throw new ApiError('Сервер вернул некорректный журнал действий.', { kind: 'response' });
+        throw new ApiError((messages) => messages.ticketTypeManagement.auditMalformed, { kind: 'response' });
       }
       if (!controller.signal.aborted) setEntries(payload as AuditEntry[]);
-    }).catch((failure: unknown) => { if (!controller.signal.aborted) setError(ticketTypeError(failure)); })
+    }).catch((failure: unknown) => { if (!controller.signal.aborted) setError({ failure }); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [eventId, request, revision]);
-  return <section className="content-card type-audit" aria-label="Журнал изменений типов">
-    <h2>Журнал изменений типов</h2>
-    <p>Записи только для чтения. Создание и изменение типов фиксируются сервером.</p>
-    {loading ? <p>Загружаем журнал…</p> : error ? <p role="alert">{error}</p>
+  return <section className="content-card type-audit" aria-label={t.auditTitle}>
+    <h2>{t.auditTitle}</h2>
+    <p>{t.auditHint}</p>
+    {loading ? <p>{t.auditLoading}</p> : error ? <p role="alert">{ticketTypeError(error.failure)}</p>
       : entries.length ? <ol>{entries.map((entry) => <li key={entry.id}>
-        <time dateTime={entry.occurred_at}>{formatEventDate(entry.occurred_at)}</time> · пользователь #{entry.actor_id} · {entry.action}<p>{entry.description}</p>
-      </li>)}</ol> : <p>Изменений типов пока нет.</p>}
+        <time dateTime={entry.occurred_at}>{formatEventDate(entry.occurred_at)}</time> · {t.auditActor(entry.actor_id)} · {entry.action}<p>{entry.description}</p>
+      </li>)}</ol> : <p>{t.auditEmpty}</p>}
   </section>;
 }
