@@ -53,7 +53,10 @@ export function OrganizerPage() {
       {!user || !allowed ? <OrganizerGate allowed={allowed} returnTo="/organizer" /> : (
         <section className="content-card" aria-labelledby="my-events">
           <h2 id="my-events">{text.list.heading}</h2>
-          <p><Link className="button" to="/organizer/events/new">{text.list.create}</Link></p>
+          <p className="organizer-links">
+            <Link className="button" to="/organizer/events/new">{text.list.create}</Link>
+            <Link className="text-link" to="/organizer/profile">{text.profile.title}</Link>
+          </p>
           {state.kind === 'loading' ? <p role="status">{text.list.loading}</p>
             : state.kind === 'error' ? (
               <div className="notice notice-error" role="alert">
