@@ -147,6 +147,12 @@ test('new store starts anonymous (no persistence)', async () => {
 
 test('return destination allows only event routes and survives auth links', () => {
   for (const path of ['/events', '/events/42', '/events/42/']) assert.equal(safeReturnTo(path), path);
+  for (const path of ['/organizer', '/organizer/', '/organizer/profile', '/organizer/profile/', '/organizer/events/new', '/organizer/events/42/edit', '/organizer/events/42/ticket-types']) {
+    assert.equal(safeReturnTo(path), path);
+  }
+  for (const path of ['/organizer/events', '/organizer/profile/extra', '/organizerx', '/organizer//profile']) {
+    assert.equal(safeReturnTo(path), '/events');
+  }
   for (const path of [undefined, '//evil.test', 'https://evil.test', '/\\evil.test', '/events/../login', '/login', '/register', '/events/%2f%2fevil', '/events/1?next=https://evil.test', '/events/1\n']) {
     assert.equal(safeReturnTo(path), '/events');
   }

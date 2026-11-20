@@ -20,6 +20,33 @@ export interface EventDraft {
   capacity: string;
 }
 
+export interface StaffMember {
+  user_id: number;
+  email: string;
+  full_name: string;
+  created_at: string;
+}
+
+export interface OrganizerProfile {
+  id: number;
+  user_id: number;
+  organization_name: string;
+  description: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  website: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrganizerProfileDraft {
+  organization_name: string;
+  description: string;
+  contact_email: string;
+  contact_phone: string;
+  website: string;
+}
+
 /** Creating events and listing one's own is for organizers; the API refuses every other role, admins included. */
 export function canOrganize(user: Pick<User, 'role'> | null): boolean {
   return user?.role === 'organizer';
@@ -55,6 +82,79 @@ export function localInputValue(value: string): string {
 
 export function emptyEventDraft(): EventDraft {
   return { title: '', description: '', date: '', location: '', capacity: '' };
+}
+
+export function emptyOrganizerProfileDraft(): OrganizerProfileDraft {
+  return { organization_name: '', description: '', contact_email: '', contact_phone: '', website: '' };
+}
+
+export function organizerProfileDraft(profile: OrganizerProfile): OrganizerProfileDraft {
+  return {
+    organization_name: profile.organization_name,
+    description: profile.description ?? '',
+    contact_email: profile.contact_email ?? '',
+    contact_phone: profile.contact_phone ?? '',
+    website: profile.website ?? '',
+  };
+}
+
+function record(payload: unknown): Record<string, unknown> {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new ApiError((m) => m.catalog.malformed, { kind: 'response' });
+  return payload as Record<string, unknown>;
+}
+
+export function readStaffMembers(payload: unknown): StaffMember[] {
+  if (!Array.isArray(payload)) throw new ApiError((m) => m.catalog.malformed, { kind: 'response' });
+  return payload.map((value) => {
+    const item = record(value);
+    if (!Number.isSafeInteger(item.user_id) || (item.user_id as number) < 1
+      || typeof item.email !== 'string' || typeof item.full_name !== 'string'
+      || typeof item.created_at !== 'string') {
+      throw new ApiError((m) => m.catalog.malformed, { kind: 'response' });
+    }
+    return { user_id: item.user_id as number, email: item.email, full_name: item.full_name, created_at: item.created_at };
+  });
+}
+
+export function readOrganizerProfile(payload: unknown): OrganizerProfile {
+  const item = record(payload);
+  if (!Number.isSafeInteger(item.id) || (item.id as number) < 1
+    || !Number.isSafeInteger(item.user_id) || (item.user_id as number) < 1
+    || typeof item.organization_name !== 'string'
+    || typeof item.created_at !== 'string' || typeof item.updated_at !== 'string') {
+    throw new ApiError((m) => m.catalog.malformed, { kind: 'response' });
+  }
+  for (const field of ['description', 'contact_email', 'contact_phone', 'website']) {
+    if (item[field] !== null && typeof item[field] !== 'string') {
+      throw new ApiError((m) => m.catalog.malformed, { kind: 'response' });
+    }
+  }
+  return item as unknown as OrganizerProfile;
+}
+
+export function organizerProfilePayload(draft: OrganizerProfileDraft): Record<string, unknown> {
+  const name = draft.organization_name.trim();
+  if ([...name].length < 2 || [...name].length > 200) {
+    throw new ApiError((m) => m.organizer.profileValidation, { kind: 'validation', status: 422 });
+  }
+  const optional = (value: string) => value.trim() || null;
+  const email = optional(draft.contact_email);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new ApiError((m) => m.organizer.profileValidation, { kind: 'validation', status: 422 });
+  }
+  const phone = optional(draft.contact_phone);
+  if (phone && !/^\+?[0-9 ()\-]{7,20}$/.test(phone)) {
+    throw new ApiError((m) => m.organizer.profileValidation, { kind: 'validation', status: 422 });
+  }
+  const website = optional(draft.website);
+  if (website && !/^https?:\/\/\S+$/i.test(website)) {
+    throw new ApiError((m) => m.organizer.profileValidation, { kind: 'validation', status: 422 });
+  }
+  const description = optional(draft.description);
+  if (description && [...description].length > 2000) {
+    throw new ApiError((m) => m.organizer.profileValidation, { kind: 'validation', status: 422 });
+  }
+  return { organization_name: name, description, contact_email: email, contact_phone: phone, website };
 }
 
 export function eventDraft(event: EventDetails): EventDraft {
@@ -115,6 +215,14 @@ export function organizerError(error: unknown): string {
       case 'EVENT_NOT_FOUND': return current().organizer.errors.EVENT_NOT_FOUND;
     }
     if (error.status === 403) return current().organizer.errors.forbidden;
+  }
+  return getErrorMessage(error);
+}
+
+export function staffError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === 'USER_NOT_FOUND') return current().organizer.staff.userNotFound;
+    if (error.status === 403) return current().organizer.staff.forbidden;
   }
   return getErrorMessage(error);
 }
