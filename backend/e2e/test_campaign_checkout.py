@@ -25,7 +25,7 @@ def test_last_redemption_is_reserved_once_and_reusable_after_expiry(api, registe
     assert responses[1-first].json()["detail"]["code"] == "PROMO_EXHAUSTED"
     expired = responses[first].json()["id"]
     with db_engine.begin() as db:
-        db.execute(text("UPDATE orders SET expires_at = now() - interval '1 second' WHERE id=:id"), {"id": expired})
+        db.execute(text("UPDATE orders SET expires_at = created_at - interval '1 minute' WHERE id=:id"), {"id": expired})
     second = attempt(1-first)(api)
     assert second.status_code == 201, second.text
     oid = second.json()["id"]
