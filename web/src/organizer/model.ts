@@ -9,6 +9,28 @@ import { current } from '../i18n/index.ts';
 export interface ManagedEvent extends EventDetails {
   /** Suspended by an administrator: hidden from visitors whatever the status. */
   suspended: boolean;
+  phase?: EventPhase;
+  ends_at?: string;
+}
+
+export const eventPhases = ['upcoming', 'active', 'completed', 'cancelled'] as const;
+export type EventPhase = typeof eventPhases[number];
+
+function isEventPhase(value: unknown): value is EventPhase {
+  return eventPhases.some((phase) => phase === value);
+}
+
+export function eventPhase(event: ManagedEvent, now = Date.now()): EventPhase {
+  if (event.status === 'cancelled') return 'cancelled';
+  if (event.phase) return event.phase;
+  const start = Date.parse(event.date);
+  const end = event.ends_at ? Date.parse(event.ends_at) : start + 86_400_000;
+  if (now < start) return 'upcoming';
+  return now < end ? 'active' : 'completed';
+}
+
+export function isClosedPhase(phase: EventPhase): boolean {
+  return phase === 'completed' || phase === 'cancelled';
 }
 
 export interface EventDraft {
@@ -61,7 +83,11 @@ export function readManagedEvent(payload: unknown, expectedId: number): ManagedE
   const event = readEventDetails(payload, expectedId);
   const raw = payload as Record<string, unknown>;
   // The admin API reports `suspended`; a `suspended_at` time is accepted as the same fact.
-  return { ...event, suspended: raw.suspended === true || (typeof raw.suspended_at === 'string' && raw.suspended_at !== '') };
+  return {
+    ...event, suspended: raw.suspended === true || (typeof raw.suspended_at === 'string' && raw.suspended_at !== ''),
+    ...(isEventPhase(raw.phase) ? { phase: raw.phase } : {}),
+    ...(typeof raw.ends_at === 'string' && Number.isFinite(Date.parse(raw.ends_at)) ? { ends_at: raw.ends_at } : {}),
+  };
 }
 
 export function readManagedEvents(payload: unknown): ManagedEvent[] {

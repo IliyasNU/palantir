@@ -28,5 +28,6 @@ test('real organizer session creates, publishes and cancels an event', async ({p
   await expect(status).toContainText('Опубликовано');
   await status.getByRole('button', {name: 'Отменить событие', exact: true}).click();
   await status.getByRole('button', {name: 'Да, отменить событие', exact: true}).click();
-  await expect(status).toContainText('Отменено');
+  await expect(page).toHaveURL(/\/organizer\/events\/\d+\/history$/);
+  await expect(page.getByRole('region', {name: 'Сведения о событии'})).toContainText('Отменено');
 });

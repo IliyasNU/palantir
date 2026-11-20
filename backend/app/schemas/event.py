@@ -2,6 +2,7 @@ from typing import Annotated, Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
+from app.models.event import EventPhase
 from app.schemas.common import UTCDateTime, blank_to_none
 from app.schemas.ticket_type import TicketTypeRead
 
@@ -57,6 +58,7 @@ class EventRead(BaseModel):
     location: str
     capacity: int
     status: str
+    phase: EventPhase
     tickets_issued: int
     created_at: UTCDateTime
     updated_at: UTCDateTime
@@ -64,6 +66,39 @@ class EventRead(BaseModel):
     suspended: bool
     paid_sales_available: bool
     ticket_types: list[TicketTypeRead] = Field(validation_alias="public_ticket_types")
+
+
+class EventDuplicate(BaseModel):
+    date: UTCDateTime
+
+
+class HistoryTicket(BaseModel):
+    id: int
+    ticket_type_id: int
+    status: str
+    created_at: UTCDateTime
+
+
+class HistoryOrder(BaseModel):
+    id: int
+    status: str
+    total_tiyn: int
+    created_at: UTCDateTime
+
+
+class HistoryCheckIn(BaseModel):
+    id: int
+    ticket_id: int
+    checked_in_at: UTCDateTime
+    undone_at: Optional[UTCDateTime]
+
+
+class EventHistoryRead(BaseModel):
+    event: EventRead
+    tickets: list[HistoryTicket]
+    orders: list[HistoryOrder]
+    check_ins: list[HistoryCheckIn]
+    has_more: bool
 
 
 class EventSummary(BaseModel):

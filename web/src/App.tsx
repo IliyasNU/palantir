@@ -8,6 +8,7 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { OrganizerPage } from './pages/OrganizerPage';
+import { EventHistoryPage } from './pages/EventHistoryPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { TicketsPage } from './pages/TicketsPage';
@@ -41,6 +42,7 @@ export function App() {
         <Route path="organizer/profile" element={<OrganizerProfilePage />} />
         <Route path="organizer/events/new" element={<EventEditorPage />} />
         <Route path="organizer/events/:id/edit" element={<EventEditorPage />} />
+        <Route path="organizer/events/:id/history" element={<EventHistoryPage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
         <Route path="forgot-password" element={<ForgotPasswordPage />} />

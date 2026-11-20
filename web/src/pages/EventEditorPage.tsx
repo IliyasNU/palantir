@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router';
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router';
 import { ApiError, issueMessage } from '../api';
 import { useAuth } from '../auth/AuthProvider';
 import { useSubmission } from '../auth/useSubmission';
 import { Page } from '../components/Page';
 import { eventStatusLabel, parseEventId } from '../events/details';
-import { canManageEvents, canOrganize, emptyEventDraft, eventDraft, eventPayload, organizerError, readManagedEvent, readStaffMembers, staffError } from '../organizer/model';
+import { canManageEvents, canOrganize, emptyEventDraft, eventDraft, eventPayload, eventPhase, isClosedPhase, organizerError, readManagedEvent, readStaffMembers, staffError } from '../organizer/model';
 import type { EventDraft, ManagedEvent, StaffMember } from '../organizer/model';
 import { useT } from '../i18n';
 import { OrganizerGate } from './OrganizerPage';
@@ -243,6 +243,9 @@ function EventEditor({ id }: { id: string | undefined }) {
   }, [creating, eventId, allowed, request]);
 
   const returnTo = creating ? '/organizer/events/new' : `/organizer/events/${id}/edit`;
+  if (allowed && load.kind === 'ready' && isClosedPhase(eventPhase(load.event))) {
+    return <Navigate replace to={`/organizer/events/${load.event.id}/history`} />;
+  }
   return (
     <Page eyebrow={text.eyebrow} title={creating ? text.editor.createTitle : text.editor.editTitle}
       description={creating ? text.editor.createDescription : text.editor.editDescription}>

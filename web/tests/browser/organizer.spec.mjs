@@ -32,6 +32,10 @@ test('an organizer creates a draft, publishes it, edits it and cancels it at 375
   let current = { ...draft };
   const calls = [];
   await page.route(`${base}/events/mine`, (route) => route.fulfill({ json: [] }));
+  await page.route(`${base}/events/9/history?*`, (route) => route.fulfill({
+    json: { event: current, tickets: [], orders: [], check_ins: [], has_more: false },
+  }));
+  await page.route(`${base}/events/9/action-log?*`, (route) => route.fulfill({ json: [] }));
   await page.route(`${base}/events`, (route) => {
     expect(route.request().method()).toBe('POST');
     expect(route.request().headers().authorization).toBe('Bearer test-token');
@@ -102,9 +106,9 @@ test('an organizer creates a draft, publishes it, edits it and cancels it at 375
   await status.getByRole('button', { name: 'Отменить событие' }).click();
   await expect(status).toContainText('Это действие необратимо');
   await status.getByRole('button', { name: 'Да, отменить событие' }).click();
-  await expect(status).toContainText('Статус: Отменено');
-  await expect(status).toContainText('Его нельзя опубликовать снова.');
-  await expect(status.getByRole('button')).toHaveCount(0);
+  await expect(page).toHaveURL('/organizer/events/9/history');
+  await expect(page.getByRole('region', { name: 'Сведения о событии' })).toContainText('Отменено');
+  await expect(page.getByRole('button', { name: 'Опубликовать' })).toHaveCount(0);
   expect(calls.slice(1)).toEqual([['POST /events/9/publish', null], ['PATCH /events/9', { capacity: 60 }], ['POST /events/9/cancel', null]]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
@@ -119,15 +123,61 @@ test('the cabinet lists own events in every status with links, and shows a suspe
   await page.route(`${base}/events`, (route) => route.fulfill({ json: [] }));
   await page.getByRole('navigation').getByRole('link', { name: 'Мои события' }).click();
   const items = page.getByRole('listitem');
-  await expect(items).toHaveCount(3);
+  await expect(items).toHaveCount(2);
   await expect(items.nth(0)).toContainText('Черновик');
   await expect(items.nth(0)).toContainText('15 июля 2030');
-  await expect(items.nth(1)).toContainText('Отменено');
-  await expect(items.nth(1)).toContainText('12');
-  await expect(items.nth(2)).toContainText('Событие заблокировано администратором');
+  await expect(items.nth(1)).toContainText('Событие заблокировано администратором');
   await expect(page.getByRole('link', { name: 'Редактировать: Вечер джаза' })).toHaveAttribute('href', '/organizer/events/9/edit');
   await expect(page.getByRole('link', { name: 'Типы билетов: Вечер джаза' })).toHaveAttribute('href', '/organizer/events/9/ticket-types');
   await expect(page.getByRole('link', { name: 'Страница события: Вечер джаза' })).toHaveAttribute('href', '/events/9');
+  await page.getByRole('button', { name: 'Отменённые', exact: true }).click();
+  await expect(items).toHaveCount(1);
+  await expect(items.first()).toContainText('Отменено');
+  await expect(items.first()).toContainText('12');
+  await expect(page.getByRole('link', { name: 'Открыть историю: Отменённый концерт' })).toHaveAttribute('href', '/organizer/events/10/history');
+});
+
+test('completed events show read-only history and can be duplicated into a fresh draft', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  const completed = { ...draft, title: 'Прошедший концерт', status: 'published', phase: 'completed' };
+  const active = { ...draft, id: 10, title: 'Текущее событие', status: 'published', phase: 'active' };
+  const upcoming = { ...draft, id: 11, title: 'Будущий концерт', phase: 'upcoming' };
+  const duplicate = { ...draft, id: 12, title: completed.title, date: '2031-07-15T12:00:00.000Z', phase: 'upcoming' };
+  await page.route(`${base}/events/mine`, route => route.fulfill({ json: [completed, active, upcoming] }));
+  await page.route(`${base}/events/9/history?limit=50&offset=0`, route => route.fulfill({ json: {
+    event: completed, tickets: [{ id: 41, ticket_type_id: 3, status: 'active', created_at: draft.created_at }],
+    orders: [{ id: 51, status: 'paid', total_tiyn: 1000, created_at: draft.created_at }],
+    check_ins: [{ id: 61, ticket_id: 41, checked_in_at: draft.created_at, undone_at: null }], has_more: false,
+  } }));
+  await page.route(`${base}/events/9/action-log?limit=51&offset=0`, route => route.fulfill({ json: [{
+    id: 2, event_id: 9, actor_id: 3, actor_name: 'Fixture organizer', action: 'check_in.created',
+    entity_type: 'check_in', entity_id: 61, occurred_at: draft.created_at, description: 'Ticket admitted',
+  }] }));
+  await page.route(`${base}/events/12`, route => route.fulfill({ json: duplicate }));
+  await page.route(`${base}/events/12/staff`, route => route.fulfill({ json: [] }));
+  await page.route(`${base}/events/9/duplicate`, route => {
+    expect(route.request().method()).toBe('POST');
+    expect(route.request().postDataJSON()).toEqual({ date: duplicate.date });
+    return route.fulfill({ status: 201, json: duplicate });
+  });
+  await login(page, 'organizer');
+  await expect(page.getByRole('heading', { name: upcoming.title })).toBeVisible();
+  await page.getByRole('button', { name: 'Текущие', exact: true }).click();
+  await expect(page.getByRole('heading', { name: active.title })).toBeVisible();
+  await page.getByRole('button', { name: 'Завершённые', exact: true }).click();
+  await expect(page.getByRole('heading', { name: upcoming.title })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: `Редактировать: ${completed.title}` })).toHaveCount(0);
+  await page.getByRole('link', { name: `Открыть историю: ${completed.title}` }).click();
+  await expect(page.getByRole('region', { name: 'Билеты', exact: true })).toContainText('Билет №41');
+  await expect(page.getByRole('region', { name: 'Заказы', exact: true })).toContainText('Заказ №51');
+  await expect(page.getByRole('region', { name: 'Отметки входа' })).toContainText('Вход подтверждён');
+  await expect(page.getByRole('region', { name: 'Журнал действий' })).toContainText('Ticket admitted');
+  await expect(page.getByRole('button', { name: 'Сохранить изменения' })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByLabel('Новое время начала', { exact: true }).fill('2031-07-15T17:00');
+  await page.getByRole('button', { name: 'Дублировать', exact: true }).click();
+  await expect(page).toHaveURL('/organizer/events/12/edit');
+  await expect(page.getByRole('region', { name: 'Статус и публикация' })).toContainText('Черновик');
 });
 
 test('API refusals are shown by code and a missing event is not editable', async ({ page }) => {

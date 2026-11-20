@@ -442,6 +442,23 @@ that refreshes periodically, poll `GET /support/cases/{id}/messages?after_id=<la
 Opening a case, each status change and each assignment are written to the action log (`support_case.*`), for the
 case's event or as a platform action. Message text is never copied there. E-mail notifications are not sent yet.
 
+## Organizer event history
+
+`EventRead.phase` is computed in UTC independently of publication status. Cancelled events
+always report `cancelled`. Otherwise the event is `upcoming` before its start, `active` from
+the start until the end, and `completed` at the end. The end defaults to 24 hours after
+the start. The current event schema has no stored `ends_at`.
+
+- `GET /events/{id}/history?limit=50&offset=0` is available to the owner and admins. It
+  returns the event and paginated tickets, orders and check-ins without refreshing
+  inventory. The existing `GET /events/{id}/action-log` supplies the timeline.
+- `POST /events/{id}/duplicate` accepts `{"date": "<future UTC timestamp>"}` for a
+  completed or cancelled event. It creates a draft with the same event settings and
+  ticket types, shifts any ticket sales windows by the change in start time, and
+  records `event.duplicated`. The new draft starts with zero issued tickets.
+- The API rejects edits to completed event settings and ticket types with
+  `409 EVENT_COMPLETED`. Event phases and duplication use the existing schema.
+
 ## Admin accounts
 
 Admins cannot register through the API. Create one (or promote an existing user) with:

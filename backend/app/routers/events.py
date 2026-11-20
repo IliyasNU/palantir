@@ -1,5 +1,7 @@
 """Events: public listing, organizer management and the draft -> published -> cancelled lifecycle."""
-from fastapi import APIRouter, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
@@ -8,12 +10,15 @@ from app.audit import record_action
 from app.db.base import utcnow
 from app.dependencies.auth import CurrentUser, OptionalUser
 from app.dependencies.db import DbSession
-from app.dependencies.events import ensure_can_manage, ensure_editable, get_event_or_404, is_visible
+from app.dependencies.events import (
+    ensure_can_manage, ensure_editable, ensure_not_completed, ensure_not_suspended, get_event_or_404, is_visible,
+)
 from app.dependencies.roles import OrganizerUser
 from app.errors import api_error
-from app.models import Event, EventStatus
+from app.models import CheckIn, Event, EventStatus, Order, Ticket, TicketType
+from app.models.event import EventPhase
 from app.schemas.common import to_utc
-from app.schemas.event import EventCreate, EventRead, EventUpdate
+from app.schemas.event import EventCreate, EventDuplicate, EventHistoryRead, EventRead, EventUpdate
 from app.ticket_pdf import venue_time
 from app.ticket_types import create_default_type, lock_event, resize_default_or_check_allocation
 from app.order_inventory import expire_event_orders, refresh_inventory
@@ -115,13 +120,84 @@ def get_event(event_id: int, db: DbSession, current_user: OptionalUser):
     return event
 
 
+@router.get("/{event_id}/history", response_model=EventHistoryRead)
+def read_event_history(
+    event_id: int,
+    db: DbSession,
+    current_user: CurrentUser,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+):
+    """Read the event's historical records without refreshing inventory or changing their state."""
+    event = get_event_or_404(db, event_id)
+    ensure_can_manage(event, current_user)
+
+    tickets = db.execute(
+        select(Ticket.id, Ticket.ticket_type_id, Ticket.status, Ticket.created_at)
+        .where(Ticket.event_id == event_id).order_by(Ticket.id.desc()).offset(offset).limit(limit + 1)
+    ).mappings().all()
+    orders = db.execute(
+        select(Order.id, Order.status, Order.total_tiyn, Order.created_at)
+        .where(Order.event_id == event_id).order_by(Order.id.desc()).offset(offset).limit(limit + 1)
+    ).mappings().all()
+    check_ins = db.execute(
+        select(CheckIn.id, CheckIn.ticket_id, CheckIn.checked_in_at, CheckIn.undone_at)
+        .where(CheckIn.event_id == event_id).order_by(CheckIn.id.desc()).offset(offset).limit(limit + 1)
+    ).mappings().all()
+    return {
+        "event": event,
+        "tickets": tickets[:limit],
+        "orders": orders[:limit],
+        "check_ins": check_ins[:limit],
+        "has_more": any(len(rows) > limit for rows in (tickets, orders, check_ins)),
+    }
+
+
+@router.post("/{event_id}/duplicate", response_model=EventRead, status_code=status.HTTP_201_CREATED)
+def duplicate_event(event_id: int, payload: EventDuplicate, db: DbSession, current_user: CurrentUser):
+    """Copy a past event's configuration to a new draft at a future date."""
+    source = get_event_or_404(db, event_id)
+    ensure_can_manage(source, current_user)
+    source = lock_event(db, event_id)
+    ensure_not_suspended(source)
+    if source.phase not in (EventPhase.COMPLETED, EventPhase.CANCELLED):
+        raise api_error(409, "EVENT_NOT_PAST", "Only completed and cancelled events can be duplicated")
+    if payload.date <= utcnow():
+        raise api_error(422, "DATE_IN_PAST", "The new date must be in the future")
+
+    duplicate = Event(
+        organizer_id=source.organizer_id, title=source.title, description=source.description,
+        date=payload.date, location=source.location, capacity=source.capacity, status=EventStatus.DRAFT.value,
+    )
+    date_shift = payload.date - to_utc(source.date)
+    try:
+        for ticket_type in source.ticket_types:
+            duplicate.ticket_types.append(TicketType(
+                name=ticket_type.name, description=ticket_type.description, price_tiyn=ticket_type.price_tiyn,
+                quantity=ticket_type.quantity, order_limit=ticket_type.order_limit,
+                hidden=ticket_type.hidden, is_default=ticket_type.is_default,
+                sales_start=to_utc(ticket_type.sales_start) + date_shift if ticket_type.sales_start is not None else None,
+                sales_end=to_utc(ticket_type.sales_end) + date_shift if ticket_type.sales_end is not None else None,
+            ))
+    except OverflowError as exc:
+        raise api_error(422, "DATE_OUT_OF_RANGE", "The new date moves a ticket sales window out of range") from exc
+
+    db.add(duplicate)
+    db.flush()
+    record_action(db, event_id=duplicate.id, actor_id=current_user.id, action="event.duplicated", entity_type="event",
+                  entity_id=duplicate.id, description=f"Created a draft from event #{source.id}")
+    db.commit()
+    db.refresh(duplicate)
+    return duplicate
+
+
 @router.patch("/{event_id}", response_model=EventRead)
 @router.put("/{event_id}", response_model=EventRead)
 def update_event(event_id: int, payload: EventUpdate, db: DbSession, current_user: CurrentUser):
     """Edit an event (owner or admin). Only the fields you send are changed (PUT and PATCH behave the same).
 
-    A cancelled event cannot be edited. Once the event has started its date and capacity are fixed; the texts
-    and the location can still be corrected. A new date must be in the future.
+    Completed and cancelled events cannot be edited. For an active event, its date and capacity are fixed
+    but the texts and location can still be corrected. A new date must be in the future.
     """
     event = get_event_or_404(db, event_id)
     ensure_can_manage(event, current_user)
@@ -160,7 +236,9 @@ def publish_event(event_id: int, db: DbSession, current_user: CurrentUser):
     event = get_event_or_404(db, event_id)
     ensure_can_manage(event, current_user)
     # Read the status under the row lock, so the history records a publication exactly once.
-    was_draft = lock_event(db, event_id).status == EventStatus.DRAFT.value
+    event = lock_event(db, event_id)
+    ensure_not_completed(event)
+    was_draft = event.status == EventStatus.DRAFT.value
     # Conditional so a cancel that commits concurrently is never overwritten.
     published = db.execute(
         update(Event)
@@ -190,9 +268,10 @@ def unpublish_event(event_id: int, db: DbSession, current_user: CurrentUser):
     event = get_event_or_404(db, event_id)
     ensure_can_manage(event, current_user)
     event = lock_event(db, event_id)
-    expire_event_orders(db, event_id)  # lapsed checkout holds must not keep the event published
+    ensure_not_completed(event)
     if event.status == EventStatus.CANCELLED.value:
         raise api_error(status.HTTP_409_CONFLICT, "EVENT_CANCELLED", "A cancelled event cannot be unpublished")
+    expire_event_orders(db, event_id)  # lapsed checkout holds must not keep the event published
     if event.status == EventStatus.PUBLISHED.value:
         db.flush()
         db.refresh(event)  # the counter may have just dropped when expired holds were released
@@ -215,6 +294,7 @@ def cancel_event(event_id: int, db: DbSession, current_user: CurrentUser):
     event = get_event_or_404(db, event_id)
     ensure_can_manage(event, current_user)
     event = lock_event(db, event_id)
+    ensure_not_completed(event)
     if event.status != EventStatus.CANCELLED.value:
         event.status = EventStatus.CANCELLED.value
         record_action(db, event_id=event.id, actor_id=current_user.id, action="event.cancelled", entity_type="event",
