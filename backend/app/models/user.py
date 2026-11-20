@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, func, true
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, utcnow
@@ -21,6 +21,9 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255))  # bcrypt hash, never the password
     role_id: Mapped[int] = mapped_column(ForeignKey("roles.id", ondelete="RESTRICT"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    email_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # Copied into every token as `ver`; incrementing it revokes all of the user's tokens.
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
@@ -33,6 +36,10 @@ class User(Base):
         back_populates="user", uselist=False, cascade="all, delete-orphan"
     )
     events: Mapped[list["Event"]] = relationship(back_populates="organizer")
+
+    @property
+    def email_verified(self) -> bool:
+        return self.email_verified_at is not None
 
     def __repr__(self) -> str:
         return f"User(id={self.id!r}, email={self.email!r})"

@@ -35,6 +35,19 @@ class Settings(BaseSettings):
     # Comma-separated list of browser origins allowed to call the API (CORS).
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
 
+    # Email links open the web app here.
+    frontend_url: str = "http://localhost:5173"
+    email_verify_expire_hours: int = Field(default=48, gt=0)
+    password_reset_expire_minutes: int = Field(default=60, gt=0)
+
+    # Empty SMTP_HOST: emails are logged instead of sent (bodies only outside production).
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_starttls: bool = True
+    email_from: str = "BiletFlow <no-reply@biletflow.local>"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

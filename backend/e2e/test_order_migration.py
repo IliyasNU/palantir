@@ -24,9 +24,11 @@ def test_0006_populated_upgrade_and_guard(scratch_database):
             kind = db.execute(text("INSERT INTO ticket_types (event_id,name,quantity,tickets_issued) VALUES (:id,'Existing type',3,1) RETURNING id"), {"id": eid}).scalar_one()
             db.execute(text("INSERT INTO tickets (event_id,attendee_id,ticket_type_id,qr_payload) VALUES (:e,:u,:t,'legacy:qr')"), {"e": eid, "u": owner, "t": kind})
             before = db.execute(text("SELECT id,event_id,attendee_id,ticket_type_id,qr_payload,status FROM tickets")).all()
-        command.upgrade(config, "0006")
+        command.upgrade(config, "head")  # later revisions add their own tables; the models match only at head
         with engine.connect() as db:
             assert compare_metadata(MigrationContext.configure(db), Base.metadata) == []
+        command.downgrade(config, "0006")
+        with engine.connect() as db:
             assert db.execute(text("SELECT id,event_id,attendee_id,ticket_type_id,qr_payload,status FROM tickets")).all() == before
             assert db.execute(text("SELECT demo_identity_confirmed_at,demo_payout_last4 FROM organizer_profiles")).one() == (None, None)
             assert db.execute(text("SELECT tickets_issued FROM events")).scalar_one() == 1

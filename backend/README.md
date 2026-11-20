@@ -89,7 +89,12 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `POST /auth/login` | public | JSON `{email, password}` → `{access_token, refresh_token, token_type}` |
 | `POST /auth/token` | public | same, as OAuth2 form (`username` = email); used by the `/docs` "Authorize" button |
 | `POST /auth/refresh` | public | JSON `{refresh_token}` → new token pair |
-| `GET /auth/me` | logged in | current user |
+| `POST /auth/logout` | public | JSON `{refresh_token}` → `204`; that refresh token stops working, other sessions stay |
+| `GET /auth/me` | logged in | current user, including `email_verified` |
+| `POST /auth/verify-email` | public | JSON `{token}` from the verification email → user; `400 INVALID_TOKEN` |
+| `POST /auth/resend-verification` | logged in | `202`; sends a new link unless already verified |
+| `POST /auth/forgot-password` | public | JSON `{email}` → `202` for any address; emails a reset link to an active account |
+| `POST /auth/reset-password` | public | JSON `{token, new_password}` → `204`; ends every session; the link works once; `400 INVALID_TOKEN` |
 | `POST /organizer-profiles` | organizer | one profile per organizer (409 if it exists) |
 | `GET /organizer-profiles/me` | organizer | 404 until created |
 | `PUT` or `PATCH /organizer-profiles/me` | organizer | partial update: only sent fields change |
@@ -115,6 +120,19 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 Send the access token as `Authorization: Bearer <token>`. Use paths exactly as written (no trailing slash).
 Datetimes are ISO 8601; values without a timezone are treated as UTC and responses are always UTC.
 Errors: 401 missing/invalid/expired token · 403 wrong role or not the owner · 404 not found · 409 conflict · 422 validation.
+
+## Email (BE-3)
+
+Registration emails a verification link and `forgot-password` emails a reset link.
+Links open the web app: `FRONTEND_URL/verify-email?token=...` and `FRONTEND_URL/reset-password?token=...`; the page posts the token to the matching endpoint.
+Set `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS` (true) and `EMAIL_FROM` to send real mail.
+Without `SMTP_HOST` the API writes each email, link included, to its log instead; in production it logs only that the email was not sent.
+Emails are sent after the response, so an SMTP failure is logged and never fails the request.
+`forgot-password` and `resend-verification` accept one request a minute and then answer `429 TOO_MANY_REQUESTS` with `Retry-After: 60`.
+The reset limit is keyed by the address, registered or not, so it reveals no accounts; the verification limit is per account.
+
+Logout ends only the session whose refresh token it receives: other devices stay signed in, and the access token of that session keeps working until it expires (30 minutes).
+To end every session, reset the password.
 
 ## Ticket types and action log (P1)
 
@@ -350,7 +368,7 @@ docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -
 docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -f work/compose.w2-pg16-icu.yml exec backend alembic current
 ```
 
-Compose applies `alembic upgrade head` before starting the API. Expect `0005 (head)` and `/health` HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
+Compose applies `alembic upgrade head` before starting the API. Expect `0007 (head)` and `/health` HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
 
 Run this SQL **in the database used by the API** and retain the actual output with the tested commit:
 
