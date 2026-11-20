@@ -264,6 +264,14 @@ The language switch covers these pages, the public event and ticket flow, dates 
 
 The language switch shows each language's own name ("Қазақша", "Русский", "English") as its visible text, so the accessible name matches what is seen (WCAG 2.5.3). axe does not judge Kazakh wording; native review is still needed.
 
+## Аналитика организатора (P6)
+
+Ссылка «Аналитика» в кабинете и на странице события ведёт на `/organizer/events/{id}/analytics`.
+Можно выбрать даты в UTC и тип билета. Сводка показывает вместимость, свободные места,
+действующие билеты, финансовые итоги и посещаемость. Продажи по дням и типам можно посмотреть
+на SVG-графиках или в таблицах. Использования, билеты и чистая выручка по кампаниям показаны
+в отдельной таблице.
+
 ## Возвраты и бесплатные регистрации (P5)
 
 Условия возврата настраиваются при создании или редактировании события. Посетитель видит их

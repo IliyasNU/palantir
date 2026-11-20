@@ -379,6 +379,28 @@ PDF and check-in. Physical phone/printing and the actual demo database remain un
 One earlier browser run timed out during login in the existing PDF refusal test; it passed in
 the final full run without a test change. These checks are agent verification, not a teammate review.
 
+## Organizer analytics (P6)
+
+`GET /events/{id}/analytics` returns an organizer's event report. Administrators can read any
+event. Other accounts receive `404 EVENT_NOT_FOUND`. Optional `date_from` and `date_to` are
+inclusive UTC calendar dates. Optional `ticket_type_id` must belong to the event.
+Reversed dates return `422 INVALID_DATE_RANGE`.
+
+The period groups settled orders by payment timestamp and free registrations by ticket issue
+timestamp. The financial figures use original order amounts. Gross before discount minus
+discounts equals charges. Net revenue is charges minus refunds. Estimated payout also subtracts
+fees on payments kept. Refunds are attributed to the original sale day so each row reconciles.
+The P2 summary retains its charged gross field and additionally exposes gross before discount,
+discounts and net revenue.
+
+Sold counts active paid tickets and active free registrations. Attendance counts active check-ins
+on those tickets. Absent is sold minus checked in. Campaign redemptions count orders still paid,
+attributed tickets count active tickets, and attributed revenue reflects discounts and refunds.
+Current availability uses active tickets plus unexpired holds across all dates. The selected ticket
+type narrows both capacity and availability when supplied.
+
+Analytics makes read-only aggregate queries, without locking inventory or making schema changes.
+
 ## Order refunds (P5)
 
 Event create and update accept an optional `refund_policy` (plain text, up to 2000 characters).

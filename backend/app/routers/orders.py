@@ -1,25 +1,28 @@
 """Simulated checkout and refunds. Lock the event before reading mutable order or ticket state."""
-from datetime import timedelta
+from datetime import date, timedelta
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Query, Response
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import notifications
+from app.analytics import event_analytics, sales_amounts
 from app.audit import record_action
 from app.campaigns import discount_for, validate_campaign
 from app.db.base import utcnow
 from app.demo_fees import DEMO_NOTICE, PAYMENT_PROCESSING_FEE_BPS, processing_fee
 from app.dependencies.auth import CurrentUser
 from app.dependencies.db import DbSession
-from app.dependencies.events import ensure_can_manage, ensure_not_suspended
+from app.dependencies.events import can_manage, ensure_can_manage, ensure_not_suspended, get_event_or_404
 from app.errors import api_error
 from app.models import CheckIn, Event, EventStatus, Ticket, TicketStatus, TicketType, User
 from app.models.order import Order
 from app.order_inventory import ensure_no_pending_order, expire_event_orders, refresh_inventory, release_order
 from app.paid_sales import activation_state
 from app.schemas.common import to_utc
+from app.schemas.analytics import EventAnalyticsRead
 from app.schemas.order import BulkRefundRead, EventOrdersRead, OrderCreate, OrderRead, PaymentRequest
 from app.ticket_lifecycle import close_ticket, lock_ticket
 from app.ticket_types import lock_event
@@ -198,17 +201,27 @@ def orders_summary(event_id: int, db: DbSession, user: CurrentUser):
     expire_event_orders(db, event_id)
     paid = Order.status == "paid"
     refunded = Order.status == "refunded"
-    gross, fees, refunds = db.execute(
+    gross, discounts, refunds, fees = db.execute(
         select(
-            func.coalesce(func.sum(Order.total_tiyn).filter(or_(paid, refunded)), 0),
-            func.coalesce(func.sum(Order.processing_fee_tiyn).filter(paid), 0),
+            func.coalesce(func.sum(Order.subtotal_tiyn).filter(or_(paid, refunded)), 0),
+            func.coalesce(func.sum(Order.discount_tiyn).filter(or_(paid, refunded)), 0),
             func.coalesce(func.sum(Order.total_tiyn).filter(refunded), 0),
+            func.coalesce(func.sum(Order.processing_fee_tiyn).filter(paid), 0),
         ).where(Order.event_id == event_id)
     ).one()
     db.commit()
-    return {"event_id": event_id, "gross_sales_tiyn": gross, "processing_fees_tiyn": fees,
-            "refunds_tiyn": refunds, "estimated_payout_tiyn": gross - fees - refunds,
+    return {"event_id": event_id, **sales_amounts(gross, discounts, refunds, fees),
             "simulation": True, "demo_notice": DEMO_NOTICE}
+
+
+@router.get("/events/{event_id}/analytics", response_model=EventAnalyticsRead)
+def read_analytics(event_id: int, db: DbSession, user: CurrentUser,
+                   ticket_type_id: Annotated[int | None, Query(ge=1, le=2147483647)] = None,
+                   date_from: date | None = None, date_to: date | None = None):
+    event = get_event_or_404(db, event_id)
+    if not can_manage(event, user):
+        raise api_error(404, "EVENT_NOT_FOUND", "Event not found")
+    return event_analytics(db, event, ticket_type_id, date_from, date_to)
 
 
 def event_orders_access(db: Session, event_id: int, user: User) -> Event:
