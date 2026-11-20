@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Response
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
+from app import notifications
 from app.audit import record_action
 from app.db.base import utcnow
 from app.demo_fees import DEMO_NOTICE, PAYMENT_PROCESSING_FEE_BPS, processing_fee
@@ -146,6 +147,7 @@ def pay_order(order_id: int, payload: PaymentRequest, db: DbSession, user: Curre
         return order  # first result wins, including a retry with a different outcome
     if payload.outcome == "failure":
         release_order(db, order, "failed")
+        notifications.payment_failed(db, user, order, event)
         action = "order.failed"
     else:
         try:
@@ -162,6 +164,7 @@ def pay_order(order_id: int, payload: PaymentRequest, db: DbSession, user: Curre
         order.ticket_id = ticket.id
         order.status = "paid"
         order.completed_at = utcnow()
+        notifications.order_paid(db, user, order, event)
         action = "order.paid"
     record_action(db, event_id=event.id, actor_id=user.id, action=action, entity_type="order",
                   entity_id=order.id, description=f"Demo payment {order.status}: {order.total_tiyn} tiyn")
