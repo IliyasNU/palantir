@@ -69,6 +69,7 @@ test('after a new organizer signs in, the menu shows the organizer cabinet and o
   await page.getByRole('radio', { name: 'Организатор', exact: true }).check();
   await fill(page, 'organizer');
   await page.getByRole('button', { name: 'Создать аккаунт' }).click();
+  await expect(page.getByRole('status')).toHaveText('Аккаунт организатора создан. Войдите, чтобы открыть кабинет организатора.');
   const nav = page.getByRole('navigation', { name: 'Основная навигация' });
   await expect(nav.getByRole('link', { name: 'Мои события' })).toHaveCount(0);
   await page.getByLabel('Email', { exact: true }).fill('organizer@example.com');
