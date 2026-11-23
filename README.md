@@ -1,25 +1,27 @@
 # BiletFlow
 
-Интеграционная версия команды Palantir для CSCI 361. FastAPI и PostgreSQL обслуживают React-клиент посетителя и Expo-клиент сотрудника.
+We built BiletFlow for CSCI 361 Software Engineering at Nazarbayev University in Fall 2026. Team Palantir consisted of Iliyas Ussabay (team lead), Abbas Uteulin, Temirlan Bayangazy, Sanzhar Toktargazin and Alibi Boranbayev. BiletFlow lets organizers publish events, attendees obtain tickets and check-in staff verify admission. Payments are simulated. The system runs locally with Docker Compose for the API and database. Our final release is tag `v1.0` (commit `ce8aa25`) on the `integration/biletflow-e2e` integration branch.
 
-- Web. Публичные события, регистрация и вход, получение бесплатного билета, список своих билетов и QR.
-- Backend. JWT, роли, публикация и отмена событий, выдача билетов, назначение сотрудников и идемпотентный check-in.
-- Mobile. Вход сотрудника, список доступных событий, сканирование QR и повтор запроса с тем же `request_id` после неопределённого ответа в открытой сессии.
+- The [web client](web/README.md) uses React for public event listings, registration, sign-in, free ticket claims and access to the attendee’s tickets and QR codes.
+- The [backend](backend/README.md) uses FastAPI and PostgreSQL for JWT authentication, role checks, event publication and cancellation, ticket issuance, staff assignments and idempotent check-in.
+- The [mobile client](mobile/README.md) uses Expo for staff sign-in, event selection and QR scanning. After an uncertain response, check-in staff can retry with the same `request_id` during the open session.
 
-Результаты проверок и список оставшихся рисков находятся в [отчёте аудита](docs/integration-audit.md). Сценарии для показа и ручной приёмки собраны в [чек-листе команды](docs/manual-acceptance.md).
+The [integration audit](docs/integration-audit.md) records verification results and remaining risks. The [team checklist](docs/manual-acceptance.md) contains demonstration and manual acceptance scenarios.
 
-## 1. Скачать единую версию
+## 1. Obtain the integration branch
 
-Установите Node.js 24 и npm. Для запуска backend используйте Docker Compose или локальную PostgreSQL с Python 3.12+. Команды ниже рассчитаны на PowerShell.
+Install Node.js 24 and npm. Run the backend with Docker Compose, or use a local PostgreSQL instance and Python 3.12+. The examples use PowerShell.
 
 ```powershell
 git clone --branch integration/biletflow-e2e https://github.com/IliyasNU/palantir.git biletflow
 cd biletflow
 ```
 
-## 2. Запустить PostgreSQL и API
+<a id="2-запустить-postgresql-и-api"></a>
 
-Из корня нового checkout. Блок создаёт локальный `.env` только при его отсутствии. Данные проекта Compose `biletflow-test` хранятся в отдельном томе. Если имя уже используется, выберите новое и используйте его во всех командах.
+## 2. Start PostgreSQL and the API
+
+Run these commands from the root of a fresh checkout. They create a local `.env` only if it does not already exist. The Compose project `biletflow-test` uses a separate data volume. If that project name is in use, choose an unused name and use it throughout.
 
 ```powershell
 if (-not (Test-Path -LiteralPath .env)) {
@@ -36,14 +38,14 @@ docker compose -p biletflow-test exec backend alembic current
 Invoke-RestMethod http://127.0.0.1:8000/health
 ```
 
-Ожидается `0003 (head)` и `{"status":"ok","database":"up"}`. Compose запускает PostgreSQL, ждёт `pg_isready` и применяет `alembic upgrade head` перед стартом API. Если контейнер backend ещё запускается, дождитесь окончания миграций и повторите `/health` перед открытием форм. При ошибке смотрите `docker compose -p biletflow-test logs backend db`. Для остановки используйте `docker compose -p biletflow-test stop`, чтобы сохранить данные.
+Compose waits for PostgreSQL to pass `pg_isready`, then applies `alembic upgrade head` before starting the API. The original setup reported `0003 (head)`. For v1.0 the head is `0011`. Wait for migrations to finish and check `/health` for `{"status":"ok","database":"up"}` before opening the forms. Inspect `docker compose -p biletflow-test logs backend db` if startup fails. Use `docker compose -p biletflow-test stop` to retain the data.
 
-При прямом запуске создайте отдельную PostgreSQL `biletflow_test` с собственным пользователем и паролем. В `backend/.env` укажите реальный `DATABASE_URL` в формате `postgresql+psycopg://USER:PASSWORD@127.0.0.1:5432/biletflow_test`, созданный `JWT_SECRET_KEY` и `CORS_ORIGINS=http://localhost:5173`. Используйте фактический порт PostgreSQL. Спецсимволы в имени и пароле URI должны быть закодированы. pgAdmin управляет PostgreSQL через интерфейс.
+For a direct launch, create a separate PostgreSQL database named `biletflow_test` with its own user and password. Set `DATABASE_URL` in `backend/.env` using the format `postgresql+psycopg://USER:PASSWORD@127.0.0.1:5432/biletflow_test` and the actual PostgreSQL port. Percent-encode special characters in the username and password. Set the generated `JWT_SECRET_KEY` and `CORS_ORIGINS=http://localhost:5173`. You can administer PostgreSQL through pgAdmin.
 
 ```powershell
 cd backend
 if (-not (Test-Path -LiteralPath .env)) { Copy-Item .env.example .env }
-# Отредактируйте backend/.env перед запуском.
+# Edit backend/.env before starting the API.
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m alembic upgrade head
@@ -51,11 +53,11 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Для production задайте `ENVIRONMENT=production` и случайный ключ. Допустимы `HS256`, `HS384`, `HS512` с минимумом 32, 48 и 64 байт соответственно. Пустые и известные примерные ключи отклоняются при запуске. Храните секреты только в локальном `.env` или менеджере секретов окружения.
+For production, set `ENVIRONMENT=production` and supply a random key. The minimum key lengths for `HS256`, `HS384` and `HS512` are 32, 48 and 64 bytes respectively. Startup rejects empty keys and known example keys. Store secrets in a local `.env` or the environment’s secret manager.
 
-## 3. Запустить web
+## 3. Start the web client
 
-В отдельной консоли из корня checkout.
+Open a separate terminal at the checkout root.
 
 ```powershell
 cd web
@@ -64,31 +66,31 @@ npm ci
 npm run dev
 ```
 
-Откройте `http://localhost:5173/register`. В `web/.env.local` задайте `VITE_API_URL=http://127.0.0.1:8000`, если API запущен на этом компьютере. Для другого окружения подставьте реальный базовый URL и перезапустите Vite. `VITE_API_URL` нужен также при `npm run build`. Опубликованному HTTPS-сайту нужен доступный HTTPS API, его точный frontend origin должен быть разрешён в `CORS_ORIGINS`.
+Open `http://localhost:5173/register`. If the API runs on the same computer, set `VITE_API_URL=http://127.0.0.1:8000` in `web/.env.local`. For another environment, use its API base URL and restart Vite. The value is also required for `npm run build`. An HTTPS deployment needs a reachable HTTPS API and the exact frontend origin in `CORS_ORIGINS`.
 
-На тестовой базе создайте организатора через `POST /auth/register` с ролью `organizer`. Откройте `http://127.0.0.1:8000/docs`, войдите как организатор, создайте событие через `POST /events` и опубликуйте через `POST /events/{id}/publish`. Зарегистрируйте отдельного сотрудника и назначьте его через `POST /events/{id}/staff` с JSON `{"email":"адрес-тестового-сотрудника"}`. В web зарегистрируйте посетителя, войдите, откройте событие и нажмите «Получить бесплатный билет». Билет также открывается из «Мои билеты». Сессия web хранится в памяти, после обновления страницы войдите снова.
+In the test database, create an organizer with `POST /auth/register` and the `organizer` role. Open `http://127.0.0.1:8000/docs`, sign in as the organizer, create an event with `POST /events` and publish it with `POST /events/{id}/publish`. Register a separate check-in staff account and assign it using `POST /events/{id}/staff` with JSON `{"email":"<test staff email>"}`. In the web client, register and sign in as an attendee, open the event and select “Получить бесплатный билет” (Get a free ticket). The ticket also appears in “Мои билеты” (My tickets). Reloading the page ends the in-memory web session.
 
-## 4. Запустить mobile и проверить телефон
+## 4. Run the mobile client on a phone
 
-Для LAN-теста запустите API с привязкой к LAN-интерфейсу. Для Compose задайте `API_BIND_HOST=0.0.0.0` в локальном `.env` и повторите `up -d`. Для прямого запуска укажите `--host 0.0.0.0`. На доверенной тестовой сети проверьте с телефона `http://<IP-компьютера>:8000/health`. `127.0.0.1` на телефоне указывает на сам телефон.
+For a LAN test, bind the API to the LAN interface. With Compose, set `API_BIND_HOST=0.0.0.0` in the local `.env` and repeat `up -d`. For a direct launch, use `--host 0.0.0.0`. On a trusted test network, open `http://<IP-компьютера>:8000/health` on the phone, replacing the placeholder with the computer’s IP address. On the phone, `127.0.0.1` refers to the phone itself.
 
 ```powershell
 cd mobile
 if (-not (Test-Path -LiteralPath .env)) { Copy-Item .env.example .env }
-# Замените пример EXPO_PUBLIC_API_URL на фактический адрес API в mobile/.env.
+# Replace EXPO_PUBLIC_API_URL in mobile/.env with the actual API address.
 npm ci
 npm start
 ```
 
-Используйте Expo Go с поддержкой SDK 58 или сборку для устройства. На физическом iPhone войдите в Expo CLI и Expo Go одним аккаунтом. Для входа в CLI из Windows PowerShell используйте `npx.cmd expo login` в папке `mobile`. Подробные проверки камеры, двух сканов, доступа и восстановления после потери ответа описаны в [инструкции mobile](mobile/README.md). Переменные `VITE_*` и `EXPO_PUBLIC_*` входят в клиентские сборки и содержат только адрес API.
+Use Expo Go with SDK 58 support or a device build. On a physical iPhone, use the same account for Expo CLI and Expo Go. From Windows PowerShell, run `npx.cmd expo login` in `mobile`. The [mobile instructions](mobile/README.md) cover the camera, two consecutive scans, access checks and recovery after a lost response. Values prefixed with `VITE_*` or `EXPO_PUBLIC_*` are included in client builds. Use them only for service addresses.
 
-## Проверки
+## Verification
 
-| Компонент | Команды из папки компонента |
+| Component | Commands (run from the component directory) |
 | --- | --- |
 | Backend | `python -m pytest -q tests` |
-| PostgreSQL | `python -m pytest -q e2e` с явной тестовой конфигурацией из [инструкции backend](backend/README.md#end-to-end-tests-against-postgresql) |
+| PostgreSQL | `python -m pytest -q e2e` with the explicit test configuration in the [backend instructions](backend/README.md#end-to-end-tests-against-postgresql) |
 | Web | `npm test`, `npm run typecheck`, `npm run build`, `npm run test:browser` |
 | Mobile | `npm test`, `npm run typecheck`, `npm run lint`, `npx expo export --platform android`, `npx expo export --platform ios` |
 
-Browser-проверки с настоящим API создают тестовые аккаунты и события. Флаги и порядок реального прогона описаны в [отчёте аудита](docs/integration-audit.md).
+Browser checks against a live API create test accounts and events. The [integration audit](docs/integration-audit.md) documents the flags and sequence for a live run.

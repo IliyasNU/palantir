@@ -1,10 +1,8 @@
-# Palantir backend
+# BiletFlow backend
 
-FastAPI + PostgreSQL (SQLAlchemy, Alembic). Architecture and data model: [`../docs/architecture.md`](../docs/architecture.md).
+We built the API with FastAPI, stored data in PostgreSQL through SQLAlchemy, and used Alembic to manage schema revisions. The [architecture document](../docs/architecture.md) describes the system and its data model.
 
-**Implemented:** authentication (register / login / refresh, JWT + bcrypt), role-based access control
-(`admin`, `organizer`, `attendee`), organizer profiles (create / view / update), events (create, edit, publish,
-cancel, public listing), free tickets with QR payloads, per-event staff, and idempotent ticket check-in.
+Authentication supports registration, sign-in and token renewal using JWTs and bcrypt password hashes. The account roles are `admin`, `organizer` and `attendee`. Organizers create, read and update their profiles, manage events from creation and editing through publication or cancellation, and assign check-in staff by event. The public catalog lists published events. Free tickets carry a QR payload. Idempotent check-in allows staff to retry a scan after an uncertain response.
 
 ## Run the API and database with Docker
 
@@ -38,23 +36,19 @@ docker compose exec backend python -m scripts.seed_demo
 python -m scripts.seed_demo
 ```
 
-Save the randomly generated passwords from the first run. It prints logins for an admin, two
-organizers, the staff member assigned to **Demo | Active check-in**, and three attendees. A
-second run leaves the rows, dates and passwords as they are. The command refuses to run with
-`ENVIRONMENT=production` and stops if a demo email already belongs to an existing account.
+On its first run, the script prints account identifiers and randomly generated passwords. Save them locally. The seed data includes one admin, two organizers, one member of check-in staff assigned to **Demo | Active check-in**, and three attendees. Later runs preserve the rows, dates and passwords. The script refuses to run with `ENVIRONMENT=production` or when an existing account already uses a demo email.
 
-**Demo | Upcoming checkout** has free and paid ticket types, two paid orders, a simulated
-refund for attendee C, a promo campaign and an attendee support thread. The order refund
-releases the seat, records the refund in the audit log and adds an in-app notification.
-**Demo | Active check-in** has an admitted ticket (attendee A), an unused ticket (attendee B)
-and a free ticket marked refunded (attendee C) for scanner demos.
-**Demo | Suspended** shows an event suspended by the demo admin with an audit entry and a
-reason. Organizers also have past, draft and cancelled events to explore.
-Use a fresh disposable database to see these fixtures if you already ran an older seed.
+| Seed event | What to examine |
+| --- | --- |
+| Demo \| Upcoming checkout | Free and paid ticket types, two paid orders, a promo campaign and an attendee support thread. The simulated refund for attendee C releases a seat, creates an audit entry and adds an in-app notification. |
+| Demo \| Active check-in | Attendee A has already checked in. Attendee B has an unused ticket. Attendee C has a refunded free ticket. These states provide three distinct scanner cases. |
+| Demo \| Suspended | The demo admin suspended this event. The audit entry records the reason. |
+
+Organizers also have past, draft and cancelled events. If a database contains seed data from an earlier version, use a fresh disposable database to examine the current fixtures.
 
 ## Run tests locally (no Docker, no PostgreSQL needed)
 
-Tests use an in-memory SQLite database. Python 3.11+ recommended.
+The unit tests use an in-memory SQLite database. We recommend Python 3.11+ for this suite.
 
 ```bash
 cd backend
@@ -68,9 +62,7 @@ pytest --cov=app --cov-report=term-missing
 
 ## End-to-end tests against PostgreSQL
 
-`tests/` runs in-process on SQLite. `e2e/` drives the running API over HTTP and checks rows in PostgreSQL:
-the mobile MVP run (login, staff access, ticket, scan, retries, lost response) and real concurrency
-(last seat, two phones on one ticket, parallel retries).
+The tests in `tests/` run in-process with SQLite. The tests in `e2e/` send HTTP requests to the running API and inspect PostgreSQL rows. They exercise the mobile MVP from sign-in and staff authorization through ticket issuance, scanning, retries and a lost response. Concurrency cases include two buyers claiming the last seat, two phones scanning one ticket, and parallel retries.
 
 Set `RUN_POSTGRES_E2E=1`, `ENVIRONMENT=test`, `E2E_BASE_URL` and `E2E_DATABASE_URL` explicitly. Use the same test JWT key and database as the running API. The database name must be `biletflow_test`, `biletflow_test_*`, `test_*` or `e2e_*`. The migration parity test needs permission to create and drop its own randomly named scratch database.
 
@@ -135,23 +127,21 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `POST /tickets/{id}/refund` | event owner or admin | final; records the admission state only, no payment is processed |
 | `POST /events/{id}/staff` | owner or admin | assign event staff |
 | `GET /staff/events` | authenticated | permitted published events, each with `can_manage` |
-| `POST /events/{id}/check-in` | staff, owner or admin | exact QR payload plus UUID request ID; `409 TICKET_CANCELLED` / `TICKET_REFUNDED` for closed tickets |
+| `POST /events/{id}/check-in` | check-in staff, owner or admin | exact QR payload plus UUID request ID; `409 TICKET_CANCELLED` / `TICKET_REFUNDED` for closed tickets |
 | `POST /events/{id}/check-ins/{check_in_id}/undo` | owner or admin | `{request_id}`; keeps the row as history, the ticket can be scanned again |
-| `GET /events/{id}/attendance` | staff, owner or admin | `{event_id, capacity, tickets_issued, checked_in}` |
-| `GET /events/{id}/attendees?q=` | staff, owner or admin | name/e-mail search, `q` ≥ 3 chars, ≤ 20 results, masked e-mail, ticket `status`, current `check_in_id` + `qr_payload` |
+| `GET /events/{id}/attendance` | check-in staff, owner or admin | `{event_id, capacity, tickets_issued, checked_in}` |
+| `GET /events/{id}/attendees?q=` | check-in staff, owner or admin | name/email search, `q` ≥ 3 chars, ≤ 20 results, masked email, ticket `status`, current `check_in_id` + `qr_payload` |
 | `PUT` or `PATCH /events/{id}` | owner or admin | partial update; a cancelled event can't change (`409 EVENT_CANCELLED`); once started, date and capacity are fixed (`409 EVENT_STARTED`); a new date must be in the future (`422 DATE_IN_PAST`) |
 
 Send the access token as `Authorization: Bearer <token>`. Use paths exactly as written (no trailing slash).
-Datetimes are ISO 8601; values without a timezone are treated as UTC and responses are always UTC.
-Errors: 401 missing/invalid/expired token · 403 wrong role or not the owner · 404 not found · 409 conflict · 422 validation.
+The API accepts ISO 8601 timestamps, interprets values without a time zone as UTC and returns timestamps in UTC.
+A missing, invalid or expired token returns 401. Insufficient role or ownership returns 403. Missing resources return 404, conflicts return 409 and validation errors return 422.
 
 ## Email (BE-3)
 
-Registration emails a verification link and `forgot-password` emails a reset link.
-Links open the web app: `FRONTEND_URL/verify-email?token=...` and `FRONTEND_URL/reset-password?token=...`; the page posts the token to the matching endpoint.
-Set `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS` (true) and `EMAIL_FROM` to send real mail.
-Without `SMTP_HOST` the API writes each email, link included, to its log instead; in production it logs only that the email was not sent.
-Emails are sent after the response, so an SMTP failure is logged and never fails the request.
+Registration triggers a verification email, and `forgot-password` triggers a reset email. Their links open `FRONTEND_URL/verify-email?token=...` and `FRONTEND_URL/reset-password?token=...` respectively. Each page submits its token to the corresponding API endpoint.
+
+For SMTP delivery, configure `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS` (true) and `EMAIL_FROM`. Without `SMTP_HOST`, the API logs the email and its link in development. In production it records only that delivery did not occur. The API sends email after the HTTP response, so an SMTP failure appears in the log without changing the request outcome.
 
 To see every email in a local inbox (the defense demo), start Mailpit with the `mail` Compose profile:
 
@@ -244,7 +234,7 @@ belong to no event. All `/admin` routes need an admin account
 
 | Method and path | Access | Result |
 | --- | --- | --- |
-| `GET /admin/users?q=&limit=` | Admin | Users whose name or e-mail contains `q`; the newest accounts without `q`. At most 50 |
+| `GET /admin/users?q=&limit=` | Admin | Users whose name or email contains `q`; the newest accounts without `q`. At most 50 |
 | `POST /admin/users/{id}/suspend` | Admin | Body `{"reason": "..."}` (3–300 characters). Disables the account; its tokens stop working at once |
 | `POST /admin/users/{id}/reactivate` | Admin | Enables the account again |
 | `GET /admin/events?q=&suspended=&limit=` | Admin | Events in every status by title; `suspended=true` or `false` narrows the list. At most 50 |
@@ -280,7 +270,7 @@ tests passed, with `alembic heads` at `0005 (head)`.
 
 ## Promo codes and Campaign QR (P3)
 
-Set the API process variable `CAMPAIGN_WEB_ORIGIN` to the public HTTPS origin of the web app before generating demo QRs. The default `https://localhost:5173` is for development. With Compose, pass the variable through the API service's `environment` in a local override. A printed QR opens `/events/{event_id}?campaign=pc_<opaque token>` and bears the label «Это не билет». Its link contains no price or discount.
+Set the API process variable `CAMPAIGN_WEB_ORIGIN` to the public HTTPS origin of the web app before generating demo QRs. The default `https://localhost:5173` is for development. With Compose, pass the variable through the API service's `environment` in a local override. A printed QR opens `/events/{event_id}?campaign=pc_<opaque token>` and bears the label “Это не билет” (This is not a ticket). Its link contains no price or discount.
 
 | Route | Access and result |
 | --- | --- |
@@ -298,7 +288,7 @@ Migration `0009` follows `0008`. Existing orders receive zero discount. Downgrad
 
 ## Simulated paid sales and orders (P2)
 
-P2 is a university simulation: **Демонстрационная оплата, деньги не списываются**.
+We simulated paid checkout in P2. The notice reads “Демонстрационная оплата, деньги не списываются” (Simulated payment, no money is charged).
 There is no payment provider, card entry, real verification or payout. Successful payment
 responses carry `simulation: true` and `demo_notice`. Authentication and authorization are real.
 
@@ -341,7 +331,7 @@ Business errors use `api_error` (`detail.code` and `detail.message`). Public rea
 the explicit state refusal listed above. Legacy free claims keep `PAID_TICKETS_NOT_SUPPORTED`
 and point to checkout in the message.
 
-Money is integer tiyn. The buyer pays exactly the ticket price. The coded demo activation fee
+The API represents money as integer tiyn. The buyer pays exactly the ticket price. The simulated activation fee
 is 500000 tiyn, and processing is 300 basis points (3%) withheld from organizer proceeds.
 Rounding is nearest tiyn, halves upwards: `(price_tiyn * 300 + 5000) // 10000`.
 For 10050 tiyn the buyer pays 10050, the fee is 302, and estimated proceeds are 9748.
@@ -405,7 +395,7 @@ the final full run without a test change. These checks are agent verification, n
 
 ## Organizer analytics (P6)
 
-`GET /events/{id}/analytics` returns an organizer's event report. Administrators can read any
+`GET /events/{id}/analytics` returns an organizer's event report. Admins can read any
 event. Other accounts receive `404 EVENT_NOT_FOUND`. Optional `date_from` and `date_to` are
 inclusive UTC calendar dates. Optional `ticket_type_id` must belong to the event.
 Reversed dates return `422 INVALID_DATE_RANGE`.
@@ -455,9 +445,7 @@ Migration `0011` follows `0010`. Its downgrade refuses to discard existing refun
 
 ## Support cases (SRS 4.13)
 
-Revision `0010` adds `support_cases` and `support_messages`. In the team's merge order it comes after
-`0007` (account e-mail), `0008` (notifications) and `0009` (promo codes). Until those are merged it
-follows `0006`, the current head; once `0009` is merged, its `down_revision` becomes `0009`.
+Revision `0010` adds `support_cases` and `support_messages`. The development notes placed it after the then-current head, `0006`. On the integration branch it follows the account email (`0007`), notification (`0008`) and promo code (`0009`) migrations. Its final `down_revision` is `0009`.
 
 An `attendee` case is a request to the organizer of an event; that organizer and admins handle it.
 An `organizer` case is a request to platform support; admins handle it.
@@ -513,7 +501,7 @@ that refreshes periodically, poll `GET /support/cases/{id}/messages?after_id=<la
 `last_message_by` different from your own side means there is a reply you have not answered.
 
 Opening a case, each status change and each assignment are written to the action log (`support_case.*`), for the
-case's event or as a platform action. Message text is never copied there. E-mail notifications are not sent yet.
+case's event or as a platform action. Message text is never copied there. Email notifications are not sent yet.
 
 ## Organizer event history
 
@@ -570,7 +558,7 @@ docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -
 docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -f work/compose.w2-pg16-icu.yml exec backend alembic current
 ```
 
-Compose applies `alembic upgrade head` before starting the API. Expect `0008 (head)` and `/health` HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
+Compose applies `alembic upgrade head` before starting the API. The W2 instructions recorded `0008 (head)`. In v1.0, expect `0011` as the sole head and `/health` to return HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
 
 Run this SQL **in the database used by the API** and retain the actual output with the tested commit:
 
@@ -597,7 +585,7 @@ Acceptance includes `e2e/test_attendance.py`: uppercase Kazakh-name search must 
 
 Historical evidence from 9 November 2026, W2 `80246eab19ff0370df30625dbc7f149171e0b8f5`: PostgreSQL 18.1 with locale `C` produced 24 passed / 1 failed (Kazakh case-insensitive search); a separate PostgreSQL 18.1 ICU `und` database produced 25 passed. These are historical PostgreSQL 18.1 results, not fresh PostgreSQL 16 acceptance.
 
-Fresh verification by the agent, 9 November 2026, source `80246eab19ff0370df30625dbc7f149171e0b8f5` (85 backend blobs verified unchanged before and after testing):
+The agent recorded the following verification on 9 November 2026 at source `80246eab19ff0370df30625dbc7f149171e0b8f5` (85 backend blobs verified unchanged before and after testing):
 
 | Check | Observed result |
 | --- | --- |
@@ -611,4 +599,4 @@ Fresh verification by the agent, 9 November 2026, source `80246eab19ff0370df3062
 
 `datcollate` and `datctype` were `C` in this ICU database; those fields alone do not identify the effective locale provider. Check `datlocprovider` and `daticulocale` as above. No pre-existing database or team data was connected to or changed. These agent checks are not Temirlan's independent review or approval. No W3 phone/camera validation was performed.
 
-Docker Desktop currently crashes before its engine starts. The Ubuntu/WSL results establish that tested environment's behavior; they do not verify `postgres:16-alpine`, Docker initialization, or Compose volume parity. The Alpine/Compose run remains pending until it actually completes.
+During the W2 run, Docker Desktop crashed before its engine started. The Ubuntu/WSL results established behavior for that environment. Verification of `postgres:16-alpine`, Docker initialization and Compose volume parity was still pending at that milestone.
