@@ -1,12 +1,12 @@
 # BiletFlow Web
 
-Веб-приложение на React + TypeScript + Vite, React Router в declarative mode и обычном CSS. Реализованы FE01 (регистрация и вход), FE02 (публичный каталог с поиском по названию) и часть FE03 Алиби (загрузка и отображение события). Все исходники, зависимости и результаты сборки находятся внутри `web/`.
+We built the web client with React, TypeScript, Vite, React Router in declarative mode, and plain CSS. FE01 introduced registration and sign-in. FE02 added a public catalog with title search. Alibi’s part of FE03 covered loading and displaying an event. The source, dependencies and build output are under `web/`.
 
-Инструкция запуска совместимого backend с отдельной тестовой PostgreSQL, настройка телефона/production и текущий статус проверки: [корневой README](../README.md).
+The [root README](../README.md) describes the compatible backend, isolated PostgreSQL test database, phone and production configuration, and verification status.
 
-## Запуск
+## Local setup
 
-Используйте единую ветку `integration/biletflow-e2e`. Команды запуска PostgreSQL, миграций и API находятся в [корневом README](../README.md). Для web нужны Node.js 22.17+ в ветке 22 либо Node.js 24+ и npm 10+.
+Use the `integration/biletflow-e2e` integration branch. Follow the [root README](../README.md) to start PostgreSQL, apply migrations and run the API. The web client requires Node.js 22.17+ in the 22 series or Node.js 24+, and npm 10+.
 
 ```powershell
 cd web
@@ -15,46 +15,46 @@ npm ci
 npm run dev
 ```
 
-Frontend доступен на `http://localhost:5173`. Укажите полный базовый HTTP(S) URL API в `VITE_API_URL` без `/auth/register` или `/events`. Пример `http://127.0.0.1:8000` рассчитан на API, запущенный на этом компьютере. Изменение env требует перезапуска Vite. Production build отклоняет отсутствующий или некорректный URL. Для HTTPS-сайта задайте доступный HTTPS API и разрешите точный origin сайта в `CORS_ORIGINS`.
+Open `http://localhost:5173`. Set `VITE_API_URL` to the full HTTP(S) base URL of the API, without an endpoint such as `/auth/register` or `/events`. Use `http://127.0.0.1:8000` for an API on this computer. Restart Vite after changing the environment. A production build rejects a missing or invalid URL. For an HTTPS site, use a reachable HTTPS API and include the exact site origin in `CORS_ORIGINS`.
 
-Приоритет настроек Vite от высокого к низкому включает переменные процесса, `.env.[mode].local`, `.env.[mode]`, `.env.local`, `.env`. `VITE_*` доступны браузеру.
+Vite reads settings in descending order of precedence from process variables, `.env.[mode].local`, `.env.[mode]`, `.env.local` and `.env`. The browser can read `VITE_*` values.
 
-## Маршруты и текущая область работы
+## Routes and access
 
-| Путь | Поведение |
+| Path | Behavior |
 | --- | --- |
-| `/` | Перенаправление на `/events` с заменой записи в истории |
-| `/events` | Публичный каталог и локальный поиск по названию |
-| `/events/:id` | Загрузка события по ID, описание, дата, место, статус и доступность |
-| `/login` | Вход по email и паролю, затем получение `/auth/me` |
-| `/register` | Регистрация с выбором роли: посетитель (`attendee`, по умолчанию) или организатор (`organizer`), затем переход на login |
-| `/forgot-password` | Запрос ссылки для сброса пароля; ответ не раскрывает, есть ли такой email |
-| `/reset-password?token=…` | Новый пароль с повтором по ссылке из письма |
-| `/verify-email?token=…` | Подтверждение email по ссылке из письма |
-| `/tickets` | Список собственных билетов после входа |
-| `/tickets/:id` | Собственный билет и QR, если билет действителен; кнопка открывает QR на весь экран |
-| `/events/:id/checkout?type=…` | Демо-оплата платного типа билета (P2) |
-| `/orders`, `/orders/:id` | Собственные демо-заказы (P2) |
-| `/organizer` | Кабинет организатора: свои события |
-| `/organizer/events/new`, `/organizer/events/:id/edit` | Создание, редактирование, публикация и отмена события |
-| `/organizer/events/:id/ticket-types` | Типы билетов события |
-| `/organizer/events/:id/activation` | Демо-активация платных продаж (P2) |
-| `/admin`, `/admin/users`, `/admin/events`, `/admin/action-log` | Модерация для администратора; остальным — экран 403 |
-| Любой неизвестный путь | Страница 404 со ссылкой на события |
+| `/` | Redirects to `/events` and replaces the current history entry |
+| `/events` | Public catalog with local title search |
+| `/events/:id` | Loads an event by ID and shows its description, date, venue, status and availability |
+| `/login` | Signs in with email and password, then requests `/auth/me` |
+| `/register` | Registers an attendee (`attendee`, default) or organizer (`organizer`), then opens sign-in |
+| `/forgot-password` | Requests a reset link without disclosing whether the email is registered |
+| `/reset-password?token=…` | Sets and confirms a new password through the emailed link |
+| `/verify-email?token=…` | Verifies an email address through the emailed link |
+| `/tickets` | Lists the signed-in attendee’s tickets |
+| `/tickets/:id` | Shows an owned ticket and, if valid, its QR code with a full-screen option |
+| `/events/:id/checkout?type=…` | Simulated checkout for a paid ticket type (P2) |
+| `/orders`, `/orders/:id` | Lists the buyer’s simulated orders or opens one order (P2) |
+| `/organizer` | Lists the organizer’s own events |
+| `/organizer/events/new`, `/organizer/events/:id/edit` | Creates, edits, publishes and cancels events |
+| `/organizer/events/:id/ticket-types` | Manages ticket types for the event |
+| `/organizer/events/:id/activation` | Activates simulated paid sales (P2) |
+| `/admin`, `/admin/users`, `/admin/events`, `/admin/action-log` | Admin moderation. Other signed-in users see a 403 screen |
+| Any unknown path | Displays a 404 page with a link to the catalog |
 
-Страницы используют общий layout с навигацией, активными ссылками, ссылкой пропуска навигации и адаптивным CSS. Каталог и страницы событий открыты без обязательного входа. Фиктивной авторизации и автоматического входа после регистрации нет.
+Pages share a responsive layout, navigation with active links, and a skip link. Guests can open the catalog and event pages. The application uses real authentication and requires sign-in after registration.
 
-## FE02: публичный каталог
+## FE02 public catalog
 
-`EventsPage.tsx` вызывает существующий `api.request('/events', { signal })` без Bearer token. Контракт `26d0dbd5`: ответ — массив `EventRead[]`, без обёртки, серверного поиска или пагинации. Backend возвращает опубликованные события в порядке даты и ID; frontend сохраняет этот порядок.
+`EventsPage.tsx` calls `api.request('/events', { signal })` without a bearer token. At commit `26d0dbd5`, the response was an unwrapped `EventRead[]` array without server-side search or pagination. The client retains the server’s order of published events by date and ID.
 
-Карточка показывает название со ссылкой на `/events/:id`, место и дату. Дата преобразуется из серверной строки в местное время браузера через `Intl.DateTimeFormat`; часовой пояс не фиксируется на UTC или Казахстане.
+Each card links the title to `/events/:id` and shows the venue and date. `Intl.DateTimeFormat` renders the server timestamp in the browser’s local time zone, which may differ from UTC or Kazakhstan time.
 
-Поиск работает только по названию: `query.trim().toLowerCase()`. Он фильтрует уже загруженный список и не отправляет `q` или другие параметры серверу. Есть сброс поиска, загрузка, пустой каталог, отсутствие совпадений и ошибка с кнопкой «Повторить». Сетевая/HTTP-ошибка и неверный формат ответа не превращаются в пустой каталог. При уходе со страницы запрос отменяется.
+Title search applies `query.trim().toLowerCase()` to the loaded list. It sends no `q` or other query parameters. The catalog supports clearing a search and distinguishes loading, an empty catalog, no matches and errors. Network failures, HTTP errors and malformed responses offer “Повторить” (Retry). Leaving the page cancels the request.
 
-Ввод доступен при загрузке, ошибке и пустом каталоге. «Повторить» сохраняет поисковый запрос. Ответ HTTP 405 означает, что подключённый сервер не поддерживает этот запрос каталога; метод не заменяется на POST, создающий событие.
+The search field remains available during loading, after an error and when the catalog is empty. “Повторить” (Retry) preserves the query. HTTP 405 indicates that the server does not support the catalog request. Retrying it as a POST would create an event.
 
-Mock-режима и резервного списка в приложении нет. Данные в `tests/browser/catalog.spec.mjs` используются только тестами через перехват HTTP. Проверки каталога:
+Only the tests intercept HTTP and supply fixtures from `tests/browser/catalog.spec.mjs`. The application has no mock mode or fallback catalog.
 
 ```powershell
 npm test
@@ -62,29 +62,29 @@ npm run test:browser -- catalog.spec.mjs
 npm run build
 ```
 
-Браузерные проверки покрывают запрос без авторизации и query-параметров, поиск, состояния списка, повтор после ошибок, переход к событию и ширину 375 px. Проверка часового пояса использует `America/New_York`, включая переход на предыдущую календарную дату относительно UTC.
+Browser tests cover anonymous requests without query parameters, search, list states, error recovery, event navigation and a 375 px viewport. The time-zone test uses `America/New_York`, including a timestamp that falls on the previous local calendar date relative to UTC.
 
-Первоначальный прогон FE02 от 4 ноября 2026: 29 модульных тестов и 6 браузерных сценариев каталога прошли; API тогда был недоступен. После исправления поиска общий прогон составил 35 модульных и 23 успешных браузерных сценария, один opt-in live-сценарий пропущен. Браузерные проверки событий использовали тестовые HTTP-ответы. Позднее на отдельном актуальном backend подтверждён реальный `GET /events` с ответом `200 []` и отображение пустого каталога в Edge на 375 px.
+On 4 November 2026, 29 unit tests and 6 catalog browser scenarios passed. The API was unavailable. After the search fix, 35 unit tests and 23 browser scenarios passed, and one opt-in live scenario was skipped. Event tests used HTTP fixtures. A later run against a separate, up-to-date backend confirmed that `GET /events` returned `200 []` and that Edge displayed an empty catalog at 375 px.
 
-## FE03: загрузка и отображение события
+## FE03 event details
 
-`EventDetailsPage.tsx` загружает `GET /events/{id}`. Контракт прочитан в backend-коммите `26d0dbd5`: ответ — один объект `EventRead`, ID — положительное целое число. Поля: `id`, `organizer_id`, `title`, `description` (строка или `null`), `date`, `location`, `capacity`, `status`, `tickets_issued`, `created_at`, `updated_at`. Статусы: `draft`, `published`, `cancelled`. Опубликованные и отменённые события доступны гостю; черновик — владельцу или администратору, для остальных сервер возвращает 404.
+`EventDetailsPage.tsx` requests `GET /events/{id}`. At backend commit `26d0dbd5`, a positive integer ID identified one `EventRead` object with fields `id`, `organizer_id`, `title`, `description` (string or `null`), `date`, `location`, `capacity`, `status`, `tickets_issued`, `created_at` and `updated_at`. Guests could read `published` and `cancelled` events. Only the owner or an admin could read a `draft`. Other callers received 404.
 
-Гость использует существующий `api.request()`, вошедший пользователь — `useAuth().request()`, чтобы сохранить доступ владельца к черновикам и общую обработку 401/403. Смена ID или пользователя сбрасывает данные страницы. `AbortController` отменяет старый запрос; проверка сигнала не даёт позднему ответу подменить новое событие, даже если транспорт не выполнил отмену. Прямой переход и обновление страницы заново загружают событие. Для production нужен SPA fallback на `index.html`.
+Guests use `api.request()`. Signed-in users use `useAuth().request()` so owners retain access to drafts and all authenticated requests share 401/403 handling. A change of ID or user clears the page data. `AbortController` cancels the previous request, and a signal check prevents late responses from replacing the current event even if the transport ignores cancellation. Direct navigation and reload fetch the event again. Production hosting needs an SPA fallback to `index.html`.
 
-Показаны название, описание, местное время браузера, место, статус и остаток `Math.max(0, capacity - tickets_issued)`. Для расчёта нужны числовые безопасные целые: `capacity > 0`, `tickets_issued >= 0`. Отсутствующие/некорректные счётчики дают «Доступность неизвестна», без преобразования строк в числа. Есть загрузка, отдельный 404, ошибка с повтором, уведомления об отмене и отсутствии мест. Ссылка гостя ко входу использует существующие `safeReturnTo` и `authLink`, сохраняя событие в цепочке login → register → login.
+The page shows the title, description, browser-local time, venue, status and remaining seats, calculated as `Math.max(0, capacity - tickets_issued)`. Counters must be safe integers with `capacity > 0` and `tickets_issued >= 0`. Invalid or missing values show “Доступность неизвестна” (Availability unknown). The client does not coerce strings to numbers. The page distinguishes loading, 404, retryable errors, cancellation and sold-out events. The guest sign-in link uses `safeReturnTo` and `authLink` to retain the event through sign-in, registration and return to sign-in.
 
-### Билеты и QR
+### Tickets and QR codes
 
-`src/events/EventActions.tsx` использует существующее место подключения в карточке события. `POST /events/{id}/tickets` выдаёт билет (`201`) или возвращает существующий (`200`). Открыть свой билет можно со страницы события или из «Мои билеты». Список использует `GET /tickets/me`, страница билета использует `GET /tickets/{id}`. Чужой билет возвращает `404`. Отмена события и уже использованный билет оставляют метаданные доступными владельцу и скрывают QR.
+`src/events/EventActions.tsx` supplies the ticket controls on the event page. `POST /events/{id}/tickets` issues a ticket (`201`) or returns an existing one (`200`). Attendees can open their tickets from the event or “Мои билеты” (My tickets). The list uses `GET /tickets/me`, and details use `GET /tickets/{id}`. Another attendee’s ticket returns `404`. After event cancellation or check-in, the owner can still read the metadata, but the QR code is hidden.
 
-У билета есть состояние `status`: `active`, `cancelled` или `refunded` (backend с миграцией `0003`; без неё поле отсутствует и билет считается активным). Отменённый и возвращённый билеты показывают своё состояние, QR и действия скрыты. Это состояние отдельного билета, оно не совпадает с отменой события. Владелец может отменить свой билет кнопкой «Отменить билет» после подтверждения (`POST /tickets/{id}/cancel`); отмена окончательна и освобождает место. «Возвращён» выставляет организатор через API. Билеты бесплатные, платёж не проводится, поэтому это состояние допуска, а не возврат денег.
+Migration `0003` introduced ticket `status` values `active`, `cancelled` and `refunded`. The client treats a missing field on an older backend as active. Cancelled and refunded tickets display their state and hide the QR code and actions. The ticket state is independent of event cancellation. The holder can confirm “Отменить билет” (Cancel ticket) to call `POST /tickets/{id}/cancel`. Cancellation is final and releases a seat. For a free ticket, the organizer can set “Возвращён” (Refunded) through the API. This changes admission status without a payment.
 
-«Скачать билет в PDF» запрашивает `GET /tickets/{id}/pdf` с токеном сессии и сохраняет файл `biletflow-ticket-{id}.pdf`. PDF формирует сервер, в нём тот же `qr_payload`, поэтому распечатанный билет и билет на экране дают один вход. Для отменённого или возвращённого билета и для отменённого события PDF недоступен.
+“Скачать билет в PDF” (Download the ticket as PDF) requests `GET /tickets/{id}/pdf` with the session token and saves `biletflow-ticket-{id}.pdf`. The server uses the same `qr_payload` as the screen, so the printed and displayed copies allow one admission between them. The PDF is unavailable for a cancelled or refunded ticket or a cancelled event.
 
-QR генерируется локально из точного `qr_payload`, который вернул API. Сессия и QR исчезают при выходе. Сервер повторно проверяет права и статус при check-in.
+The client generates the QR code locally from the exact `qr_payload` returned by the API. Signing out clears the session and QR code. The server checks permissions and ticket status again at check-in.
 
-Проверки FE03:
+Run the FE03 checks from the web directory.
 
 ```powershell
 npm test
@@ -92,42 +92,39 @@ npm run test:browser -- event-details.spec.mjs
 npm run build
 ```
 
-Браузерные тесты используют HTTP-перехват только в тестах. Проверяются прямое открытие и reload, загрузка и поля, 404, повтор после сетевой/HTTP-ошибки, неизвестная доступность, отмена и отсутствие мест, поздний ответ старого ID, возврат через формы, существующая обработка 401/403 и ширина 375 px. Для проверки доступности места подключения используется отдельный тестовый компонент в `tests/browser/fixtures/`; в приложение он не включён.
+Browser tests use HTTP interception to cover direct navigation and reload, loading and fields, 404, retries after network and HTTP errors, unknown availability, cancelled and sold-out events, late responses for a previous ID, return through account forms, 401/403 handling and a 375 px viewport. A component in `tests/browser/fixtures/` tests the accessibility of the event action area. It is excluded from the application.
 
-Первоначальная проверка FE03 от 4 ноября 2026: `npm test` — 35 успешно; браузерные проверки — 22 успешно (из них 12 FE03), один live-сценарий пропущен; build с TypeScript — успешно. Подробности и состояния событий проверены с фикстурами. На реальном API подтверждены health, ранее регистрация/вход FE01 и пустой каталог. Реальные события, их детали и жизненный цикл draft → published → cancelled ещё не проверены: это не полная приёмка FE02–FE04. Этот абзац описывает состояние на момент проверки FE03. Билеты добавлены позже в интеграционной ветке.
+On 4 November 2026, `npm test` passed 35 tests. The browser run passed 22 scenarios, including 12 for FE03, and skipped one live scenario. The TypeScript build passed. Event details and states used fixtures. Live checks had confirmed health, FE01 registration and sign-in, and an empty catalog. At that stage, live event details and the draft → published → cancelled lifecycle still awaited testing, so the run covered only part of FE02–FE04. Tickets were added later on the integration branch.
 
-## FE01: сессия и формы
+## FE01 sessions and forms
 
-- Регистрация отправляет `POST /auth/register` с JSON `{ email, full_name, password, role }`. Роль выбирается на форме: `attendee` (по умолчанию) или `organizer`; другие значения клиент не отправляет, администратор создаётся только на сервере. Успех — пользователь (`201`), после которого открывается login с сообщением «Аккаунт создан…». Автоматического входа нет: новый организатор после входа попадает в `/organizer` (если форма не была открыта с другим `returnTo`), а меню показывает «Мои события».
-- Login отправляет `POST /auth/login` с JSON `{ email, password }`, затем вызывает `GET /auth/me` с access token. Сессия становится авторизованной только после успешного получения активного пользователя. Ошибка любого из двух запросов не оставляет частичную сессию.
-- **Access token и пользователь хранятся только в памяти. После перезагрузки страницы или открытия новой вкладки требуется повторный вход.** `localStorage`, `sessionStorage` и cookies для сессии не используются. Полученный `refresh_token` не сохраняется; автоматическое обновление токенов отсутствует.
-- Единственная реализация состояния — `src/auth/store.ts`, подключённая через один `AuthProvider` в `main.tsx`. Компоненты используют `useAuth()`. Токен не выдаётся компонентам; доступен пользователь и методы сессии.
-- «Выйти» очищает token, пользователя и уведомления в памяти, отменяет запросы сессии. Серверный logout не вызывается. Поздний ответ запроса не может восстановить завершённую сессию или очистить более новую.
-- Закрытые запросы выполняются через `useAuth().request()`: `401` очищает сессию и показывает предложение войти снова; `403` показывает отсутствие прав и сохраняет сессию. Публичные запросы используют `api.request()`.
-- Возврат после входа передаётся в `returnTo`. Разрешены только известные маршруты событий, оформления, билетов, заказов и кабинета организатора с положительными числовыми ID (список — в `src/auth/returnTo.ts`). Внешние URL, protocol-relative URL, обратные слеши, query/hash и остальные маршруты заменяются на `/events`. Адрес сохраняется в ссылках login → register → login, login → forgot-password → login и после успешной регистрации.
-- Отправка блокирует поля и кнопку; синхронный guard предотвращает повторный запрос до перерисовки React. При уходе со страницы запрос отменяется. После завершения попытки поле пароля очищается.
-- Формы показывают неверные учётные данные, занятый email, отсутствие доступа, сетевые ошибки и FastAPI 422 с названиями полей. Проверяются обязательные поля, длина имени и ограничение пароля в 72 байта UTF-8. Пароли и токены не логируются.
+Registration sends `POST /auth/register` with `{ email, full_name, password, role }`. The form offers `attendee` (default) and `organizer`. Admin accounts are created on the server. On success (`201` and a user), the client opens sign-in with “Аккаунт создан…” (Account created…). A new organizer signs in and lands on `/organizer` unless the form has another validated `returnTo`. The menu shows “Мои события” (My events).
 
-## Типы билетов (P1)
+Sign-in sends `POST /auth/login` with `{ email, password }`, then requests `GET /auth/me` with the access token. Both requests must succeed and the account must be active before a session begins.
 
-На странице события видны цена и остаток каждого доступного типа. Посетитель выбирает
-бесплатный тип перед выдачей. Платные типы показаны для ознакомления, продажа появится
-в следующей фазе. Название типа также отображается на странице выданного билета.
-При начале и окончании окна продаж страница обновляет доступность без перезагрузки.
-Кнопка выдачи проверяет время перед запросом, а окончательное решение принимает API.
-Лимит названия и число строк на билете берутся из общего файла
-`backend/app/assets/ticket-type-name.json`.
+The web client keeps the access token and user in memory. Reloading the page or opening a new tab requires sign-in. The session uses neither `localStorage`, `sessionStorage` nor cookies. The client discards the `refresh_token` and does not renew the session automatically.
 
-Организатор события и администратор управляют типами по адресу
-`/organizer/events/{id}/ticket-types`. Ссылка есть на странице события. Когда появится
-кабинет организатора, добавьте эту ссылку к действиям его события.
-Первый тип занимает всю вместимость. Уменьшите его количество, чтобы выделить места
-другому типу. Скрытые типы сохраняются в уже выданных билетах и учитываются во вместимости.
-Журнал внизу страницы показывает изменения, сохранённые сервером.
+A single `AuthProvider` in `main.tsx` connects to `src/auth/store.ts`. Components use `useAuth()` for the user and session methods. They have no direct access to the token.
 
-## API-клиент
+“Выйти” (Sign out) clears the token, user and notices in memory and cancels session requests without a server logout call. A late response cannot restore a closed session or clear a newer one.
 
-`src/api/index.ts` экспортирует общий публичный экземпляр `api`, `ApiError` и `getErrorMessage`. `src/api/client.ts` содержит JSON-клиент на `fetch` без зависимостей от React. Для запроса с сессией в React-компоненте:
+Protected requests use `useAuth().request()`. A `401` clears the session and prompts for sign-in. A `403` reports insufficient permission and retains the session. Public requests use `api.request()`.
+
+The `returnTo` parameter retains a destination through sign-in, registration, password recovery and return to sign-in, including after successful registration. `src/auth/returnTo.ts` lists accepted event, checkout, ticket, order and organizer routes with positive numeric IDs where required. External and protocol-relative URLs, backslashes, unapproved query strings or fragments, and unknown routes fall back to `/events`.
+
+While submitting, the form disables its fields and button. A synchronous guard prevents a second request before React renders. Leaving the page cancels the request. The password field clears after each attempt.
+
+Forms report invalid credentials, an email already in use, insufficient permissions, network failures and FastAPI 422 responses with field names. Validation checks required fields, name length and the 72-byte UTF-8 password limit. Passwords and tokens are excluded from logs.
+
+## Ticket types (P1)
+
+The event page shows the price and remaining quantity of each available ticket type. Attendees select a free type before claiming a ticket. At the P1 milestone, paid types were visible and sales were deferred to the next phase. The issued ticket displays its type name. Availability updates when a sales window opens or closes, without a page reload. The claim button checks the time before submitting, and the API is the source of truth for availability. The name length and display line limits come from `backend/app/assets/ticket-type-name.json`.
+
+Event owners and admins manage ticket types at `/organizer/events/{id}/ticket-types`. The P1 event page linked to this route, and the integration branch also links to it from the organizer’s event actions. The first ticket type receives the entire capacity. Reduce its allocation before assigning seats to another type. Hidden types remain on issued tickets and count toward capacity. The log at the bottom of the page shows changes recorded by the server.
+
+## API client
+
+`src/api/index.ts` exports the shared public `api` instance, `ApiError` and `getErrorMessage`. The fetch-based JSON client in `src/api/client.ts` is independent of React. A React component can obtain an authenticated request function as follows.
 
 ```ts
 import { useAuth } from './auth/AuthProvider';
@@ -137,29 +134,29 @@ function useCurrentUserRequest() {
   const { request } = useAuth();
   return (signal?: AbortSignal) => request<User>('/auth/me', { signal });
 }
-// Вызовите возвращённую функцию из обработчика или эффекта с AbortController.
-// Обработайте ошибку в UI через getErrorMessage(error).
-// AbortError при уходе со страницы или logout показывать не нужно.
+// Call the returned function from a handler or effect with an AbortController.
+// Use getErrorMessage(error) to display errors in the UI.
+// Suppress AbortError when navigating away or signing out.
 ```
 
-JSON-тело передаётся как объект: `request('/some-endpoint', { method: 'POST', body: payload })`. По умолчанию запрос — GET. Пользовательские заголовки и `AbortSignal` поддерживаются. `auth.request` добавляет Bearer token и централизованно обрабатывает 401/403. Публичный API-клиент самостоятельно сессией не управляет. Для ответа без тела используйте `request<void>(...)`.
+Pass a JSON body as an object, for example `request('/some-endpoint', { method: 'POST', body: payload })`. GET is the default method. The client accepts custom headers and an `AbortSignal`. The authenticated wrapper `auth.request` adds the bearer token and handles 401/403. The public client has no session state. Use `request<void>(...)` for a response without a body.
 
-Обработка ошибок:
+The client distinguishes six failure modes.
 
-- `network`: соединение не установлено или оборвалось при чтении ответа. HTTP-статуса нет.
-- `timeout`: сервер не ответил за 15 секунд. Форма разблокируется для повторной попытки.
-- `http`: неуспешный HTTP-статус, доступный через `error.status`. Строковый `detail` FastAPI сохраняется; не-JSON ответы и ошибки сервера получают понятное общее сообщение.
-- `validation`: HTTP 422, `issues` содержит `{ field, message }` из `detail[].loc` и `detail[].msg`. Сообщения полей объединяются в строку; неизвестные объекты не превращаются в `[object Object]`. `input` и `ctx` не выводятся.
-- `response`: сервер сообщил об успехе, но вернул некорректный JSON.
-- `configuration`: отсутствующий/неверный URL или несериализуемое JSON-тело.
+- `network` indicates that the connection failed or was interrupted while reading the response. No HTTP status is available.
+- `timeout` indicates that the server did not respond within 15 seconds. The form becomes available for a retry.
+- `http` exposes the unsuccessful status in `error.status`. The client retains a FastAPI string `detail` and supplies a general message for server errors or non-JSON responses.
+- `validation` represents HTTP 422. The client builds `issues` entries of the form `{ field, message }` from `detail[].loc` and `detail[].msg`. It joins field messages and avoids rendering unknown objects as `[object Object]`. It omits `input` and `ctx`.
+- `response` indicates a successful HTTP response containing invalid JSON.
+- `configuration` indicates a missing or invalid URL or a body that cannot be serialized as JSON.
 
-Отмена запроса передаётся вызывающему коду без подмены сетевой ошибкой. Тип `T` описывает ожидаемый ответ для TypeScript, но не выполняет runtime-валидацию схемы ответа.
+Cancellation propagates to the caller. TypeScript’s `T` describes the expected response at compile time. Runtime schema validation requires a separate check.
 
-Подтверждённые контракты backend: `POST /auth/register` принимает `email`, `full_name`, `password`, необязательный `role` (`attendee` / `organizer`) и возвращает пользователя, а `POST /auth/login` принимает `email`, `password` и возвращает пару токенов. `GET /auth/me` требует access token. Пароль регистрации: минимум 8 символов, максимум 72 байта UTF-8; последнее ограничение реализовано валидатором и не полностью выражено в OpenAPI.
+Under the backend contract, `POST /auth/register` accepts `email`, `full_name`, `password` and optional `role` (`attendee` or `organizer`) and returns a user. `POST /auth/login` accepts `email` and `password` and returns a token pair. `GET /auth/me` requires an access token. The registration password must contain at least 8 characters and fit in 72 UTF-8 bytes. OpenAPI only partly expresses the byte limit enforced by the validator.
 
-## Проверки и production build
+## Verification and production build
 
-Выполнять из `web/`:
+Run these commands from `web/`.
 
 ```powershell
 npm run typecheck
@@ -167,75 +164,75 @@ npm test
 npm run build
 ```
 
-`build` также запускает TypeScript-проверку и создаёт `web/dist/`. Модульные тесты используют встроенный `node:test` и удаление TypeScript-типов в Node; на Node 22.17 предупреждение об экспериментальном strip-types ожидаемо. `npm test` подменяет `fetch`, не использует сеть и не создаёт записи в базе. Покрыты API-ошибки, переходы сессии, 401/403, logout, отмена запросов, гонки старой и новой сессии, безопасный возврат и UTF-8-валидация.
+The `build` script checks TypeScript and writes to `web/dist/`. Unit tests use `node:test` and Node’s TypeScript type stripping. Node 22.17 emits an experimental strip-types warning. `npm test` replaces `fetch` and runs without network or database writes. It covers API errors, session transitions, 401/403 responses, logout, cancellation, races between sessions, safe return paths and UTF-8 validation.
 
-### Проверка через HTTP
+### HTTP checks
 
-После проверки, что Compose подключён к вашей локальной базе, выполните:
+Confirm that Compose points to your local database before running the authentication check.
 
 ```powershell
 npm run check:auth
 ```
 
-Скрипт обращается только к `http://localhost:8000`, проверяет health, регистрацию посетителя, login, `/auth/me`, неверный пароль и занятый email. **Создаёт одного нового тестового посетителя в локальной базе при каждом запуске**, не удаляет записи и volumes. Не используйте внешнюю/общую базу за этим адресом. В выводе только маршруты, HTTP-статусы и ID тестового пользователя.
+The script contacts only `http://localhost:8000`. It checks health, attendee registration, sign-in, `/auth/me`, an incorrect password and a duplicate email. Each run creates one local test attendee and retains all records and volumes. Use a dedicated local database behind this address. Output consists of routes, HTTP statuses and the test user ID.
 
-### Браузерные проверки
+### Browser checks
 
-Используется Playwright с установленным Microsoft Edge в headless-режиме. Для другого установленного браузера можно указать `PLAYWRIGHT_CHANNEL=chrome`; для `chromium` предварительно установите соответствующий браузер Playwright. Dev-сервер запускается на `localhost:5173` с локальным API; уже запущенный сервер используется повторно, поэтому проверьте его конфигурацию.
+Playwright uses installed Microsoft Edge in headless mode. For Chrome, set `PLAYWRIGHT_CHANNEL=chrome`. For `chromium`, install the corresponding Playwright browser first. The development server uses `localhost:5173` and a local API. Playwright can reuse a running server, so check its configuration.
 
-Текущие тестовые перехваты рассчитаны на `http://localhost:8000`. Если на 5173 уже работает frontend с другим API, остановите только этот dev-сервер перед тестами: Playwright запустит свой с нужным `VITE_API_URL`. Менять адрес рабочего backend или локальный env ради этих тестов не требуется.
+The HTTP fixtures target `http://localhost:8000`. If a frontend on port 5173 uses another API, stop that development server before testing. Playwright then starts its own server with the required `VITE_API_URL`. The working backend and local environment file can retain their settings.
 
 ```powershell
 npm run test:browser
 ```
 
-По умолчанию запускаются проверки с HTTP-фикстурами, без подготовки записей в БД. Для live используйте [новую инструкцию проверяемой изоляции](LIVE-TESTS.md): runner сверяет Docker-контейнеры, volume, фактическое подключение FastAPI к PostgreSQL и API origin браузера до первого POST. DATABASE_URL оболочки не служит доказательством.
+The default browser suite uses HTTP fixtures without preparing database records. For live tests, follow the [isolation procedure](LIVE-TESTS.md). Before the first POST, the runner verifies the Docker containers, volume, FastAPI database connection and browser API origin. The shell’s `DATABASE_URL` alone cannot establish which database serves the request.
 
-Пример для выделенного локального проекта (подставьте свои проверенные API/project/SHA):
+For a dedicated local project, substitute the verified API address, Compose project and backend SHA in these commands.
 
 ```sh
 node scripts/run-live.mjs --api http://localhost:8002 --project biletflow-667-live --backend-ref c5b83a851128c486b1b15cebea94c6df8166308d --mode dev --channel msedge
 node scripts/run-live.mjs --api http://localhost:8002 --project biletflow-667-live --backend-ref c5b83a851128c486b1b15cebea94c6df8166308d --mode production --channel msedge
 ```
 
-Production live всегда строит свежий dist с выбранным API. Порт 8002 приведён только как пример окружения Алиби, не как обязательная настройка команды. Один live-прогон создаёт 5 тестовых аккаунтов, 2 события и 2 билета; существующие данные не удаляются.
+Production live tests build a fresh dist for the selected API. Port 8002 was specific to Alibi’s environment. Each live run creates 5 test accounts, 2 events and 2 tickets and retains existing data.
 
-Регрессия старого dist на двух локальных HTTP-origin без БД:
+To test the stale-dist regression, use two local HTTP origins. This check requires no database.
 
 ```sh
 npx playwright test --config playwright.isolation.config.mjs
 ```
 
-Результаты каждого live запуска сохраняются отдельно в игнорируемом Git `test-results/live/`. Для обычной регрессии без перезаписи live-артефактов: `npm run test:browser -- --output test-results/mock-regression`. Не включайте RUN_LIVE_* для неё.
+Each live run writes separately to the Git-ignored `test-results/live/` directory. Run `npm run test:browser -- --output test-results/mock-regression` with `RUN_LIVE_*` flags disabled to preserve live artifacts during an ordinary regression run.
 
-[Историческая приёмка 7 ноября](667-acceptance.md) и [результаты доработки 8 ноября](667-review-2026-11-08.md) разделены. В [LIVE-TESTS.md](LIVE-TESTS.md) указаны ограничения CI, телефона/хостинга, правила публикации безопасных evidence и стыковка с W1.
+The [7 November acceptance record](667-acceptance.md) and [8 November review](667-review-2026-11-08.md) document separate runs. [LIVE-TESTS.md](LIVE-TESTS.md) describes CI, phone and hosting limitations, rules for publishing evidence safely, and integration with W1.
 
 
-### Результат проверки FE01 — 28 октября 2026
+### FE01 verification on 28 October 2026
 
-- TypeScript и production build: успешно.
-- 26 модульных тестов: успешно. Обработка 401/403 закрытых запросов и гонки logout проверены здесь с подменёнными HTTP-ответами; истечение реального токена не ожидалось.
-- 5 браузерных сценариев в headless Edge: успешно. Регистрация, login, `/auth/me`, неверный пароль, duplicate email, logout и reload проверены через реальные формы с локальным FastAPI. Ошибки сети/422 и небезопасный returnTo дополнительно проверены в браузере с подменой HTTP; мобильная ширина — 375 px.
-- Отдельный HTTP-прогон без браузера: `/health` 200, регистрация 201, login 200, `/auth/me` 200, неверный пароль 401, duplicate email 409. Эти сценарии также покрыты браузерным прогоном; HTTP-only проверка в этом списке — `/health`.
-- Созданы два тестовых посетителя (HTTP и браузерный сценарий), оба в локальном PostgreSQL Compose. Внешняя база не использовалась.
+TypeScript and the production build passed. All 26 unit tests passed. Mock HTTP responses exercised protected requests returning 401/403 and logout races without waiting for a real token to expire.
 
-Для локального просмотра production-сборки сначала остановите dev-сервер, затем выполните `npm run preview` — он использует тот же `localhost:5173` и `strictPort`. На production-хостинге настройте возврат `index.html` для клиентских маршрутов (например, `/events/123`), поскольку используется `BrowserRouter`.
+Five browser scenarios passed in headless Edge. Real forms exercised registration, sign-in, `/auth/me`, incorrect passwords, duplicate email addresses, logout and reload against local FastAPI. HTTP fixtures covered network errors, 422 and unsafe `returnTo` values. The mobile viewport was 375 px wide.
 
-Для ручной проверки откройте `/events/123`, перейдите ко входу, затем к регистрации. После создания аккаунта войдите и проверьте возврат на `/events/123`. Нажмите «Выйти», повторите вход и обновите страницу: сессия должна исчезнуть. Каталог и страница события остаются доступны без входа.
+A separate HTTP run returned 200 for `/health`, 201 for registration, 200 for sign-in and `/auth/me`, 401 for an incorrect password and 409 for a duplicate email. Only `/health` was exclusive to the HTTP run. The HTTP and browser runs each created one attendee in the local Compose PostgreSQL database. Neither used an external database.
 
-## Проверка интеграционной версии
+For a local production preview, stop the development server and run `npm run preview`. It uses the same `localhost:5173` address and `strictPort`. When deploying, configure the host to return `index.html` for client routes such as `/events/123` because the application uses `BrowserRouter`.
 
-Результаты реальных браузерных проверок авторизации, билетов и восстановления API приведены в [отчёте аудита](../docs/integration-audit.md).
+For a manual check, open `/events/123`, follow the sign-in and registration links, create an account and sign in. Verify that the form returns to `/events/123`. Select “Выйти” (Sign out), sign in again and reload. The session should end. Guests can still access the catalog and event page.
 
-## Промокоды и QR акции (P3)
+## Integration branch verification
 
-На странице `/organizer/events/{id}/campaigns` владелец события или администратор создаёт скидку, выбирает типы билетов, задаёт срок и лимит. Здесь же можно скачать SVG с надписью «Это не билет», выключить акцию и посмотреть выручку и использования. На страницу ведёт ссылка из управления типами билетов.
+The [integration audit](../docs/integration-audit.md) records live browser checks for authentication, tickets and API recovery.
 
-Ссылка из QR открывает событие и сохраняется при входе в аккаунт. Можно также ввести код вручную при оформлении платного билета. До резерва посетитель видит подтверждённые сервером промокод, скидку и итог. Если лимит закончился между просмотром и заказом, сервер отказывает, и посетитель может убрать код. Для сканирования с телефона нужно настроить доступный HTTPS-адрес сайта в `CAMPAIGN_WEB_ORIGIN` на API.
+## Promo codes and campaign QR codes (P3)
+
+At `/organizer/events/{id}/campaigns`, the owner or an admin creates a discount, selects eligible ticket types and sets its validity period and usage limit. The same page shows revenue and usage, allows the campaign to be disabled, and provides an SVG marked “Это не билет” (This is not a ticket). Ticket type management links to this page.
+
+A campaign QR opens the event and preserves the campaign through sign-in. Attendees can also enter the code manually at paid checkout. Before reservation, the server confirms the code, discount and total. If the quota expires between preview and order creation, the server refuses the order and the attendee can remove the code. For scanning from a phone, set the API’s `CAMPAIGN_WEB_ORIGIN` to the reachable HTTPS origin of the site.
 
 ## Account, organizer, administration and languages
 
-The header offers Russian, Kazakh and English. The choice persists in localStorage. Session tokens remain in memory, so a full reload requires signing in again. The browser, API and mobile app must use the same backend and database. An account registered as an attendee has no organizer role. The organizer pages read the role returned by `GET /auth/me`.
+The header offers Russian, Kazakh and English. The browser stores the language choice in `localStorage`. Session tokens remain in memory, so a full reload requires signing in again. The browser, API and mobile app must use the same backend and database. An account registered as an attendee has no organizer role. The organizer pages read the role returned by `GET /auth/me`.
 
 Account routes are `/forgot-password`, `/reset-password?token=...` and `/verify-email?token=...`. Recovery preserves a validated destination through the login link. A reset requires matching passwords. Each link has its own state, and a new link clears an earlier success or refusal; a request still pending for an earlier link is cancelled.
 
@@ -244,51 +241,42 @@ Forgot-password never shows whether an email exists (`forgotPasswordOutcome` in 
 | Answer | Page shows |
 | --- | --- |
 | `2xx`, and any other refusal that could depend on the account (`400`, `401`, `403`, `409`, …) | The same neutral "if this email is registered, we sent a link" text |
-| `5xx`, `404` (the endpoint is missing until backend PR #21), no connection, timeout | The same retryable technical failure for every address |
+| `5xx`, `404` (for example, a backend predating PR #21 lacks the endpoint), no connection, timeout | The same retryable technical failure for every address |
 | `429` | "Too many requests, try a little later" (the API limits per address, registered or not) |
 | `422` | "Check the email address": about the format typed, never about an account |
 
-The verification banner disables "send again" for a minute after each attempt. That is a client courtesy, not a server contract: the backend's own limit (PR #21) answers `429`, which the banner reports as too many requests.
+The verification banner disables “send again” for one minute after each attempt. The backend independently enforces the limit introduced in PR #21. The banner displays a rate-limit message when it receives `429`.
 
-**Deferred: server logout.** The account endpoints and `POST /auth/logout` come with backend PR #21, which is not merged into integration. Until it is, "Sign out" clears only the memory session (token, user, notices) and cancels its requests; no logout request is sent, and a browser test checks that. Calling `POST /auth/logout` with the refresh token is a follow-up for after PR #21. Account browser tests use mocked HTTP. Live validation of email links and server logout remains pending.
+The backend added the account endpoints and `POST /auth/logout` in PR #21. The web account milestone deferred server logout until after that integration. In v1.0, “Sign out” clears the token, user and notices from memory and cancels session requests. A browser test checks that sign-out sends no logout request. Account browser tests use HTTP fixtures. At that milestone, live validation of email links and server logout was still pending.
 
-**Deviation: 403 instead of 404 for admin pages.** A signed-in non-admin who opens `/admin/...` sees a "403 — access denied" screen rather than the 404 page. The routes are public in the bundle anyway, and the screen says why nothing is shown. The API refuses every admin request with 403 regardless.
+A signed-in user without the admin role sees “403 — access denied” at `/admin/...`. We used 403 rather than the generic 404 page because the route names are already public in the client bundle. The API also checks the role and returns 403 for unauthorized admin requests.
 
 Organizers open `/organizer`, `/organizer/events/new` and `/organizer/events/{id}/edit`. Admins open `/admin/users`, `/admin/events` and `/admin/action-log`. The server checks roles and event ownership on every request. The web refuses non-admin navigation locally, and signed-out admin navigation returns through the public catalog. Mutation controls require confirmation. Administrator accounts have no suspension controls in the UI, and the activity log is read only.
 
-The language switch covers these pages, the public event and ticket flow, dates and API errors. Errors and notices already on screen follow a switch without a new request: pages keep the error itself (or a notice key) and translate it while rendering, and `ApiError` carries a `Localized` text instead of a fixed string. Server wording (FastAPI `detail`, `422` issues) is English and is replaced by translated texts. Prices use the selected locale and omit decimals for whole tenge. Kazakh dates and numbers are written out by `src/i18n/format.ts`, so a browser without Kazakh ICU data (Edge printed "2030 M11 15") still shows "15 қараша 2030, 17:00". Ticket-type management and the P2 checkout, order and activation text still need a separate translation pass. Kazakh text needs native review before the defense.
+The language switch covers these pages, the public event and ticket flow, dates and API errors. Errors and notices already on screen follow a switch without a new request: pages keep the error itself (or a notice key) and translate it while rendering, and `ApiError` carries a `Localized` text instead of a fixed string. Server wording (FastAPI `detail`, `422` issues) is English and is replaced by translated texts. Prices use the selected locale and omit decimals for whole tenge. Kazakh dates and numbers are written out by `src/i18n/format.ts`, so a browser without Kazakh ICU data (Edge printed "2030 M11 15") still shows “15 қараша 2030, 17:00” (15 November 2030, 17:00). At the language-switch milestone, ticket type management and the P2 checkout, order and activation text awaited a separate translation pass. Kazakh text needs native review before the defense.
 
 ## Accessibility
 
-`tests/browser/accessibility.spec.mjs` runs axe-core (dev dependency `@axe-core/playwright` 4.14.0) with the WCAG 2.1/2.2 A and AA rules on the catalogue, event, sign-in, registration, password pages, 404, my tickets, a ticket with its full-screen QR, the organizer cabinet and editor, and the three admin sections, at 375 and 1280 px, and on the catalogue and registration in all three languages. Any violation fails the browser suite. The same file checks the keyboard paths axe cannot see: the skip link, the visible focus ring, and confirmation steps that take focus on the safe answer and give it back when closed. The full-screen ticket QR is a native modal dialog (Esc, focus trap, focus returned to its button).
+`tests/browser/accessibility.spec.mjs` uses axe-core (`@axe-core/playwright` 4.14.0, a development dependency) to check WCAG 2.1/2.2 A and AA rules at widths of 375 and 1280 px. It covers the catalog, event details, sign-in, registration, password pages, 404, My tickets, ticket details and the full-screen QR, the organizer dashboard and editor, and the three admin sections. It checks the catalog and registration in all three languages. A violation fails the suite. Separate keyboard checks cover the skip link, visible focus, and dialogs that initially focus the safe response and restore focus on close. The full-screen QR uses a native modal dialog that traps focus, closes on Esc and returns focus to its button.
 
-The language switch shows each language's own name ("Қазақша", "Русский", "English") as its visible text, so the accessible name matches what is seen (WCAG 2.5.3). axe does not judge Kazakh wording; native review is still needed.
+The language switch uses “Қазақша” (Kazakh), “Русский” (Russian) and “English” as its visible labels and accessible names (WCAG 2.5.3). Assessing the Kazakh wording requires a native speaker.
 
-## Аналитика организатора (P6)
+## Organizer analytics (P6)
 
-Ссылка «Аналитика» в кабинете и на странице события ведёт на `/organizer/events/{id}/analytics`.
-Можно выбрать даты в UTC и тип билета. Сводка показывает вместимость, свободные места,
-действующие билеты, финансовые итоги и посещаемость. Продажи по дням и типам можно посмотреть
-на SVG-графиках или в таблицах. Использования, билеты и чистая выручка по кампаниям показаны
-в отдельной таблице.
+“Аналитика” (Analytics) links the organizer dashboard and event page to `/organizer/events/{id}/analytics`. Filters accept UTC dates and a ticket type. The summary shows capacity, available seats, valid tickets, financial totals and attendance. SVG charts and tables show sales by day and ticket type. A separate table shows redemptions, tickets and net revenue by campaign.
 
-## Возвраты и бесплатные регистрации (P5)
+## Refunds and free registrations (P5)
 
-Условия возврата настраиваются при создании или редактировании события. Посетитель видит их
-на странице события и при оформлении заказа.
+Organizers set the refund policy when creating or editing an event. Attendees see it on the event page and at checkout.
 
-Ссылка «Заказы и возвраты» в кабинете открывает `/organizer/events/{id}/orders`. Организатор
-может отменить бесплатную регистрацию или подтвердить полный демо-возврат оплаченного
-заказа. Для отменённого события есть массовое действие. Если по билету уже прошли на входе,
-перед возвратом нужно отменить отметку. Во вкладке «Мои заказы» посетитель видит сумму и дату
-возврата, а в сводке активации обновляются возвраты и расчёт выплаты.
+“Заказы и возвраты” (Orders and refunds) opens `/organizer/events/{id}/orders` from the organizer dashboard. The organizer can cancel a free registration or confirm a full simulated refund of a paid order. A cancelled event supports bulk refunds. If the attendee has checked in, the organizer must undo the check-in first. “Мои заказы” (My orders) shows the attendee the refund amount and date. The activation summary updates the refund total and estimated payout.
 
 ## P2 demo checkout
 
 Paid types on activated events lead from `/events/:id` to `/events/:id/checkout?type=:typeId`,
 then `/orders/:id`. `/orders` lists the authenticated buyer's orders. The server computes
 prices and fees; the browser never adds a surcharge. Every payment screen says
-«Демонстрационная оплата, деньги не списываются». Success and failure buttons call the
+“Демонстрационная оплата, деньги не списываются” (Simulated payment, no money is charged). Success and failure buttons call the
 simulated provider endpoint. Retries reuse the order or creation request UUID. A definitive
 422 allows correcting the form; uncertain delivery preserves the original request payload.
 
