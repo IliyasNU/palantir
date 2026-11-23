@@ -9,6 +9,7 @@ import { formatEventDate } from '../events/catalog';
 import { ApiError } from '../api';
 import { useT } from '../i18n';
 import { authLink } from '../auth/returnTo';
+import { caseSourcePath } from '../support/model';
 
 export function OrderView({ initial }: { initial: Order }) {
   const t = useT();
@@ -52,6 +53,7 @@ export function OrderView({ initial }: { initial: Order }) {
       {text.refundedAmount(formatOrderAmount(order.total_tiyn), formatEventDate(order.refunded_at))}
     </p>}
     {order.status === 'paid' && order.ticket_id !== null && <p><Link className="button" to={`/tickets/${order.ticket_id}`}>{text.openTicket}</Link></p>}
+    <p><Link className="text-link" to={caseSourcePath('order', order.id)}>{t.support.contact}</Link></p>
     <p><Link to="/orders">{t.common.myOrders}</Link></p>
   </section>;
 }

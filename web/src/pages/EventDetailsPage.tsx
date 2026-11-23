@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useT } from '../i18n';
+import { caseSourcePath } from '../support/model';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { isCampaignToken } from '../campaigns/model';
 import { usePromoQuote } from '../campaigns/usePromoQuote';
@@ -115,6 +116,7 @@ function EventContent({ id, request, guest }: { id: string | undefined; request:
             ? orderError(promo.error) : promo?.quote
               ? t.orders.checkout.eventPromo(promo.quote.code) : t.orders.checkout.checkingPromo}</p>}
           <EventActions event={event} remainingSeats={available} returnTo={returnTo} campaignToken={isCampaignToken(token) ? token : undefined} />
+          <p><Link className="text-link" to={caseSourcePath('event', event.id)}>{t.support.contact}</Link></p>
           {user && (user.role === 'admin' || user.id === event.organizer_id) && <p>
             <Link className="text-link" to={`/organizer/events/${event.id}/ticket-types`}>{t.event.manageTypes}</Link>
             {' · '}<Link className="text-link" to={`/organizer/events/${event.id}/analytics`}>{t.analytics.title}</Link>

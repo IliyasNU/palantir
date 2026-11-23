@@ -1,3 +1,5 @@
+import { supportMessages } from './support.ts';
+
 /**
  * Every text of the web interface in Russian, Kazakh and English. Russian is the source: the other
  * languages must define exactly the same keys, which the Messages type enforces at compile time.
@@ -6,6 +8,7 @@ import { orderEn, orderKk, orderRu } from './order-messages.ts';
 import { analyticsEn, analyticsKk, analyticsRu } from './analytics-messages.ts';
 
 const ru = {
+  support: supportMessages.ru,
   analytics: analyticsRu,
   orders: orderRu,
   common: {
@@ -479,6 +482,7 @@ type Widen<T> = T extends string ? string
 export type Messages = Widen<typeof ru>;
 
 const kk: Messages = {
+  support: supportMessages.kk,
   analytics: analyticsKk,
   orders: orderKk,
   common: {
@@ -699,6 +703,7 @@ const kk: Messages = {
 };
 
 const en: Messages = {
+  support: supportMessages.en,
   analytics: analyticsEn,
   orders: orderEn,
   common: {

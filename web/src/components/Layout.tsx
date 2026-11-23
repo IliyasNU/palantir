@@ -12,7 +12,8 @@ export function Layout() {
   const locale = useLocale();
   const location = useLocation();
   const returnTo = safeReturnTo(location.pathname === '/login' || location.pathname === '/register'
-    ? new URLSearchParams(location.search).get('returnTo') : location.pathname);
+    ? new URLSearchParams(location.search).get('returnTo')
+    : location.pathname === '/support/new' ? location.pathname + location.search : location.pathname);
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">{t.common.skip}</a>
@@ -32,6 +33,7 @@ export function Layout() {
                 <NavLink className="nav-link" to="/tickets">{t.common.myTickets}</NavLink>
                 {isAdmin(auth.user) && <NavLink className="nav-link" to="/admin">{t.admin.nav}</NavLink>}
                 <NavLink className="nav-link" to="/orders">{t.common.myOrders}</NavLink>
+                <NavLink className="nav-link" to="/support">{t.support.menu}</NavLink>
                 <span className="account-name">{auth.user.full_name}</span>
                 <button className="nav-link nav-link-accent" type="button" onClick={auth.logout}>{t.common.logout}</button>
               </>
