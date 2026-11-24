@@ -108,12 +108,12 @@ def test_attendee_opens_a_case_about_their_ticket(client, world, case):
         "id": world.alice_user.id, "full_name": world.alice_user.full_name, "masked_email": "al***@example.com",
     }
     assert case["assignee"] is None
-    # The event comes from the ticket; a free ticket has no order.
-    assert (case["event_id"], case["ticket_id"], case["order_id"]) == (world.event["id"], world.ticket["id"], None)
+    [order] = client.get("/orders/me", headers=world.alice).json()
+    assert (case["event_id"], case["ticket_id"], case["order_id"]) == (world.event["id"], world.ticket["id"], order["id"])
     assert case["event_title"] == world.event["title"]
     assert case["context"] == {
         "event": {"id": world.event["id"], "title": world.event["title"], "status": "published"},
-        "order": None,
+        "order": {"id": order["id"], "status": "paid", "total_tiyn": 0},
         "ticket": {"id": world.ticket["id"], "status": "active"},
     }
     assert (case["viewer_side"], case["can_manage"], case["last_message_by"]) == ("requester", False, "requester")
@@ -514,3 +514,24 @@ def test_refused_requests_leave_no_history(client, db, world, case):
     open_case(client, world.bob, ticket_id=world.ticket["id"])                                             # 404
     db.expire_all()
     assert db.scalar(select(func.count()).select_from(ActionLog)) == before
+
+
+def test_reply_and_status_notify_only_other_participants(client, world, case, db, monkeypatch):
+    from app import email
+    from app.models import Notification
+
+    sent = []
+    monkeypatch.setattr(email, "send_email", lambda to, *args: sent.append(to))
+    path = f"/support/cases/{case['id']}"
+    assert client.post(path + "/messages", headers=world.alice, json={"body": "Any news?"}).status_code == 201
+    update = {"status": "waiting_for_customer", "assignee_id": world.admin_user.id}
+    assert client.patch(path, headers=world.owner, json=update).status_code == 200
+    assert client.patch(path, headers=world.owner, json=update).status_code == 200
+    assert client.post(path + "/messages", headers=world.alice, json={"body": "More info"}).status_code == 201
+    rows = db.scalars(select(Notification).where(Notification.link == path).order_by(Notification.id)).all()
+    assert [(row.kind, row.user_id) for row in rows if row.kind == "support.reply"] == [
+        ("support.reply", world.owner_user.id), ("support.reply", world.admin_user.id)]
+    assert {row.user_id for row in rows if row.kind == "support.status"} == {world.alice_user.id, world.admin_user.id}
+    assert sorted(sent) == sorted([world.owner_user.email, world.alice_user.email, world.admin_user.email,
+                                   world.admin_user.email])
+    assert "Status changed" in rows[-1].body

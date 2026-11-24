@@ -36,6 +36,7 @@ export function isClosedPhase(phase: EventPhase): boolean {
 export interface EventDraft {
   title: string;
   description: string;
+  visibility?: EventDetails['visibility'];
   refund_policy?: string;
   /** Value of a datetime-local input: local wall time without a zone. */
   date: string;
@@ -186,6 +187,7 @@ export function organizerProfilePayload(draft: OrganizerProfileDraft): Record<st
 
 export function eventDraft(event: EventDetails): EventDraft {
   return { title: event.title, description: event.description ?? '', date: localInputValue(event.date),
+    ...(event.visibility === undefined ? {} : { visibility: event.visibility }),
     ...(event.refund_policy === undefined ? {} : { refund_policy: event.refund_policy ?? '' }),
     location: event.location, capacity: event.capacity === null ? '' : String(event.capacity) };
 }
@@ -193,6 +195,7 @@ export function eventDraft(event: EventDetails): EventDraft {
 export interface EventPayload {
   title: string;
   description: string | null;
+  visibility?: EventDetails['visibility'];
   refund_policy?: string | null;
   date: string;
   location: string;
@@ -226,8 +229,10 @@ export function eventPayload(draft: EventDraft, original?: EventDetails): Partia
   const payload: EventPayload = { title, description: description || null,
     date: sameDate ? original.date : new Date(time).toISOString(), location, capacity };
   if (policy !== null) payload.refund_policy = policy;
+  if (draft.visibility && draft.visibility !== 'public') payload.visibility = draft.visibility;
   if (!original) return payload;
   const changed: Partial<EventPayload> = {};
+  if (draft.visibility && draft.visibility !== (original.visibility ?? 'public')) changed.visibility = draft.visibility;
   if (payload.title !== original.title) changed.title = payload.title;
   if (payload.description !== (original.description?.trim() || null)) changed.description = payload.description;
   if (draft.refund_policy !== undefined && policy !== (original.refund_policy?.trim() || null)) changed.refund_policy = policy;

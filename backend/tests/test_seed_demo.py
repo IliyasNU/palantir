@@ -55,7 +55,10 @@ def test_demo_seed_runs_twice_on_a_fresh_database(session_factory, monkeypatch, 
             assert sum(kind.tickets_issued for kind in event.ticket_types) == len(active)
 
         campaign = db.scalars(select(Campaign)).one()
-        orders = db.scalars(select(Order).order_by(Order.id)).all()
+        free_orders = db.scalars(select(Order).where(Order.subtotal_tiyn == 0)).all()
+        assert len(free_orders) == 4
+        assert all(order.status == "paid" and order.expires_at is None and order.total_tiyn == 0 for order in free_orders)
+        orders = db.scalars(select(Order).where(Order.subtotal_tiyn > 0).order_by(Order.id)).all()
         assert [(order.status, order.total_tiyn, order.campaign_id) for order in orders] == [
             ("paid", 200_000, campaign.id), ("paid", 250_000, None), ("refunded", 250_000, None),
         ]

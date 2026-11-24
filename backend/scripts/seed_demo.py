@@ -87,7 +87,7 @@ def _event(
 
 
 def _ticket(db: Session, event: Event, kind: TicketType, attendee: User, when: datetime) -> Ticket:
-    from app.routers.tickets import new_qr_payload
+    from app.routers.tickets import new_qr_payload, record_free_order
 
     ticket = Ticket(
         event_id=event.id, ticket_type_id=kind.id, attendee_id=attendee.id,
@@ -99,6 +99,8 @@ def _ticket(db: Session, event: Event, kind: TicketType, attendee: User, when: d
     db.flush()
     record_action(db, event_id=event.id, actor_id=attendee.id, action="ticket.issued",
                   entity_type="ticket", entity_id=ticket.id, description="Issued a demo ticket")
+    if kind.price_tiyn == 0:
+        record_free_order(db, ticket, attendee)
     return ticket
 
 

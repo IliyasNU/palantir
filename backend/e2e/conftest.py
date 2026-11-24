@@ -75,10 +75,10 @@ def api():
 def register(api, db_engine):
     """Register a throw-away user through the API and log them in."""
 
-    def _register(role: str = "attendee") -> SimpleNamespace:
+    def _register(role: str = "attendee", *, full_name: str | None = None) -> SimpleNamespace:
         email = f"e2e-{role}-{uuid.uuid4().hex[:12]}@example.com"
         response = api.post(
-            "/auth/register", json={"email": email, "full_name": f"E2E {role}", "password": PASSWORD, "role": role}
+            "/auth/register", json={"email": email, "full_name": full_name or f"E2E {role}", "password": PASSWORD, "role": role}
         )
         assert response.status_code == 201, response.text
         with db_engine.connect() as connection:

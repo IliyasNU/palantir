@@ -110,7 +110,7 @@ def switch(event_id: int, campaign_id: int, payload: Switch, db: DbSession, user
 @router.post("/quote")
 def quote(event_id: int, payload: QuoteInput, db: DbSession, user: OptionalUser):
     event = get_event_or_404(db, event_id)
-    if not is_visible(event, user):
+    if not is_visible(db, event, user):
         raise api_error(404, "EVENT_NOT_FOUND", "Event not found")
     ensure_not_suspended(event)
     if event.status != "published":

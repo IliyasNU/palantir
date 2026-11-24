@@ -103,11 +103,28 @@ def _user_from_token(db: Session, token: str, token_type: str, lock: bool = Fals
 def refresh_tokens(db: Session, refresh_token: str) -> TokenPair:
     user, payload = _user_from_token(db, refresh_token, REFRESH_TOKEN_TYPE)
     ensure_token_version(payload, user.token_version)
-    if db.get(RevokedToken, str(payload.get("jti"))) is not None:
-        raise TokenError("Token has been revoked")
     if not user.is_active:
         raise InactiveUserError()
-    return issue_token_pair(user)
+    tokens = issue_token_pair(user)
+    if not _consume_refresh(db, payload):
+        raise TokenError("Token has been revoked")
+    return tokens
+
+
+def _consume_refresh(db: Session, payload: dict) -> bool:
+    jti = payload.get("jti")
+    if not isinstance(jti, str) or not jti:
+        return False
+    db.execute(delete(RevokedToken).where(RevokedToken.expires_at < utcnow()))
+    db.add(RevokedToken(jti=jti, expires_at=datetime.fromtimestamp(payload["exp"], timezone.utc)))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        if db.get(RevokedToken, jti) is None:
+            raise
+        return False
+    return True
 
 
 def logout(db: Session, refresh_token: str) -> None:
@@ -116,16 +133,7 @@ def logout(db: Session, refresh_token: str) -> None:
         payload = decode_token(refresh_token, REFRESH_TOKEN_TYPE)
     except TokenError:
         return
-    jti = payload.get("jti")
-    if not isinstance(jti, str) or not jti:
-        return
-    db.execute(delete(RevokedToken).where(RevokedToken.expires_at < utcnow()))
-    if db.get(RevokedToken, jti) is None:
-        db.add(RevokedToken(jti=jti, expires_at=datetime.fromtimestamp(payload["exp"], timezone.utc)))
-    try:
-        db.commit()
-    except IntegrityError:  # a concurrent logout revoked it first
-        db.rollback()
+    _consume_refresh(db, payload)
 
 
 def verify_email(db: Session, token: str) -> User:

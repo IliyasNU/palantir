@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 import { AppState } from 'react-native';
 import { api, type StaffSession } from './api';
-import { createRenewer, renewCurrentSession, renewalTime, tokenExpiry, type RenewResult } from './renewal';
+import { createRenewer, renewCurrentSession, signOutSession, renewalTime, tokenExpiry, type RenewResult } from './renewal';
 
 // A renewed session for the same account, or why there is none: `rejected` needs a password sign-in,
 // `unavailable` had no definite answer and may be tried again.
@@ -10,8 +10,9 @@ export type { RenewResult } from './renewal';
 const SessionContext = createContext<{
   session: StaffSession | null;
   setSession: (value: StaffSession | null) => void;
+  signOut: () => Promise<void>;
   renew: () => Promise<RenewResult>;
-}>({ session: null, setSession: () => {}, renew: async () => 'rejected' });
+}>({ session: null, setSession: () => {}, signOut: async () => {}, renew: async () => 'rejected' });
 
 export function SessionProvider({ children }: PropsWithChildren) {
   // The session lives in memory only: after closing the app, sign in again.
@@ -23,6 +24,11 @@ export function SessionProvider({ children }: PropsWithChildren) {
     current.current = value;
     setState(value);
   }, []);
+
+  const signOut = useCallback(() => {
+    const active = current.current;
+    return signOutSession(active, active ? renewer.pending(active) : undefined, api.logout, () => setSession(null));
+  }, [renewer, setSession]);
 
   const renew = useCallback(async (): Promise<RenewResult> => {
     return renewCurrentSession(() => current.current, setSession, renewer);
@@ -53,7 +59,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     return () => { live = false; clearTimeout(timer); subscription.remove(); };
   }, [session, renew]);
 
-  const value = useMemo(() => ({ session, setSession, renew }), [session, setSession, renew]);
+  const value = useMemo(() => ({ session, setSession, signOut, renew }), [session, setSession, signOut, renew]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 

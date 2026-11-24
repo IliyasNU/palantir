@@ -87,13 +87,17 @@ def test_capacity_is_never_exceeded_under_load(api, register, published_event, s
 
 
 def test_double_click_claim_gives_one_ticket(api, register, published_event, sql):
-    owner, attendee = register("organizer"), register()
+    full_name = "Ә" * 255  # registration accepts this length; a receipt must preserve it
+    owner, attendee = register("organizer"), register(full_name=full_name)
     event = published_event(owner)
     responses = run_concurrently(
         [lambda client: client.post(f"/events/{event['id']}/tickets", headers=attendee.headers)] * 8
     )
     assert codes(responses)[201] == 1
     assert {response.json()["id"] for response in responses} == {responses[0].json()["id"]}
+    assert api.get("/orders/me", headers=attendee.headers).json()[0]["attendee_name"] == full_name
+    assert sql("SELECT count(*) FROM orders WHERE ticket_id=:id AND status='paid' AND subtotal_tiyn=0",
+               id=responses[0].json()["id"]) == 1
     assert sql("SELECT count(*) FROM tickets WHERE event_id = :id", id=event["id"]) == 1
     assert sql("SELECT tickets_issued FROM events WHERE id = :id", id=event["id"]) == 1
 

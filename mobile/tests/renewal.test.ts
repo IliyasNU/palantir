@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ApiError, type StaffSession } from '../src/api.ts';
-import { createRenewer, renewalTime, tokenExpiry } from '../src/renewal.ts';
+import { createApi, ApiError, type StaffSession } from '../src/api.ts';
+import { createRenewer, signOutSession, renewalTime, tokenExpiry } from '../src/renewal.ts';
 
 const jwt = (claims: unknown) => ['header', Buffer.from(JSON.stringify(claims)).toString('base64url'), 'signature'].join('.');
 const session: StaffSession = { token: 'access-1', userId: 42, refreshToken: 'refresh-1' };
@@ -97,4 +97,21 @@ test('no definite answer keeps the session renewable', async () => {
   assert.deepEqual(await renew(session), { unavailable: offline });
   assert.deepEqual(await renew(session), { session: fresh });
   assert.equal(attempts, 2);
+});
+
+test('sign-out revokes before clearing, even offline, and covers a concurrent rotation', async () => {
+  for (const offline of [false, true]) {
+    const calls: string[] = [];
+    const api = createApi('https://test.invalid', async (url, options) => {
+      assert.equal(new URL(String(url)).pathname, '/auth/logout');
+      assert.equal(options?.method, 'POST');
+      calls.push(JSON.parse(String(options?.body)).refresh_token);
+      if (offline) throw new Error('offline');
+      return new Response(null, { status: 204 });
+    });
+    const renewer = createRenewer(async () => fresh);
+    void renewer(session);
+    await signOutSession(session, renewer.pending(session), api.logout, () => calls.push('clear'));
+    assert.deepEqual(calls, ['refresh-1', 'clear', 'refresh-2']);
+  }
 });

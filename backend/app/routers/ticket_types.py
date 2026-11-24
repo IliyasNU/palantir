@@ -21,9 +21,11 @@ router = APIRouter(tags=["ticket types"])
 @router.get("/events/{event_id}/ticket-types", response_model=list[TicketTypeRead])
 def list_ticket_types(event_id: int, db: DbSession, current_user: OptionalUser):
     event = get_event_or_404(db, event_id)
-    if not is_visible(event, current_user):
+    if not is_visible(db, event, current_user):
         raise api_error(404, "EVENT_NOT_FOUND", "Event not found")
     refresh_inventory(db, [event_id])
+    if not is_visible(db, event, current_user):
+        raise api_error(404, "EVENT_NOT_FOUND", "Event not found")
     return db.scalars(select(TicketType).where(TicketType.event_id == event_id, TicketType.hidden.is_(False))
                       .order_by(TicketType.id)).all()
 

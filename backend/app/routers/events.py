@@ -49,7 +49,7 @@ def _ensure_schedule_change_allowed(event: Event, changes: dict) -> None:
 def _describe_changes(event: Event, changes: dict) -> str:
     """What an edit really changes, for the history. Capacity and date show both values; texts only that they changed."""
     parts = []
-    for field in ("capacity", "date", "location", "title", "description", "refund_policy"):
+    for field in ("capacity", "date", "location", "title", "description", "refund_policy", "visibility"):
         if field not in changes:
             continue
         old, new = getattr(event, field), changes[field]
@@ -79,12 +79,12 @@ def list_published_events(db: DbSession):
     """Public list of published events that are not suspended, soonest first."""
     query = (
         select(Event)
-        .where(Event.status == EventStatus.PUBLISHED.value, Event.suspended_at.is_(None))
+        .where(Event.status == EventStatus.PUBLISHED.value, Event.suspended_at.is_(None), Event.visibility == "public")
         .order_by(Event.date, Event.id)
     )
-    events = db.scalars(query).all()
-    refresh_inventory(db, [event.id for event in events])
-    return events
+    event_ids = list(db.scalars(query.with_only_columns(Event.id)))
+    refresh_inventory(db, event_ids)
+    return db.scalars(query.where(Event.id.in_(event_ids))).all()
 
 
 @router.post("", response_model=EventRead, status_code=status.HTTP_201_CREATED)
@@ -112,11 +112,13 @@ def list_my_events(db: DbSession, current_user: OrganizerUser):
 
 @router.get("/{event_id}", response_model=EventRead)
 def get_event(event_id: int, db: DbSession, current_user: OptionalUser):
-    """Anyone may read a published or cancelled event; drafts only their owner or an admin."""
+    """Resolve a direct link subject to publication state, suspension and audience visibility."""
     event = get_event_or_404(db, event_id)
-    if not is_visible(event, current_user):
+    if not is_visible(db, event, current_user):
         raise api_error(status.HTTP_404_NOT_FOUND, "EVENT_NOT_FOUND", "Event not found")
     refresh_inventory(db, [event_id])
+    if not is_visible(db, event, current_user):
+        raise api_error(404, "EVENT_NOT_FOUND", "Event not found")
     return event
 
 
@@ -167,7 +169,7 @@ def duplicate_event(event_id: int, payload: EventDuplicate, db: DbSession, curre
 
     duplicate = Event(
         organizer_id=source.organizer_id, title=source.title, description=source.description,
-        date=payload.date, location=source.location, capacity=source.capacity, status=EventStatus.DRAFT.value,
+        date=payload.date, visibility=source.visibility, location=source.location, capacity=source.capacity, status=EventStatus.DRAFT.value,
     )
     date_shift = payload.date - to_utc(source.date)
     try:

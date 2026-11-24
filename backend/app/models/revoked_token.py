@@ -7,7 +7,7 @@ from app.db.base import Base
 
 
 class RevokedToken(Base):
-    """A refresh token ended by logout. Rows are useless after ``expires_at`` and are pruned on the next logout."""
+    """A refresh token consumed by rotation or logout. Expired rows are pruned during either operation."""
 
     __tablename__ = "revoked_tokens"
 

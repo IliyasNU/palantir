@@ -2,7 +2,7 @@
 
 We built the API with FastAPI, stored data in PostgreSQL through SQLAlchemy, and used Alembic to manage schema revisions. The [architecture document](../docs/architecture.md) describes the system and its data model.
 
-Authentication supports registration, sign-in and token renewal using JWTs and bcrypt password hashes. The account roles are `admin`, `organizer` and `attendee`. Organizers create, read and update their profiles, manage events from creation and editing through publication or cancellation, and assign check-in staff by event. The public catalog lists published events. Free tickets carry a QR payload. Idempotent check-in allows staff to retry a scan after an uncertain response.
+Authentication supports registration, sign-in and token renewal using JWTs and bcrypt password hashes. The account roles are `admin`, `organizer` and `attendee`. Organizers create, read and update their profiles, manage events from creation and editing through publication or cancellation, and assign check-in staff by event. The public catalog lists published events with public visibility. Unlisted events can be opened by direct link. Private events restrict details and registration to the owner, administrators and existing ticket holders. Draft and suspension restrictions still apply. Free tickets carry a QR payload. Idempotent check-in allows staff to retry a scan after an uncertain response.
 
 ## Run the API and database with Docker
 
@@ -41,7 +41,7 @@ On its first run, the script prints account identifiers and randomly generated p
 | Seed event | What to examine |
 | --- | --- |
 | Demo \| Upcoming checkout | Free and paid ticket types, two paid orders, a promo campaign and an attendee support thread. The simulated refund for attendee C releases a seat, creates an audit entry and adds an in-app notification. |
-| Demo \| Active check-in | Attendee A has already checked in. Attendee B has an unused ticket. Attendee C has a refunded free ticket. These states provide three distinct scanner cases. |
+| Demo \| Active check-in | Attendee A has already checked in. Attendee B has an unused ticket. Attendee C has a refunded free ticket. These states provide three distinct scanner cases. Free registrations in a freshly seeded database include zero-value order receipts. |
 | Demo \| Suspended | The demo admin suspended this event. The audit entry records the reason. |
 
 Organizers also have past, draft and cancelled events. If a database contains seed data from an earlier version, use a fresh disposable database to examine the current fixtures.
@@ -104,7 +104,7 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `POST /auth/register` | public | JSON `{email, full_name, password, role?}`; `role` is `attendee` (default) or `organizer` |
 | `POST /auth/login` | public | JSON `{email, password}` → `{access_token, refresh_token, token_type}` |
 | `POST /auth/token` | public | same, as OAuth2 form (`username` = email); used by the `/docs` "Authorize" button |
-| `POST /auth/refresh` | public | JSON `{refresh_token}` → new token pair |
+| `POST /auth/refresh` | public | JSON `{refresh_token}` → new token pair. The refresh token submitted to this endpoint is single-use |
 | `POST /auth/logout` | public | JSON `{refresh_token}` → `204`; that refresh token stops working, other sessions stay |
 | `GET /auth/me` | logged in | current user, including `email_verified` |
 | `POST /auth/verify-email` | public | JSON `{token}` from the verification email → user; `400 INVALID_TOKEN` |
@@ -115,9 +115,9 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `GET /organizer-profiles/me` | organizer | 404 until created |
 | `PUT` or `PATCH /organizer-profiles/me` | organizer | partial update: only sent fields change |
 | `GET /organizer-profiles/{id}` | logged in | |
-| `POST /events` | organizer | `{title, description?, date, location, capacity}` |
-| `GET /events` | public | published events |
-| `GET /events/{id}` | public or owner/admin | draft details are restricted |
+| `POST /events` | organizer | `{title, description?, date, location, capacity, visibility?}`. Visibility defaults to `public` |
+| `GET /events` | public | Published public events, excluding suspended events |
+| `GET /events/{id}` | Depends on visibility | Public and unlisted events open by direct link. Private events require the owner, an admin or an existing ticket holder. Drafts and suspended events remain restricted to managers |
 | `POST /events/{id}/publish` or `/cancel` | owner or admin | state transitions |
 | `POST /events/{id}/unpublish` | owner or admin | published → draft, only while no tickets or pending orders exist (`409 EVENT_HAS_TICKETS`); draft is a no-op |
 | `POST /events/{id}/tickets` | authenticated | `201` new ticket, `200` existing ticket |
@@ -131,7 +131,7 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `POST /events/{id}/check-ins/{check_in_id}/undo` | owner or admin | `{request_id}`; keeps the row as history, the ticket can be scanned again |
 | `GET /events/{id}/attendance` | check-in staff, owner or admin | `{event_id, capacity, tickets_issued, checked_in}` |
 | `GET /events/{id}/attendees?q=` | check-in staff, owner or admin | name/email search, `q` ≥ 3 chars, ≤ 20 results, masked email, ticket `status`, current `check_in_id` + `qr_payload` |
-| `PUT` or `PATCH /events/{id}` | owner or admin | partial update; a cancelled event can't change (`409 EVENT_CANCELLED`); once started, date and capacity are fixed (`409 EVENT_STARTED`); a new date must be in the future (`422 DATE_IN_PAST`) |
+| `PUT` or `PATCH /events/{id}` | owner or admin | partial update, including `visibility` (`public`, `unlisted`, `private`); a cancelled event can't change (`409 EVENT_CANCELLED`); once started, date and capacity are fixed (`409 EVENT_STARTED`); a new date must be in the future (`422 DATE_IN_PAST`) |
 
 Send the access token as `Authorization: Bearer <token>`. Use paths exactly as written (no trailing slash).
 The API accepts ISO 8601 timestamps, interprets values without a time zone as UTC and returns timestamps in UTC.
@@ -193,7 +193,7 @@ only active tickets. New events start with the same default type.
 | `POST /events/{id}/ticket-types` | Event owner or admin | Create a type (201). An optional body `event_id` must match the path |
 | `PATCH /events/{id}/ticket-types/{type_id}` | Event owner or admin | Edit or hide a type |
 | `GET /events/{id}/action-log` | Event owner or admin | Read action history, newest first |
-| `POST /events/{id}/tickets` | Authenticated | Optional `{"ticket_type_id": 42}`. Existing tickets return 200. New free tickets return 201 |
+| `POST /events/{id}/tickets` | Authenticated | Optional `{"ticket_type_id": 42}`. Existing tickets return 200. New free tickets return 201 and create a linked paid order for zero tiyn in the same transaction. Replays create no additional order |
 
 Set `name`, `quantity` and optionally `description`, integer `price_tiyn`, `sales_start`,
 `sales_end`, `order_limit`, and `hidden`. Sales open at the start and close at the end.
@@ -441,7 +441,7 @@ transaction. The notification's email is handled by the existing post-commit wor
 The summary totals original charges on paid and refunded orders, subtracts actual refunds and
 charges processing fees only on orders that remain paid. All amounts are integer tiyn.
 
-Migration `0011` follows `0010`. Its downgrade refuses to discard existing refunds or policies.
+Migration `0012` adds zero-value registration orders, and `0013` adds event visibility with public access as the default. Both downgrades preserve existing data by refusing to run when incompatible records exist. Migration `0011` follows `0010`. Its downgrade refuses to discard existing refunds or policies.
 
 ## Support cases (SRS 4.13)
 
@@ -499,6 +499,8 @@ requester replies, a case that was `waiting_for_customer` becomes `in_progress` 
 Anyone who is neither the requester nor a handler gets `404 CASE_NOT_FOUND` on every case route. For a screen
 that refreshes periodically, poll `GET /support/cases/{id}/messages?after_id=<last id you have>`; in lists,
 `last_message_by` different from your own side means there is a reply you have not answered.
+
+Replies and status changes create an inbox notification for the other participants. Its email copy is queued after commit. Unassigned attendee cases notify the event owner, and unassigned platform cases notify active administrators. A reply that also reopens a case produces a single notice.
 
 Opening a case, each status change and each assignment are written to the action log (`support_case.*`), for the
 case's event or as a platform action. Message text is never copied there. Email notifications are not sent yet.
@@ -558,7 +560,7 @@ docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -
 docker compose --env-file .env.w2-pg16 -p $w2Pg16Project -f docker-compose.yml -f work/compose.w2-pg16-icu.yml exec backend alembic current
 ```
 
-Compose applies `alembic upgrade head` before starting the API. The W2 instructions recorded `0008 (head)`. In v1.0, expect `0011` as the sole head and `/health` to return HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
+Compose applies `alembic upgrade head` before starting the API. The W2 instructions recorded `0008 (head)`. In this v1.1 checkout, expect `0013` as the sole head and `/health` to return HTTP 200 with `database: up`. For a direct API launch, run `python -m alembic upgrade head` and `python -m alembic current` from `backend/` using that same isolated database.
 
 Run this SQL **in the database used by the API** and retain the actual output with the tested commit:
 

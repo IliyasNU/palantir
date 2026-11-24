@@ -236,6 +236,9 @@ export function createApi(baseUrl: string, fetcher: typeof fetch = fetch, timeou
     async refresh(refreshToken: string, userId: number): Promise<StaffSession> {
       return identified(await request('/auth/refresh', undefined, { refresh_token: refreshToken }), userId, refreshToken);
     },
+    async logout(refreshToken: string): Promise<void> {
+      await request('/auth/logout', undefined, { refresh_token: refreshToken });
+    },
     async events(token: string): Promise<StaffEvent[]> {
       const data = await request('/staff/events', token);
       if (!Array.isArray(data) || !data.every(item => object(item) && Number.isInteger(item.id)

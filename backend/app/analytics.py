@@ -61,7 +61,7 @@ def _daily_groups(db: Session, event_id: int, ticket_type_id: int | None,
         ).select_from(Order)
         .join(Ticket, Ticket.id == Order.ticket_id)
         .outerjoin(CheckIn, admitted)
-        .where(Order.event_id == event_id, Order.status.in_(("paid", "refunded")),
+        .where(Order.event_id == event_id, Order.status.in_(("paid", "refunded")), Order.subtotal_tiyn > 0,
                *_period(paid_at, date_from, date_to))
     )
     free_rows = (
@@ -72,7 +72,7 @@ def _daily_groups(db: Session, event_id: int, ticket_type_id: int | None,
         ).select_from(Ticket)
         .outerjoin(CheckIn, admitted)
         .where(Ticket.event_id == event_id, Ticket.status == "active",
-               ~select(Order.id).where(Order.ticket_id == Ticket.id).exists(),
+               ~select(Order.id).where(Order.ticket_id == Ticket.id, Order.subtotal_tiyn > 0).exists(),
                *_period(Ticket.created_at, date_from, date_to))
     )
     if ticket_type_id is not None:

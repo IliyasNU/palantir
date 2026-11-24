@@ -219,6 +219,11 @@ def test_refresh_returns_working_tokens(client, create_user):
     response = client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert response.status_code == 200, response.text
     new_tokens = response.json()
+    replay = client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert replay.status_code == 401 and replay.json()["detail"]["code"] == "INVALID_REFRESH_TOKEN"
+    assert new_tokens["refresh_token"] != tokens["refresh_token"]
+    assert client.post("/auth/logout", json={"refresh_token": new_tokens["refresh_token"]}).status_code == 204
+    assert client.post("/auth/refresh", json={"refresh_token": new_tokens["refresh_token"]}).status_code == 401
     me = client.get("/auth/me", headers=bearer(new_tokens["access_token"]))
     assert me.status_code == 200
     assert me.json()["email"] == "r@example.com"

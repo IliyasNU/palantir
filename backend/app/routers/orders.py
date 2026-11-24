@@ -15,7 +15,7 @@ from app.db.base import utcnow
 from app.demo_fees import DEMO_NOTICE, PAYMENT_PROCESSING_FEE_BPS, processing_fee
 from app.dependencies.auth import CurrentUser
 from app.dependencies.db import DbSession
-from app.dependencies.events import can_manage, ensure_can_manage, ensure_not_suspended, get_event_or_404
+from app.dependencies.events import can_manage, ensure_can_manage, ensure_not_suspended, get_event_or_404, is_visible
 from app.errors import api_error
 from app.models import CheckIn, Event, EventStatus, Ticket, TicketStatus, TicketType, User
 from app.models.order import Order
@@ -59,6 +59,8 @@ def own_order(db, order_id, user):
 @router.post("/events/{event_id}/orders", response_model=OrderRead, status_code=201)
 def create_order(event_id: int, payload: OrderCreate, response: Response, db: DbSession, user: CurrentUser):
     event = lock_event(db, event_id)
+    if event.visibility == "private" and not is_visible(db, event, user):
+        raise api_error(404, "EVENT_NOT_FOUND", "Event not found")
     expire_event_orders(db, event_id)
     existing = db.scalar(select(Order).where(Order.buyer_id == user.id, Order.request_id == str(payload.request_id)))
     if existing is not None:
@@ -162,6 +164,8 @@ def pay_order(order_id: int, payload: PaymentRequest, db: DbSession, user: Curre
         action = "order.failed"
     else:
         try:
+            if event.visibility == "private" and not is_visible(db, event, user):
+                raise api_error(404, "EVENT_NOT_FOUND", "Event not found")
             ensure_sale(db, event, user.id)
             reject_ticket(db, event.id, user.id)
         except HTTPException:
@@ -236,8 +240,8 @@ def manage_event_orders(event_id: int, db: DbSession, user: CurrentUser):
     event_orders_access(db, event_id, user)
     expire_event_orders(db, event_id)
 
-    orders = db.scalars(select(Order).where(Order.event_id == event_id).order_by(Order.id.desc())).all()
-    has_order = select(Order.id).where(Order.ticket_id == Ticket.id).exists()
+    orders = db.scalars(select(Order).where(Order.event_id == event_id, Order.subtotal_tiyn > 0).order_by(Order.id.desc())).all()
+    has_order = select(Order.id).where(Order.ticket_id == Ticket.id, Order.subtotal_tiyn > 0).exists()
     free_registrations = db.execute(
         select(
             Ticket.id, User.full_name.label("attendee_name"), User.email.label("attendee_email"),
@@ -254,6 +258,8 @@ def manage_event_orders(event_id: int, db: DbSession, user: CurrentUser):
 
 def refund_paid_order(db: Session, event: Event, order: Order, actor: User) -> None:
     """Refund inside the caller's transaction while holding the event lock."""
+    if order.subtotal_tiyn == 0:
+        raise api_error(409, "FREE_REGISTRATION", "Cancel the free registration through its ticket")
     if order.status == "refunded":
         return
     if order.status != "paid" or order.ticket_id is None:
@@ -289,7 +295,7 @@ def refund_all_orders(event_id: int, db: DbSession, user: CurrentUser):
     event = event_orders_access(db, event_id, user)
     if event.status != EventStatus.CANCELLED.value:
         raise api_error(409, "EVENT_NOT_CANCELLED", "Bulk refunds require a cancelled event")
-    orders = db.scalars(select(Order).where(Order.event_id == event_id, Order.status == "paid").order_by(Order.id)).all()
+    orders = db.scalars(select(Order).where(Order.event_id == event_id, Order.status == "paid", Order.subtotal_tiyn > 0).order_by(Order.id)).all()
     try:
         for order in orders:
             refund_paid_order(db, event, order, user)

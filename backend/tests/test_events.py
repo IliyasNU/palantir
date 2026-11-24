@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -193,3 +194,40 @@ def test_admin_can_edit_any_event(client, create_user, auth_header):
 def test_editing_unknown_event_is_404(client, create_user, auth_header):
     _, headers = make_organizer(create_user, auth_header)
     assert client.patch("/events/99999", json={"title": "Whatever"}, headers=headers).status_code == 404
+
+
+def test_visibility_controls_discovery_detail_and_claims(client, login_as, new_event):
+    _, owner = login_as("visibility-owner@example.com", "organizer")
+    _, admin = login_as("visibility-admin@example.com", "admin")
+    _, guest = login_as("visibility-visitor@example.com")
+    _, staff = login_as("visibility-staff@example.com")
+    event = new_event(owner, capacity=10)
+    root = f"/events/{event['id']}"
+    assert event["visibility"] == "public"
+    assert [row["id"] for row in client.get("/events").json()] == [event["id"]]
+    for mode in ("unlisted", "private"):
+        assert client.patch(root, headers=owner, json={"visibility": mode}).json()["visibility"] == mode
+        assert client.get("/events").json() == []
+        if mode == "unlisted":
+            assert client.get(root).status_code == 200
+            claim = client.post(root + "/tickets", headers=guest)
+            assert claim.status_code == 201
+            ticket = claim.json()
+    for headers in ({}, staff):
+        for suffix in ("", "/ticket-types"):
+            response = client.get(root + suffix, headers=headers)
+            assert response.status_code == 404 and response.json()["detail"]["code"] == "EVENT_NOT_FOUND"
+    assert client.post(root + "/tickets", headers=staff).status_code == 404
+    for headers in (owner, admin, guest):
+        assert client.get(root, headers=headers).status_code == 200
+    assert client.post(root + "/tickets", headers=guest).json()["id"] == ticket["id"]
+    assert client.post(root + "/tickets", headers=owner).status_code == 201
+    assert client.post(root + "/tickets", headers=admin).status_code == 201
+    assert client.post(root + "/staff", headers=owner, json={"email": "visibility-staff@example.com"}).status_code == 201
+    scan = {"request_id": str(uuid4()), "qr_payload": ticket["qr_payload"]}
+    assert client.post(root + "/check-in", headers=staff, json=scan).status_code == 200
+    assert client.get(root, headers=staff).status_code == 404
+    assert client.patch(root, headers=guest, json={"visibility": "public"}).status_code == 403
+    assert client.patch(root, headers=owner, json={"visibility": None}).status_code == 422
+    assert client.patch(root, headers=owner, json={"visibility": "public"}).status_code == 200
+    assert len(client.get("/events").json()) == 1

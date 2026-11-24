@@ -26,7 +26,7 @@ Successful login returns `access_token`, `refresh_token`, and `token_type`. The 
 { "refresh_token": "<refresh_token from the last pair>" }
 ```
 
-It returns a new pair in the login format. The client again calls `GET /auth/me` with the new access token and accepts the pair only if the user ID is the one already signed in. `401` (expired, malformed, or an access token sent instead) and `403` (disabled account) mean the session cannot be renewed: the app asks for the password. A timeout or `5xx` leaves the session as it is, and the same refresh token is tried again later.
+It consumes the submitted refresh token and returns a new pair in the login format. The client again calls `GET /auth/me` with the new access token and accepts the pair only if the user ID is the one already signed in. `401` (expired, malformed, or an access token sent instead) and `403` (disabled account) mean the session cannot be renewed: the app asks for the password. A timeout or `5xx` leaves the session as it is, and a subsequent attempt can require sign-in if the server already consumed the token.
 
 The app reads the `exp` claim of the access token only to plan the renewal: about two minutes before the expiry, or halfway through a shorter token life, while the app is in front. If the phone's clock makes the token look expired, nothing is planned and the renewal happens after the first `401`. The server remains the only judge of a token.
 

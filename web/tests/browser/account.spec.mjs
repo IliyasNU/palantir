@@ -179,11 +179,11 @@ test('the reminder disappears after the link is confirmed in the same session, a
   }
 });
 
-test('sign-out clears the memory session without calling the server', async ({ page }) => {
+test('sign-out clears the memory session when server logout fails', async ({ page }) => {
   const calls = [];
   page.on('request', (request) => { if (request.url().startsWith(`${base}/auth/logout`)) calls.push(request.url()); });
   await login(page, user);
   await page.getByRole('button', { name: 'Выйти', exact: true }).click();
   await expect(page.getByRole('navigation').getByRole('link', { name: 'Войти', exact: true })).toBeVisible();
-  expect(calls).toEqual([]);
+  await expect.poll(() => calls).toEqual([`${base}/auth/logout`]);
 });

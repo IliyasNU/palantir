@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies.roles import is_admin
 from app.errors import api_error
-from app.models import Event, EventStaff, EventStatus, User
+from app.models import Event, EventStaff, EventStatus, Ticket, User
 from app.models.event import EventPhase
 
 
@@ -41,11 +41,17 @@ def ensure_can_scan(db: Session, event: Event, user: User) -> None:
         raise api_error(status.HTTP_403_FORBIDDEN, "FORBIDDEN", "You are not staff for this event")
 
 
-def is_visible(event: Event, user: Optional[User]) -> bool:
-    """Drafts and suspended events are private to their managers; other published and cancelled events are public."""
+def is_visible(db: Session, event: Event, user: Optional[User]) -> bool:
+    """Managers retain access. Private events are also visible to existing ticket holders."""
     if event.status == EventStatus.DRAFT.value or event.suspended_at is not None:
         return user is not None and can_manage(event, user)
-    return True
+    if event.visibility != "private":
+        return True
+    if user is None:
+        return False
+    return can_manage(event, user) or db.scalar(
+        select(Ticket.id).where(Ticket.event_id == event.id, Ticket.attendee_id == user.id)
+    ) is not None
 
 
 def ensure_not_completed(event: Event) -> None:
