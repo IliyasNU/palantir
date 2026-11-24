@@ -500,6 +500,8 @@ Anyone who is neither the requester nor a handler gets `404 CASE_NOT_FOUND` on e
 that refreshes periodically, poll `GET /support/cases/{id}/messages?after_id=<last id you have>`; in lists,
 `last_message_by` different from your own side means there is a reply you have not answered.
 
+Replies and status changes create an inbox notification for the other participants. Its email copy is queued after commit. Unassigned attendee cases notify the event owner, and unassigned platform cases notify active administrators. A reply that also reopens a case produces a single notice.
+
 Opening a case, each status change and each assignment are written to the action log (`support_case.*`), for the
 case's event or as a platform action. Message text is never copied there. Email notifications are not sent yet.
 

@@ -23,7 +23,8 @@ from app.dependencies.db import DbSession
 from app.dependencies.events import can_manage, ensure_can_manage, get_event_or_404, is_visible
 from app.dependencies.roles import AdminUser, is_admin
 from app.errors import api_error
-from app.models import Event, RoleName, Ticket, User
+from app.notifications import notify
+from app.models import Event, Role, RoleName, Ticket, User
 from app.models.order import Order
 from app.models.support import (
     ATTENDEE_CATEGORIES,
@@ -304,6 +305,21 @@ def read_messages(
     return _messages(db, access.case.id, after_id=after_id)
 
 
+def _notify_participants(db: Session, access: _Access, actor: User, kind: str, body: str) -> None:
+    case = access.case
+    recipients = {case.requester_id}
+    if case.assignee_id is not None:
+        recipients.add(case.assignee_id)
+    elif case.kind == SupportCaseKind.ATTENDEE.value and access.event is not None:
+        recipients.add(access.event.organizer_id)
+    else:
+        recipients.update(db.scalars(select(User.id).join(Role).where(Role.name == RoleName.ADMIN.value)))
+    recipients.discard(actor.id)
+    for user in db.scalars(select(User).where(User.id.in_(recipients), User.is_active.is_(True))):
+        notify(db, user, kind, f"Поддержка / Қолдау / Support #{case.id}", body,
+               link=f"/support/cases/{case.id}")
+
+
 def _set_status(db: Session, case: SupportCase, new_status: str, actor: User) -> None:
     old_status = case.status
     case.status = new_status
@@ -322,8 +338,11 @@ def post_message(case_id: int, payload: MessageCreate, db: DbSession, current_us
     case.last_message_at = now
     case.last_message_by = access.side
     case.updated_at = now
+    body = "Новый ответ. / Жаңа жауап. / New reply."
     if access.is_requester and case.status in _REOPENED_BY_REPLY:
         _set_status(db, case, _REOPENED_BY_REPLY[case.status], current_user)
+        body += " Статус изменён. / Күй өзгерді. / Status changed."
+    _notify_participants(db, access, current_user, "support.reply", body)
     db.commit()
     return MessageRead(
         id=message.id, case_id=case.id, author_id=current_user.id, author_name=current_user.full_name,
@@ -350,7 +369,8 @@ def update_case(case_id: int, payload: CaseUpdate, db: DbSession, current_user: 
         )
 
     changed = False
-    if "status" in sent and payload.status != case.status:
+    status_changed = "status" in sent and payload.status != case.status
+    if status_changed:
         _set_status(db, case, payload.status, current_user)
         changed = True
     if "assignee_id" in sent and payload.assignee_id != case.assignee_id:
@@ -363,6 +383,8 @@ def update_case(case_id: int, payload: CaseUpdate, db: DbSession, current_user: 
             description=f"Assigned to user {payload.assignee_id}" if payload.assignee_id else "Assignment removed",
         )
         changed = True
+    if status_changed:
+        _notify_participants(db, access, current_user, "support.status", "Статус изменён. / Күй өзгерді. / Status changed.")
     if changed:  # repeating the same change is a no-op and writes nothing
         case.updated_at = utcnow()
     db.commit()
