@@ -8,7 +8,7 @@ export interface Order {
   id: number; event_id: number; ticket_type_id: number; buyer_id: number;
   status: keyof Messages['orders']['status']; attendee_name: string; attendee_email: string;
   subtotal_tiyn: number; processing_fee_tiyn: number; total_tiyn: number;
-  ticket_id: number | null; expires_at: string; simulation: true;
+  ticket_id: number | null; expires_at: string | null; simulation: boolean;
   refunded_at?: string | null;
   discount_tiyn?: number; promo_code?: string | null; campaign_id?: number | null;
 }
@@ -45,15 +45,17 @@ export function readOrder(value: unknown): Order {
   if (!record(value) || !integer(value.id, 1) || !integer(value.event_id, 1) || !integer(value.ticket_type_id, 1)
     || !integer(value.buyer_id, 1) || typeof value.status !== 'string' || !Object.hasOwn(current().orders.status, value.status)
     || typeof value.attendee_name !== 'string' || typeof value.attendee_email !== 'string'
-    || !integer(value.subtotal_tiyn, 1) || !integer(value.total_tiyn) || !integer(value.discount_tiyn ?? 0)
+    || !integer(value.subtotal_tiyn) || !integer(value.total_tiyn) || !integer(value.discount_tiyn ?? 0)
     || value.total_tiyn !== value.subtotal_tiyn - Number(value.discount_tiyn ?? 0)
     || (value.campaign_id != null ? !integer(value.campaign_id, 1) || typeof value.promo_code !== 'string' || !/^BF-[A-F0-9]{12}$/.test(value.promo_code)
       : value.promo_code != null || Number(value.discount_tiyn ?? 0) !== 0)
     || !integer(value.processing_fee_tiyn) || value.processing_fee_tiyn > value.total_tiyn
     || (value.ticket_id !== null && !integer(value.ticket_id, 1))
-    || ((value.status === 'paid' || value.status === 'refunded') !== (value.ticket_id !== null)) || value.simulation !== true
+    || ((value.status === 'paid' || value.status === 'refunded') !== (value.ticket_id !== null)) || value.simulation !== (value.subtotal_tiyn > 0)
     || (value.status === 'refunded' ? !instant(value.refunded_at) : value.refunded_at != null)
-    || !instant(value.expires_at)) return invalid();
+    || (value.subtotal_tiyn === 0
+      ? value.status !== 'paid' || value.expires_at !== null || value.campaign_id != null
+      : !instant(value.expires_at))) return invalid();
   return value as unknown as Order;
 }
 export function readOrders(value: unknown): Order[] {

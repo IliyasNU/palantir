@@ -28,7 +28,9 @@ class Order(Base):
             "status IN ('pending', 'paid', 'failed', 'cancelled', 'expired', 'refunded')",
             name="order_status_valid",
         ),
-        CheckConstraint("subtotal_tiyn > 0 AND discount_tiyn >= 0 AND total_tiyn >= 0 AND total_tiyn = subtotal_tiyn - discount_tiyn "
+        CheckConstraint("((subtotal_tiyn > 0 AND expires_at IS NOT NULL) OR "
+                        "(subtotal_tiyn = 0 AND status = 'paid' AND expires_at IS NULL AND campaign_id IS NULL "
+                        "AND processing_fee_bps = 0)) AND discount_tiyn >= 0 AND total_tiyn >= 0 AND total_tiyn = subtotal_tiyn - discount_tiyn "
                         "AND ((campaign_id IS NULL AND promo_code IS NULL AND discount_tiyn = 0) OR "
                         "(campaign_id IS NOT NULL AND promo_code IS NOT NULL)) AND processing_fee_tiyn >= 0 "
                         "AND processing_fee_tiyn <= total_tiyn", name="order_money_valid"),
@@ -43,7 +45,7 @@ class Order(Base):
     ticket_type_id: Mapped[int] = mapped_column(ForeignKey("ticket_types.id", ondelete="RESTRICT"))
     buyer_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
     request_id: Mapped[str] = mapped_column(String(36))
-    attendee_name: Mapped[str] = mapped_column(String(200))
+    attendee_name: Mapped[str] = mapped_column(String(255))
     attendee_email: Mapped[str] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(20), default="pending")
     campaign_id: Mapped[Optional[int]] = mapped_column(ForeignKey("campaigns.id"), index=True)
@@ -55,6 +57,6 @@ class Order(Base):
     processing_fee_bps: Mapped[int] = mapped_column(Integer)
     ticket_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tickets.id", ondelete="RESTRICT"), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     refunded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

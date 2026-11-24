@@ -36,3 +36,10 @@ test('activated paid types still respect their sales window and inventory', () =
   assert.match(orderError(new ApiError('ignored', { kind: 'http', code: 'CLOSED_TICKET_EXISTS' })), /Повторная покупка/);
   assert.match(ticketErrorMessage(new ApiError('ignored', { kind: 'http', code: 'PENDING_ORDER_EXISTS' })), /Мои заказы/);
 });
+
+test('a free registration is a settled receipt without a payment reservation', () => {
+  const receipt = { ...order, subtotal_tiyn: 0, total_tiyn: 0, processing_fee_tiyn: 0,
+    expires_at: null, simulation: false, ticket_id: 42, status: 'paid' };
+  assert.deepEqual(readOrders([receipt]), [receipt]);
+  assert.throws(() => readOrder({ ...receipt, status: 'pending', ticket_id: null }), ApiError);
+});

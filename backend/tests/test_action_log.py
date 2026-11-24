@@ -75,10 +75,10 @@ def test_whole_event_lifecycle_is_recorded_once_per_real_change(client, actors, 
     step(["staff.assigned"], client.post(f"{root}/staff", json={"email": "staff@example.com"}, headers=actors.owner), 201)
     step([], client.post(f"{root}/staff", json={"email": "staff@example.com"}, headers=actors.owner))
 
-    # Claiming tickets is not a management action.
-    ticket = step([], client.post(f"{root}/tickets", headers=actors.visitor), 201).json()
+    # Each free claim creates and records one settled order.
+    ticket = step(["order.registered"], client.post(f"{root}/tickets", headers=actors.visitor), 201).json()
     _, second_headers = login_as("second@example.com")
-    second = step([], client.post(f"{root}/tickets", headers=second_headers), 201).json()
+    second = step(["order.registered"], client.post(f"{root}/tickets", headers=second_headers), 201).json()
 
     # Check-in: one entry per admission; a replayed retry and a rejected duplicate add none.
     request_id = new_request_id()
@@ -228,7 +228,7 @@ def busy_event(client, actors, new_event):
 def test_filter_by_action_type_or_prefix(client, actors, busy_event):
     event_id = busy_event["id"]
     everything = ["event.created", "ticket_type.created", "event.published", "staff.assigned",
-                  "check_in.created", "check_in.undone"]
+                  "order.registered", "check_in.created", "check_in.undone"]
     assert actions(client, event_id, actors.owner) == everything
     assert actions(client, event_id, actors.owner, action="check_in") == ["check_in.created", "check_in.undone"]
     assert actions(client, event_id, actors.owner, action="check_in.undone") == ["check_in.undone"]
@@ -252,7 +252,8 @@ def mixed_event(client, actors, new_event):
     returned = client.post(f"{root}/tickets", headers=actors.staff).json()
     assert client.post(f"/tickets/{returned['id']}/cancel", headers=actors.staff).status_code == 200
     assert actions(client, event["id"], actors.owner) == [
-        "event.created", "ticket_type.created", "event.published", "check_in.created", "ticket.cancelled",
+        "event.created", "ticket_type.created", "event.published", "order.registered", "check_in.created",
+        "order.registered", "ticket.cancelled",
     ]
     return event
 
@@ -303,16 +304,16 @@ def test_filter_by_date_range(client, actors, busy_event):
     event_id = busy_event["id"]
     now = datetime.now(timezone.utc)
     past, future = (now - timedelta(hours=1)).isoformat(), (now + timedelta(hours=1)).isoformat()
-    assert len(actions(client, event_id, actors.owner, date_from=past, date_to=future)) == 6
-    assert len(actions(client, event_id, actors.owner, date_from=past)) == 6
+    assert len(actions(client, event_id, actors.owner, date_from=past, date_to=future)) == 7
+    assert len(actions(client, event_id, actors.owner, date_from=past)) == 7
     assert actions(client, event_id, actors.owner, date_from=future) == []
     assert actions(client, event_id, actors.owner, date_to=past) == []
     # A value without a timezone is UTC, as everywhere else in the API.
     naive_past = (now - timedelta(hours=1)).replace(tzinfo=None).isoformat()
-    assert len(actions(client, event_id, actors.owner, date_from=naive_past)) == 6
+    assert len(actions(client, event_id, actors.owner, date_from=naive_past)) == 7
     # Other offsets are converted: one hour ago written in UTC+5.
     astana = (now - timedelta(hours=1)).astimezone(timezone(timedelta(hours=5))).isoformat()
-    assert len(actions(client, event_id, actors.owner, date_from=astana)) == 6
+    assert len(actions(client, event_id, actors.owner, date_from=astana)) == 7
     invalid = client.get(f"/events/{event_id}/action-log", params={"date_from": "yesterday"}, headers=actors.owner)
     assert invalid.status_code == 422
 
@@ -323,8 +324,8 @@ def test_paging_returns_the_newest_entries_first(client, actors, busy_event):
     newest_two = client.get(path, params={"limit": 2}, headers=actors.owner).json()
     assert [entry["action"] for entry in newest_two] == ["check_in.undone", "check_in.created"]
     next_two = client.get(path, params={"limit": 2, "offset": 2}, headers=actors.owner).json()
-    assert [entry["action"] for entry in next_two] == ["staff.assigned", "event.published"]
-    assert client.get(path, params={"offset": 6}, headers=actors.owner).json() == []
+    assert [entry["action"] for entry in next_two] == ["order.registered", "staff.assigned"]
+    assert client.get(path, params={"offset": 7}, headers=actors.owner).json() == []
     for bad in ({"limit": 0}, {"limit": 501}, {"offset": -1}):
         assert client.get(path, params=bad, headers=actors.owner).status_code == 422
 

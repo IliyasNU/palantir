@@ -270,7 +270,7 @@ The language switch uses “Қазақша” (Kazakh), “Русский” (Ru
 
 Organizers set the refund policy when creating or editing an event. Attendees see it on the event page and at checkout.
 
-“Заказы и возвраты” (Orders and refunds) opens `/organizer/events/{id}/orders` from the organizer dashboard. The organizer can cancel a free registration or confirm a full simulated refund of a paid order. A cancelled event supports bulk refunds. If the attendee has checked in, the organizer must undo the check-in first. “Мои заказы” (My orders) shows the attendee the refund amount and date. The activation summary updates the refund total and estimated payout.
+“Заказы и возвраты” (Orders and refunds) opens `/organizer/events/{id}/orders` from the organizer dashboard. The organizer can cancel a free registration or confirm a full simulated refund of a paid order. A cancelled event supports bulk refunds. If the attendee has checked in, the organizer must undo the check-in first. Free registrations appear in My orders as zero-value receipts. Organizers cancel their tickets from the free registrations list. “Мои заказы” (My orders) shows the attendee the refund amount and date. The activation summary updates the refund total and estimated payout.
 
 ## P2 demo checkout
 

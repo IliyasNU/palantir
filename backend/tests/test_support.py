@@ -108,12 +108,12 @@ def test_attendee_opens_a_case_about_their_ticket(client, world, case):
         "id": world.alice_user.id, "full_name": world.alice_user.full_name, "masked_email": "al***@example.com",
     }
     assert case["assignee"] is None
-    # The event comes from the ticket; a free ticket has no order.
-    assert (case["event_id"], case["ticket_id"], case["order_id"]) == (world.event["id"], world.ticket["id"], None)
+    [order] = client.get("/orders/me", headers=world.alice).json()
+    assert (case["event_id"], case["ticket_id"], case["order_id"]) == (world.event["id"], world.ticket["id"], order["id"])
     assert case["event_title"] == world.event["title"]
     assert case["context"] == {
         "event": {"id": world.event["id"], "title": world.event["title"], "status": "published"},
-        "order": None,
+        "order": {"id": order["id"], "status": "paid", "total_tiyn": 0},
         "ticket": {"id": world.ticket["id"], "status": "active"},
     }
     assert (case["viewer_side"], case["can_manage"], case["last_message_by"]) == ("requester", False, "requester")

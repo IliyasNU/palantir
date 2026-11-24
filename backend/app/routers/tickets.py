@@ -4,6 +4,7 @@
 Paid tickets are closed through the corresponding order refund.
 """
 import secrets
+from uuid import uuid4
 from typing import Optional
 
 from fastapi import APIRouter, Response, status
@@ -36,6 +37,19 @@ QR_PAYLOAD_PREFIX = "biletflow:ticket:v1:"
 
 def new_qr_payload() -> str:
     return QR_PAYLOAD_PREFIX + secrets.token_urlsafe(24)
+
+
+def record_free_order(db: Session, ticket: Ticket, attendee: User) -> None:
+    order = Order(
+        event_id=ticket.event_id, ticket_type_id=ticket.ticket_type_id, ticket_id=ticket.id,
+        buyer_id=attendee.id, attendee_name=attendee.full_name, attendee_email=attendee.email,
+        request_id=str(uuid4()), status="paid", subtotal_tiyn=0, total_tiyn=0, discount_tiyn=0,
+        processing_fee_bps=0, processing_fee_tiyn=0, created_at=ticket.created_at,
+    )
+    db.add(order)
+    db.flush()
+    record_action(db, event_id=ticket.event_id, actor_id=attendee.id, action="order.registered",
+                  entity_type="order", entity_id=order.id, description="Issued a free registration order")
 
 
 def _find_ticket(db: Session, event_id: int, attendee_id: int) -> Optional[Ticket]:
@@ -127,6 +141,7 @@ def claim_ticket(event_id: int, db: DbSession, current_user: CurrentUser, respon
     db.add(ticket)
     try:
         db.flush()  # the ticket id goes into the notification
+        record_free_order(db, ticket, current_user)
         notifications.ticket_issued(db, current_user, ticket, event)
         db.commit()
     except IntegrityError:  # a parallel claim by the same user won; the rollback returns the seat and drops the email
@@ -203,7 +218,7 @@ def _close_ticket(db: Session, ticket_id: int, user: User, target: TicketStatus,
     event = lock_event(db, ticket.event_id)
     ensure_not_suspended(event)
     ticket = lock_ticket(db, ticket_id)
-    if db.scalar(select(Order.id).where(Order.ticket_id == ticket_id)) is not None:
+    if db.scalar(select(Order.id).where(Order.ticket_id == ticket_id, Order.subtotal_tiyn > 0)) is not None:
         raise api_error(409, "PAID_ORDER_REQUIRES_REFUND", "Refund the paid order to close its ticket")
     close_ticket(db, ticket, user.id, target, manager=manager)
     db.commit()

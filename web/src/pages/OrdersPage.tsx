@@ -35,15 +35,15 @@ export function OrderView({ initial }: { initial: Order }) {
     } finally { guard.current = false; setBusy(false); }
   }
   return <section className="content-card" aria-label={text.orderTitle} aria-busy={busy}>
-    <p className="notice">{text.demoNotice}</p>
+    {order.simulation && <p className="notice">{text.demoNotice}</p>}
     <h2>{text.orderNumber(order.id)} · {text.status[order.status]}</h2>
     <p>{order.attendee_name} · {order.attendee_email}</p>
     <p>{text.price(formatOrderAmount(order.subtotal_tiyn))}</p>
     {order.promo_code && <p>{text.promoLine(order.promo_code, formatOrderAmount(order.discount_tiyn ?? 0))}</p>}
-    <p>{text.fee(formatOrderAmount(order.processing_fee_tiyn))}</p>
+    {order.subtotal_tiyn > 0 && <p>{text.fee(formatOrderAmount(order.processing_fee_tiyn))}</p>}
     <p><strong>{text.total(formatOrderAmount(order.total_tiyn))}</strong></p>
     {error != null && <p className="notice notice-error" role="alert">{orderError(error)}</p>}
-    {order.status === 'pending' && <>
+    {order.status === 'pending' && order.expires_at && <>
       <p>{text.reservedUntil(formatEventDate(order.expires_at))}</p>
       <button className="button" disabled={busy} onClick={() => { void act('success'); }}>{text.pay}</button>{' '}
       <button className="text-button" disabled={busy} onClick={() => { void act('failure'); }}>{text.fail}</button>{' '}
@@ -80,7 +80,7 @@ export function OrdersPage() {
       .catch((failure: unknown) => { if (!controller.signal.aborted) setError(failure); });
     return () => controller.abort();
   }, [id, user, request, attempt]);
-  return <Page eyebrow={text.visitor} title={id ? text.orderTitle : t.common.myOrders} description={text.demoNotice}>
+  return <Page eyebrow={text.visitor} title={id ? text.orderTitle : t.common.myOrders} description={id && orders?.[0]?.simulation === false ? t.ticketTypes.free : text.demoNotice}>
     {!user ? <Link to={authLink('/login', id ? `/orders/${id}` : '/orders')}>{t.common.login}</Link>
       : error != null ? <div role="alert"><p>{orderError(error)}</p><button onClick={() => setAttempt((n) => n + 1)}>{t.common.retry}</button></div>
         : orders === null ? <p role="status">{text.loading}</p>

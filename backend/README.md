@@ -41,7 +41,7 @@ On its first run, the script prints account identifiers and randomly generated p
 | Seed event | What to examine |
 | --- | --- |
 | Demo \| Upcoming checkout | Free and paid ticket types, two paid orders, a promo campaign and an attendee support thread. The simulated refund for attendee C releases a seat, creates an audit entry and adds an in-app notification. |
-| Demo \| Active check-in | Attendee A has already checked in. Attendee B has an unused ticket. Attendee C has a refunded free ticket. These states provide three distinct scanner cases. |
+| Demo \| Active check-in | Attendee A has already checked in. Attendee B has an unused ticket. Attendee C has a refunded free ticket. These states provide three distinct scanner cases. Free registrations in a freshly seeded database include zero-value order receipts. |
 | Demo \| Suspended | The demo admin suspended this event. The audit entry records the reason. |
 
 Organizers also have past, draft and cancelled events. If a database contains seed data from an earlier version, use a fresh disposable database to examine the current fixtures.
@@ -193,7 +193,7 @@ only active tickets. New events start with the same default type.
 | `POST /events/{id}/ticket-types` | Event owner or admin | Create a type (201). An optional body `event_id` must match the path |
 | `PATCH /events/{id}/ticket-types/{type_id}` | Event owner or admin | Edit or hide a type |
 | `GET /events/{id}/action-log` | Event owner or admin | Read action history, newest first |
-| `POST /events/{id}/tickets` | Authenticated | Optional `{"ticket_type_id": 42}`. Existing tickets return 200. New free tickets return 201 |
+| `POST /events/{id}/tickets` | Authenticated | Optional `{"ticket_type_id": 42}`. Existing tickets return 200. New free tickets return 201 and create a linked paid order for zero tiyn in the same transaction. Replays create no additional order |
 
 Set `name`, `quantity` and optionally `description`, integer `price_tiyn`, `sales_start`,
 `sales_end`, `order_limit`, and `hidden`. Sales open at the start and close at the end.

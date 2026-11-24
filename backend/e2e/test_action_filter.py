@@ -11,6 +11,7 @@ EXPECTED = [
     ("ticket.cancelled", ["ticket.cancelled"]),
     ("check", []),
     ("check_in", ["check_in.created"]),
+    ("order", ["order.registered", "order.registered"]),
     ("ticket.", ["ticket.cancelled"]),
     # "_" and "%" are literal in PostgreSQL LIKE as well.
     ("ticket_", []),
@@ -37,7 +38,8 @@ def mixed_event(api, register, published_event):
     assert cancelled.status_code == 200, cancelled.text
     everything = api.get(f"/events/{event_id}/action-log", headers=owner.headers).json()
     assert [entry["action"] for entry in reversed(everything)] == [
-        "event.created", "ticket_type.created", "event.published", "check_in.created", "ticket.cancelled",
+        "event.created", "ticket_type.created", "event.published", "order.registered",
+        "check_in.created", "order.registered", "ticket.cancelled",
     ]
     return owner, event_id
 

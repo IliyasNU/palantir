@@ -236,8 +236,8 @@ def manage_event_orders(event_id: int, db: DbSession, user: CurrentUser):
     event_orders_access(db, event_id, user)
     expire_event_orders(db, event_id)
 
-    orders = db.scalars(select(Order).where(Order.event_id == event_id).order_by(Order.id.desc())).all()
-    has_order = select(Order.id).where(Order.ticket_id == Ticket.id).exists()
+    orders = db.scalars(select(Order).where(Order.event_id == event_id, Order.subtotal_tiyn > 0).order_by(Order.id.desc())).all()
+    has_order = select(Order.id).where(Order.ticket_id == Ticket.id, Order.subtotal_tiyn > 0).exists()
     free_registrations = db.execute(
         select(
             Ticket.id, User.full_name.label("attendee_name"), User.email.label("attendee_email"),
@@ -254,6 +254,8 @@ def manage_event_orders(event_id: int, db: DbSession, user: CurrentUser):
 
 def refund_paid_order(db: Session, event: Event, order: Order, actor: User) -> None:
     """Refund inside the caller's transaction while holding the event lock."""
+    if order.subtotal_tiyn == 0:
+        raise api_error(409, "FREE_REGISTRATION", "Cancel the free registration through its ticket")
     if order.status == "refunded":
         return
     if order.status != "paid" or order.ticket_id is None:
@@ -289,7 +291,7 @@ def refund_all_orders(event_id: int, db: DbSession, user: CurrentUser):
     event = event_orders_access(db, event_id, user)
     if event.status != EventStatus.CANCELLED.value:
         raise api_error(409, "EVENT_NOT_CANCELLED", "Bulk refunds require a cancelled event")
-    orders = db.scalars(select(Order).where(Order.event_id == event_id, Order.status == "paid").order_by(Order.id)).all()
+    orders = db.scalars(select(Order).where(Order.event_id == event_id, Order.status == "paid", Order.subtotal_tiyn > 0).order_by(Order.id)).all()
     try:
         for order in orders:
             refund_paid_order(db, event, order, user)

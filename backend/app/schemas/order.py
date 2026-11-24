@@ -1,7 +1,7 @@
 from typing import Annotated, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, computed_field
 
 from app.demo_fees import DEMO_NOTICE
 from app.schemas.common import UTCDateTime
@@ -50,11 +50,19 @@ class OrderRead(BaseModel):
     total_tiyn: int
     ticket_id: Optional[int]
     created_at: UTCDateTime
-    expires_at: UTCDateTime
+    expires_at: Optional[UTCDateTime]
     completed_at: Optional[UTCDateTime]
     refunded_at: Optional[UTCDateTime]
-    simulation: bool = True
-    demo_notice: str = DEMO_NOTICE
+
+    @computed_field
+    @property
+    def simulation(self) -> bool:
+        return self.subtotal_tiyn > 0
+
+    @computed_field
+    @property
+    def demo_notice(self) -> Optional[str]:
+        return DEMO_NOTICE if self.simulation else None
 
 
 class FreeRegistrationRead(BaseModel):

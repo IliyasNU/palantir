@@ -278,3 +278,21 @@ def test_no_payment_no_email(client, shop, db, outbox):
     assert client.post(f"/orders/{refused}/pay", headers=shop["auth"], json={"outcome": "success"}).status_code >= 400
     assert client.post(f"/orders/{refused}/cancel", headers=shop["auth"]).status_code == 200
     assert outbox == [] and kinds(client, shop["auth"]) == []
+
+
+def test_free_registration_issues_one_receipt_without_payment(client, shop):
+    base = f"/events/{shop['eid']}"
+    first = client.post(base + "/tickets", headers=shop["auth"], json={"ticket_type_id": shop["free"]})
+    assert first.status_code == 201
+    replay = client.post(base + "/tickets", headers=shop["auth"])
+    assert replay.status_code == 200 and replay.json()["id"] == first.json()["id"]
+    [order] = client.get("/orders/me", headers=shop["auth"]).json()
+    assert (order["status"], order["ticket_id"], order["subtotal_tiyn"], order["total_tiyn"]) == (
+        "paid", first.json()["id"], 0, 0)
+    assert order["expires_at"] is order["completed_at"] is order["promo_code"] is order["demo_notice"] is None
+    assert order["simulation"] is False
+    assert order["processing_fee_tiyn"] == order["discount_tiyn"] == 0
+    rejected = client.post(f"{base}/orders/{order['id']}/refund", headers=shop["org"])
+    assert rejected.status_code == 409 and rejected.json()["detail"]["code"] == "FREE_REGISTRATION"
+    assert client.post(base + "/cancel", headers=shop["org"]).status_code == 200
+    assert client.post(base + "/orders/refund-all", headers=shop["org"]).json() == {"refunded_count": 0, "refunds_tiyn": 0}
