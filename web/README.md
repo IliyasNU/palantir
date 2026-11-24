@@ -37,6 +37,7 @@ Vite reads settings in descending order of precedence from process variables, `.
 | `/orders`, `/orders/:id` | Lists the buyer’s simulated orders or opens one order (P2) |
 | `/organizer` | Lists the organizer’s own events |
 | `/organizer/events/new`, `/organizer/events/:id/edit` | Creates, edits, publishes and cancels events |
+| `/organizer/events/:id/history` | Shows tickets, orders (including refunded orders), admissions and the activity log for completed and cancelled events |
 | `/organizer/events/:id/ticket-types` | Manages ticket types for the event |
 | `/organizer/events/:id/activation` | Activates simulated paid sales (P2) |
 | `/admin`, `/admin/users`, `/admin/events`, `/admin/action-log` | Admin moderation. Other signed-in users see a 403 screen |

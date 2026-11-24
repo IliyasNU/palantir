@@ -146,7 +146,10 @@ test('completed events show read-only history and can be duplicated into a fresh
   await page.route(`${base}/events/mine`, route => route.fulfill({ json: [completed, active, upcoming] }));
   await page.route(`${base}/events/9/history?limit=50&offset=0`, route => route.fulfill({ json: {
     event: completed, tickets: [{ id: 41, ticket_type_id: 3, status: 'active', created_at: draft.created_at }],
-    orders: [{ id: 51, status: 'paid', total_tiyn: 1000, created_at: draft.created_at }],
+    orders: [
+      { id: 51, status: 'paid', total_tiyn: 1000, created_at: draft.created_at },
+      { id: 52, status: 'refunded', total_tiyn: 1000, created_at: draft.created_at },
+    ],
     check_ins: [{ id: 61, ticket_id: 41, checked_in_at: draft.created_at, undone_at: null }], has_more: false,
   } }));
   await page.route(`${base}/events/9/action-log?limit=51&offset=0`, route => route.fulfill({ json: [{
@@ -170,6 +173,7 @@ test('completed events show read-only history and can be duplicated into a fresh
   await page.getByRole('link', { name: `Открыть историю: ${completed.title}` }).click();
   await expect(page.getByRole('region', { name: 'Билеты', exact: true })).toContainText('Билет №41');
   await expect(page.getByRole('region', { name: 'Заказы', exact: true })).toContainText('Заказ №51');
+  await expect(page.getByRole('region', { name: 'Заказы', exact: true })).toContainText('Возвращён');
   await expect(page.getByRole('region', { name: 'Отметки входа' })).toContainText('Вход подтверждён');
   await expect(page.getByRole('region', { name: 'Журнал действий' })).toContainText('Ticket admitted');
   await expect(page.getByRole('button', { name: 'Сохранить изменения' })).toHaveCount(0);

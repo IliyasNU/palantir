@@ -5,6 +5,8 @@ import { safeReturnTo } from '../src/auth/returnTo.ts';
 import { canManageEvents, canOrganize, emptyEventDraft, emptyOrganizerProfileDraft, eventDraft, eventPayload, localInputValue, organizerProfileDraft, organizerProfilePayload, organizerError, readManagedEvent, readManagedEvents, readOrganizerProfile, readStaffMembers, staffError } from '../src/organizer/model.ts';
 import { messages } from '../src/i18n/messages.ts';
 
+import { readEventHistory } from '../src/organizer/history.ts';
+
 const organizerText = messages.ru.organizer;
 
 process.env.TZ = 'Asia/Almaty'; // UTC+5 without daylight saving: local 17:00 is 12:00 UTC
@@ -140,4 +142,14 @@ test('organizer routes are allowed after login; near misses are not', () => {
     '/organizerx', '/organizer//events/new', '/organizer?next=//evil.test', '/admin', '/admin/users']) {
     assert.equal(safeReturnTo(route), '/events', route);
   }
+});
+
+test('event history reads every order status and rejects an unknown status', () => {
+  const statuses = ['pending', 'paid', 'failed', 'cancelled', 'expired', 'refunded'];
+  const parse = (values) => readEventHistory({
+    event, tickets: [], check_ins: [], has_more: false,
+    orders: values.map((status, i) => ({ id: i + 1, status, total_tiyn: 12500, created_at: event.created_at })),
+  }, event.id);
+  assert.deepEqual(parse(statuses).orders.map(order => order.status), statuses);
+  assert.throws(() => parse(['unknown']), ApiError);
 });

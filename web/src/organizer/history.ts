@@ -44,7 +44,7 @@ export function readEventHistory(payload: unknown, id: number) {
     orders: list(data.orders, value => {
       const row = record(value);
       return { id: number(row.id), total: number(row.total_tiyn, 0), created: timestamp(row.created_at),
-        status: status(row.status, ['pending', 'paid', 'failed', 'cancelled', 'expired'] as const) };
+        status: status(row.status, ['pending', 'paid', 'failed', 'cancelled', 'expired', 'refunded'] as const) };
     }),
     checkIns: list(data.check_ins, value => {
       const row = record(value);
