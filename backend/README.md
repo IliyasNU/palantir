@@ -104,7 +104,7 @@ Run these from `backend/`. Import new models in `app/models/__init__.py` so auto
 | `POST /auth/register` | public | JSON `{email, full_name, password, role?}`; `role` is `attendee` (default) or `organizer` |
 | `POST /auth/login` | public | JSON `{email, password}` → `{access_token, refresh_token, token_type}` |
 | `POST /auth/token` | public | same, as OAuth2 form (`username` = email); used by the `/docs` "Authorize" button |
-| `POST /auth/refresh` | public | JSON `{refresh_token}` → new token pair |
+| `POST /auth/refresh` | public | JSON `{refresh_token}` → new token pair. The refresh token submitted to this endpoint is single-use |
 | `POST /auth/logout` | public | JSON `{refresh_token}` → `204`; that refresh token stops working, other sessions stay |
 | `GET /auth/me` | logged in | current user, including `email_verified` |
 | `POST /auth/verify-email` | public | JSON `{token}` from the verification email → user; `400 INVALID_TOKEN` |

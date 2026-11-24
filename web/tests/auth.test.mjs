@@ -86,11 +86,15 @@ test('protected 403 preserves user/session and exposes a permission notice', asy
   assert.equal((await store.request('/auth/me')).id, 1);
 });
 
-test('logout clears the user and cancels private requests without calling a logout endpoint', async () => {
+test('logout clears the user and cancels private requests and revokes the refresh token', async () => {
   const late = deferred();
   const started = deferred();
   let signal;
   const { store, paths } = fixture((path, options) => {
+    if (path === '/auth/logout') {
+      assert.deepEqual(JSON.parse(options.body), { refresh_token: tokenPair.refresh_token });
+      return new Response(null, { status: 204 });
+    }
     if (path === '/private') { signal = options.signal; started.resolve(); return late.promise; }
   });
   await store.login(credentials);
@@ -102,7 +106,7 @@ test('logout clears the user and cancels private requests without calling a logo
   assert.equal(store.getSnapshot().user, null);
   late.resolve(Response.json({ privateData: 'must not be returned' }));
   await rejected;
-  assert.equal(paths.includes('/auth/logout'), false);
+  assert.equal(paths.includes('/auth/logout'), true);
   await assert.rejects(store.request('/auth/me'), (error) => error.status === 401);
 });
 
@@ -185,4 +189,14 @@ test('return destination allows /organizer and rejects unknown routes like /admi
     destination = safeReturnTo(url.searchParams.get('returnTo'));
     assert.equal(destination, '/organizer');
   }
+});
+
+test('a failed logout request still ends the local session', async () => {
+  const { store, paths } = fixture(path => {
+    if (path === '/auth/logout') throw new TypeError('Offline');
+  });
+  await store.login(credentials);
+  await store.logout();
+  assert.equal(paths.at(-1), '/auth/logout');
+  assert.equal(store.getSnapshot().status, 'anonymous');
 });

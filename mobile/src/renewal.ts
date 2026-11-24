@@ -72,7 +72,7 @@ export async function renewCurrentSession(
 export function createRenewer(refresh: (refreshToken: string, userId: number) => Promise<StaffSession>) {
   let running: { key: string; promise: Promise<Renewal> } | null = null;
 
-  return function renew(current: StaffSession | null): Promise<Renewal> {
+  function renew(current: StaffSession | null): Promise<Renewal> {
     if (!current?.refreshToken) return Promise.resolve({ rejected: true });
     const key = `${current.userId}:${current.refreshToken}`;
     if (running?.key === key) return running.promise;
@@ -85,5 +85,28 @@ export function createRenewer(refresh: (refreshToken: string, userId: number) =>
     ).finally(() => { if (running?.promise === promise) running = null; });
     running = { key, promise };
     return promise;
-  };
+  }
+
+  return Object.assign(renew, {
+    pending(session: StaffSession) {
+      return running?.key === `${session.userId}:${session.refreshToken}` ? running.promise : undefined;
+    },
+  });
+}
+
+export async function signOutSession(
+  session: StaffSession | null,
+  pending: Promise<Renewal> | undefined,
+  revoke: (token: string) => Promise<void>,
+  clear: () => void,
+) {
+  const token = session?.refreshToken;
+  const sent = token ? revoke(token).catch(() => {}) : Promise.resolve();
+  clear();
+  // A renewal already accepted by the server can return a second token after local sign-out.
+  const rotated = await pending;
+  if (rotated && 'session' in rotated && rotated.session.refreshToken && rotated.session.refreshToken !== token) {
+    await revoke(rotated.session.refreshToken).catch(() => {});
+  }
+  await sent;
 }

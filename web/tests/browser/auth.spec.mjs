@@ -122,7 +122,8 @@ test('live local API: register, duplicate guard, wrong password, login/me, logou
   await page.getByRole('button', { name: 'Выйти' }).click();
   await expect(page).toHaveURL('/events/42');
   await expect(page.getByRole('navigation')).not.toContainText('FE01 Browser Visitor');
-  expect(responses.some((r) => r.path === '/auth/logout' || r.path === '/auth/refresh')).toBe(false);
+  await expect.poll(() => responses.some(r => r.path === '/auth/logout' && r.status === 204)).toBe(true);
+  expect(responses.some(r => r.path === '/auth/refresh')).toBe(false);
   await page.getByRole('navigation').getByRole('link', { name: 'Войти', exact: true }).click();
   await loginForm(page, email, password);
   await expect(page).toHaveURL('/events/42');

@@ -32,6 +32,7 @@ function readUser(value: unknown): User {
 export function createAuthStore(api: ApiClient) {
   let state: AuthState = { user: null, status: 'anonymous', notice: null };
   let accessToken: string | null = null;
+  let refreshToken: string | null = null;
   let generation = 0;
   const listeners = new Set<() => void>();
   const pending = new Set<AbortController>();
@@ -44,6 +45,7 @@ export function createAuthStore(api: ApiClient) {
   function clearSession(notice: AuthState['notice'] = null) {
     generation += 1;
     accessToken = null;
+    refreshToken = null;
     pending.forEach((controller) => controller.abort());
     pending.clear();
     publish({ user: null, status: 'anonymous', notice });
@@ -59,7 +61,14 @@ export function createAuthStore(api: ApiClient) {
       listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
-    logout: () => clearSession(),
+    logout() {
+      const revocation = refreshToken
+        ? api.request<void>('/auth/logout', { method: 'POST', body: { refresh_token: refreshToken } })
+        : Promise.resolve();
+      clearSession();
+      // Local sign-out is final even if the server is unreachable.
+      return revocation.catch(() => {});
+    },
     dismissNotice: () => publish({ ...state, notice: null }),
     /** The verification link was accepted for this account: hide the reminder without a new sign-in. */
     markEmailVerified(userId: number) {
@@ -98,7 +107,7 @@ export function createAuthStore(api: ApiClient) {
         ensureCurrent(version, signal);
         if (!user.is_active) throw new ApiError((m) => m.auth.disabled, { kind: 'http', status: 403 });
         accessToken = tokens.access_token;
-        // refresh_token is deliberately discarded. No persistence and no automatic refresh.
+        refreshToken = typeof tokens.refresh_token === 'string' ? tokens.refresh_token : null;
         publish({ user, status: 'authenticated', notice: null });
       } catch (error) {
         if (version === generation) clearSession();

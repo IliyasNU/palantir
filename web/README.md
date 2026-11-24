@@ -103,11 +103,11 @@ Registration sends `POST /auth/register` with `{ email, full_name, password, rol
 
 Sign-in sends `POST /auth/login` with `{ email, password }`, then requests `GET /auth/me` with the access token. Both requests must succeed and the account must be active before a session begins.
 
-The web client keeps the access token and user in memory. Reloading the page or opening a new tab requires sign-in. The session uses neither `localStorage`, `sessionStorage` nor cookies. The client discards the `refresh_token` and does not renew the session automatically.
+The web client keeps the access token and user in memory. Reloading the page or opening a new tab requires sign-in. The session uses neither `localStorage`, `sessionStorage` nor cookies. The client retains the `refresh_token` in memory for explicit sign-out and does not renew the session automatically.
 
 A single `AuthProvider` in `main.tsx` connects to `src/auth/store.ts`. Components use `useAuth()` for the user and session methods. They have no direct access to the token.
 
-“Выйти” (Sign out) clears the token, user and notices in memory and cancels session requests without a server logout call. A late response cannot restore a closed session or clear a newer one.
+“Выйти” (Sign out) submits the refresh token to `POST /auth/logout`, clears the local session and cancels pending session requests even if the server is unavailable. A late response cannot restore a closed session or clear a newer one.
 
 Protected requests use `useAuth().request()`. A `401` clears the session and prompts for sign-in. A `403` reports insufficient permission and retains the session. Public requests use `api.request()`.
 
@@ -248,7 +248,7 @@ Forgot-password never shows whether an email exists (`forgotPasswordOutcome` in 
 
 The verification banner disables “send again” for one minute after each attempt. The backend independently enforces the limit introduced in PR #21. The banner displays a rate-limit message when it receives `429`.
 
-The backend added the account endpoints and `POST /auth/logout` in PR #21. The web account milestone deferred server logout until after that integration. In v1.0, “Sign out” clears the token, user and notices from memory and cancels session requests. A browser test checks that sign-out sends no logout request. Account browser tests use HTTP fixtures. At that milestone, live validation of email links and server logout was still pending.
+The backend added the account endpoints and `POST /auth/logout` in PR #21. The web account milestone deferred server logout until after that integration. In v1.0, “Sign out” clears the token, user and notices from memory and cancels session requests. In v1.1 browser tests cover both successful server logout and local sign-out after a failed request. Account browser tests use HTTP fixtures. At that milestone, live validation of email links and server logout was still pending.
 
 A signed-in user without the admin role sees “403 — access denied” at `/admin/...`. We used 403 rather than the generic 404 page because the route names are already public in the client bundle. The API also checks the role and returns 403 for unauthorized admin requests.
 

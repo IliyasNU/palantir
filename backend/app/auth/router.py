@@ -66,9 +66,11 @@ def refresh(payload: RefreshRequest, db: DbSession):
     try:
         return service.refresh_tokens(db, payload.refresh_token)
     except TokenError as exc:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(exc), headers=_BEARER)
+        error = api_error(401, "INVALID_REFRESH_TOKEN", str(exc))
+        error.headers = _BEARER
+        raise error from exc
     except service.InactiveUserError:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "This account is disabled")
+        raise api_error(403, "ACCOUNT_DISABLED", "This account is disabled")
 
 
 @router.get("/me", response_model=UserRead)

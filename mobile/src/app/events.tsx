@@ -21,7 +21,7 @@ export default function EventsScreen() {
 }
 
 function EventsList({ token, userId }: { token: string; userId: number }) {
-  const { setSession, renew } = useSession();
+  const { setSession, signOut, renew } = useSession();
   const { copy, locale } = useLanguage();
   const [events, setEvents] = useState<StaffEvent[]>([]);
   const [error, setError] = useState<unknown>(null);
@@ -63,7 +63,7 @@ function EventsList({ token, userId }: { token: string; userId: number }) {
         <Button title={copy.refresh} disabled={loading} onPress={() => {
           setBusy(true); setError(null); setEvents([]); setReload(value => value + 1);
         }} />
-        <Button title={copy.signOut} onPress={() => setSession(null)} />
+        <Button title={copy.signOut} onPress={signOut} />
       </View>
       {loading && <ActivityIndicator accessibilityLabel={copy.loadingEvents} />}
       {!loading && error !== null && <Text accessibilityRole="alert" style={styles.error}>{errorMessage(error, locale)}</Text>}
