@@ -296,3 +296,14 @@ def test_free_registration_issues_one_receipt_without_payment(client, shop):
     assert rejected.status_code == 409 and rejected.json()["detail"]["code"] == "FREE_REGISTRATION"
     assert client.post(base + "/cancel", headers=shop["org"]).status_code == 200
     assert client.post(base + "/orders/refund-all", headers=shop["org"]).json() == {"refunded_count": 0, "refunds_tiyn": 0}
+
+
+def test_private_event_blocks_new_checkout_and_payment_of_an_old_reservation(client, shop):
+    shop["activate"]()
+    reservation = shop["checkout"]()
+    assert reservation.status_code == 201
+    assert client.patch(f"/events/{shop['eid']}", headers=shop["org"], json={"visibility": "private"}).status_code == 200
+    assert shop["checkout"]().status_code == 404
+    payment = client.post(f"/orders/{reservation.json()['id']}/pay", headers=shop["auth"], json={"outcome": "success"})
+    assert payment.status_code == 404 and payment.json()["detail"]["code"] == "EVENT_NOT_FOUND"
+    assert client.get("/tickets/me", headers=shop["auth"]).json() == []

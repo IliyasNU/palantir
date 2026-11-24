@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from sqlalchemy import text
 
 from e2e.test_orders import paid_shop  # noqa: F401
@@ -27,3 +29,26 @@ def test_analytics_reads_refund_and_discount_on_utc_sales_day(api, paid_shop, db
     assert report["daily"][0]["date"] == "2026-11-19"
     assert len(report["daily"]) == 1
     assert api.get(base + "/analytics", headers=shop["buyer"].headers).status_code == 404
+
+
+def test_public_demo_checkout_qr_and_staff_admission(api, paid_shop, register):
+    shop = paid_shop
+    owner, buyer, staff = shop["owner"], shop["buyer"], register()
+    root = f"/events/{shop['eid']}"
+    assert api.get(root).json()["visibility"] == "public"
+    assert api.post(root + "/staff", headers=owner.headers, json={"email": staff.email}).status_code == 201
+    campaign = api.post(root + "/campaigns", headers=owner.headers,
+                        json={"name": "Admission", "kind": "fixed", "value": 50, "max_uses": 1})
+    assert campaign.status_code == 201
+    order, ticket = buy(api, shop, promo_code=campaign.json()["code"])
+    assert order["total_tiyn"] == 10000
+    pdf = api.get(f"/tickets/{ticket['id']}/pdf", headers=buyer.headers)
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+    def scan():
+        return api.post(root + "/check-in", headers=staff.headers,
+                        json={"request_id": str(uuid4()), "qr_payload": ticket["qr_payload"]})
+    assert scan().status_code == 200
+    duplicate = scan()
+    assert duplicate.status_code == 409 and duplicate.json()["detail"]["code"] == "ALREADY_CHECKED_IN"
+    summary = api.get(root + "/analytics", headers=owner.headers).json()
+    assert (summary["sold"], summary["checked_in"], summary["net_sales_tiyn"]) == (1, 1, 10000)

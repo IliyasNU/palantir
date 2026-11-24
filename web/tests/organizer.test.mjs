@@ -153,3 +153,12 @@ test('event history reads every order status and rejects an unknown status', () 
   assert.deepEqual(parse(statuses).orders.map(order => order.status), statuses);
   assert.throws(() => parse(['unknown']), ApiError);
 });
+
+test('the editor preserves a private event and submits only a changed visibility', () => {
+  const original = readManagedEvent({ ...event, visibility: 'private' }, event.id);
+  const form = eventDraft(original);
+  assert.equal(form.visibility, 'private');
+  assert.deepEqual(eventPayload(form, original), {});
+  assert.deepEqual(eventPayload({ ...form, visibility: 'public' }, original), { visibility: 'public' });
+  assert.equal(eventPayload({ ...form, visibility: 'unlisted' }).visibility, 'unlisted');
+});

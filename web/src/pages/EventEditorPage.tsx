@@ -57,6 +57,11 @@ function EventForm({ original, onSaved }: { original?: ManagedEvent; onSaved: (e
         <input id="event-title" {...field('title')} required maxLength={200} />
         <label htmlFor="event-description">{text.editor.description}</label>
         <textarea id="event-description" {...field('description')} rows={5} maxLength={5000} />
+        <label htmlFor="event-visibility">{text.editor.visibility.label}</label>
+        <select id="event-visibility" {...field('visibility')} value={draft.visibility ?? 'public'}>
+          {(['public', 'unlisted', 'private'] as const).map(mode =>
+            <option key={mode} value={mode}>{text.editor.visibility[mode]}</option>)}
+        </select>
         <label htmlFor="event-refund-policy">{orders.policy}</label>
         <textarea id="event-refund-policy" {...field('refund_policy')} rows={3}
           aria-describedby="event-refund-policy-hint" />

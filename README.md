@@ -1,6 +1,6 @@
 # BiletFlow
 
-We built BiletFlow for CSCI 361 Software Engineering at Nazarbayev University in Fall 2026. Team Palantir consisted of Iliyas Ussabay (team lead), Abbas Uteulin, Temirlan Bayangazy, Sanzhar Toktargazin and Alibi Boranbayev. BiletFlow lets organizers publish events, attendees obtain tickets and check-in staff verify admission. Payments are simulated. The system runs locally with Docker Compose for the API and database. Our final release is tag `v1.0` (commit `ce8aa25`) on the `integration/biletflow-e2e` integration branch.
+We built BiletFlow for CSCI 361 Software Engineering at Nazarbayev University in Fall 2026. Team Palantir consisted of Iliyas Ussabay (team lead), Abbas Uteulin, Temirlan Bayangazy, Sanzhar Toktargazin and Alibi Boranbayev. BiletFlow lets organizers publish events, attendees obtain tickets and check-in staff verify admission. Payments are simulated. The system runs locally with Docker Compose for the API and database. The published course release is tagged `v1.0` (commit `ce8aa25`). This checkout prepares v1.1 on the local `release/v1.1` branch.
 
 - The [web client](web/README.md) uses React for public event listings, registration, sign-in, free ticket claims and access to the attendee’s tickets and QR codes.
 - The [backend](backend/README.md) uses FastAPI and PostgreSQL for JWT authentication, role checks, event publication and cancellation, ticket issuance, staff assignments and idempotent check-in.
@@ -9,6 +9,8 @@ We built BiletFlow for CSCI 361 Software Engineering at Nazarbayev University in
 The [integration audit](docs/integration-audit.md) records verification results and remaining risks. The [team checklist](docs/manual-acceptance.md) contains demonstration and manual acceptance scenarios.
 
 ## 1. Obtain the integration branch
+
+For the v1.1 candidate, start in the local `release/v1.1` checkout and continue with section 2. The clone command below retrieves the published integration branch.
 
 Install Node.js 24 and npm. Run the backend with Docker Compose, or use a local PostgreSQL instance and Python 3.12+. The examples use PowerShell.
 
@@ -38,7 +40,7 @@ docker compose -p biletflow-test exec backend alembic current
 Invoke-RestMethod http://127.0.0.1:8000/health
 ```
 
-Compose waits for PostgreSQL to pass `pg_isready`, then applies `alembic upgrade head` before starting the API. The original setup reported `0003 (head)`. For v1.0 the head is `0011`. Wait for migrations to finish and check `/health` for `{"status":"ok","database":"up"}` before opening the forms. Inspect `docker compose -p biletflow-test logs backend db` if startup fails. Use `docker compose -p biletflow-test stop` to retain the data.
+Compose waits for PostgreSQL to pass `pg_isready`, then applies `alembic upgrade head` before starting the API. The original setup reported `0003 (head)`. The migration head is `0011` for v1.0 and `0013` for this v1.1 candidate. Wait for migrations to finish and check `/health` for `{"status":"ok","database":"up"}` before opening the forms. Inspect `docker compose -p biletflow-test logs backend db` if startup fails. Use `docker compose -p biletflow-test stop` to retain the data.
 
 For a direct launch, create a separate PostgreSQL database named `biletflow_test` with its own user and password. Set `DATABASE_URL` in `backend/.env` using the format `postgresql+psycopg://USER:PASSWORD@127.0.0.1:5432/biletflow_test` and the actual PostgreSQL port. Percent-encode special characters in the username and password. Set the generated `JWT_SECRET_KEY` and `CORS_ORIGINS=http://localhost:5173`. You can administer PostgreSQL through pgAdmin.
 

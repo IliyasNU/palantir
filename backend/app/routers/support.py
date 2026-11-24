@@ -201,7 +201,7 @@ def _attendee_context(db: Session, payload: CaseCreate, user: User) -> tuple[Eve
 
     event = db.get(Event, event_ids.pop())
     # A ticket or order of their own already ties the requester to the event, even if it is now hidden.
-    if event is None or (ticket is None and order is None and not is_visible(event, user)):
+    if event is None or (ticket is None and order is None and not is_visible(db, event, user)):
         raise api_error(status.HTTP_404_NOT_FOUND, "EVENT_NOT_FOUND", "Event not found")
     return event, order, ticket
 

@@ -1,4 +1,4 @@
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
@@ -6,6 +6,7 @@ from app.models.event import EventPhase
 from app.schemas.common import UTCDateTime, blank_to_none
 from app.schemas.ticket_type import TicketTypeRead
 
+Visibility = Literal["public", "unlisted", "private"]
 Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=200)]
 Description = Annotated[str, StringConstraints(strip_whitespace=True, max_length=5000)]
 RefundPolicy = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]
@@ -14,6 +15,7 @@ Capacity = Annotated[int, Field(gt=0, le=1_000_000)]
 
 
 class EventCreate(BaseModel):
+    visibility: Visibility = "public"
     title: Title
     description: Optional[Description] = None
     refund_policy: Optional[RefundPolicy] = None
@@ -30,6 +32,7 @@ class EventCreate(BaseModel):
 class EventUpdate(BaseModel):
     """Partial update: only the fields that are sent are changed."""
 
+    visibility: Optional[Visibility] = None
     title: Optional[Title] = None
     description: Optional[Description] = None  # send null to clear it
     refund_policy: Optional[RefundPolicy] = None
@@ -42,7 +45,7 @@ class EventUpdate(BaseModel):
     def _blank_description_to_none(cls, value: Any) -> Any:
         return blank_to_none(value)
 
-    @field_validator("title", "date", "location", "capacity")
+    @field_validator("title", "date", "location", "capacity", "visibility")
     @classmethod
     def _required_fields_not_null(cls, value: Any) -> Any:
         if value is None:
@@ -55,6 +58,7 @@ class EventRead(BaseModel):
 
     id: int
     organizer_id: int
+    visibility: Visibility
     title: str
     description: Optional[str]
     refund_policy: Optional[str]

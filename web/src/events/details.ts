@@ -3,6 +3,7 @@ import { current } from '../i18n/index.ts';
 import { readTicketTypes } from '../ticket-types/model.ts';
 import type { TicketType } from '../ticket-types/model.ts';
 
+export type Visibility = 'public' | 'unlisted' | 'private';
 export type EventStatus = 'draft' | 'published' | 'cancelled';
 
 /** Normalized EventRead. Unusable counters/status are explicitly unknown. */
@@ -11,6 +12,7 @@ export interface EventDetails {
   organizer_id: number;
   title: string;
   description: string | null;
+  visibility?: Visibility;
   refund_policy?: string | null;
   date: string;
   location: string;
@@ -52,6 +54,7 @@ export function readEventDetails(payload: unknown, expectedId: number): EventDet
   if (event.id !== expectedId || organizerId === null
     || typeof event.title !== 'string' || !event.title.trim()
     || (event.description !== null && typeof event.description !== 'string')
+    || (event.visibility !== undefined && event.visibility !== 'public' && event.visibility !== 'unlisted' && event.visibility !== 'private')
     || (event.refund_policy != null && typeof event.refund_policy !== 'string')
     || typeof event.location !== 'string'
     || !isDate(event.date) || !isDate(event.created_at) || !isDate(event.updated_at)) throw fail();
@@ -61,6 +64,7 @@ export function readEventDetails(payload: unknown, expectedId: number): EventDet
     organizer_id: organizerId,
     title: event.title,
     description: event.description,
+    ...(event.visibility === undefined ? {} : { visibility: event.visibility }),
     ...(event.refund_policy === undefined ? {} : { refund_policy: event.refund_policy }),
     date: event.date,
     location: event.location,

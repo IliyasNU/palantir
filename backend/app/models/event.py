@@ -46,6 +46,7 @@ def event_phase(
 class Event(Base):
     __tablename__ = "events"
     __table_args__ = (
+        CheckConstraint("visibility IN ('public', 'unlisted', 'private')", name="visibility_valid"),
         CheckConstraint("capacity > 0", name="capacity_positive"),
         CheckConstraint("status IN ('draft', 'published', 'cancelled')", name="status_valid"),
         CheckConstraint("tickets_issued >= 0 AND tickets_issued <= capacity", name="tickets_within_capacity"),
@@ -55,6 +56,7 @@ class Event(Base):
     organizer_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[Optional[str]] = mapped_column(Text)
+    visibility: Mapped[str] = mapped_column(String(12), default="public", server_default="public")
     refund_policy: Mapped[Optional[str]] = mapped_column(String(2000))
     date: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # event start (stored in UTC)
     location: Mapped[str] = mapped_column(String(255))

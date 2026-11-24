@@ -36,7 +36,7 @@ Vite reads settings in descending order of precedence from process variables, `.
 | `/events/:id/checkout?type=…` | Simulated checkout for a paid ticket type (P2) |
 | `/orders`, `/orders/:id` | Lists the buyer’s simulated orders or opens one order (P2) |
 | `/organizer` | Lists the organizer’s own events |
-| `/organizer/events/new`, `/organizer/events/:id/edit` | Creates, edits, publishes and cancels events |
+| `/organizer/events/new`, `/organizer/events/:id/edit` | Creates, edits, publishes and cancels events. The visibility selector offers public, unlisted and private access |
 | `/organizer/events/:id/history` | Shows tickets, orders (including refunded orders), admissions and the activity log for completed and cancelled events |
 | `/organizer/events/:id/ticket-types` | Manages ticket types for the event |
 | `/organizer/events/:id/activation` | Activates simulated paid sales (P2) |

@@ -17,7 +17,7 @@ from app.audit import record_action
 from app.dependencies.auth import CurrentUser
 from app.dependencies.db import DbSession
 from app.db.base import utcnow
-from app.dependencies.events import can_manage, ensure_not_suspended, get_event_or_404, is_visible
+from app.dependencies.events import can_manage, ensure_not_suspended, is_visible
 from app.dependencies.roles import is_admin
 from app.errors import api_error
 from app.models import Event, EventStatus, Ticket, TicketStatus, TicketType, User
@@ -69,11 +69,10 @@ def _ensure_open_for_tickets(event: Event) -> None:
 def claim_ticket(event_id: int, db: DbSession, current_user: CurrentUser, response: Response,
                  payload: Optional[TicketClaimRequest] = None):
     """Claim your free ticket (201). Claiming again returns the ticket you already have (200)."""
-    event = get_event_or_404(db, event_id)
-    if not is_visible(event, current_user):
+    event = lock_event(db, event_id)
+    if not is_visible(db, event, current_user):
         raise api_error(status.HTTP_404_NOT_FOUND, "EVENT_NOT_FOUND", "Event not found")
 
-    event = lock_event(db, event_id)
     expire_event_orders(db, event_id)
 
     ticket_type_id = payload.ticket_type_id if payload else None

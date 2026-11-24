@@ -15,7 +15,7 @@ from app.db.base import utcnow
 from app.demo_fees import DEMO_NOTICE, PAYMENT_PROCESSING_FEE_BPS, processing_fee
 from app.dependencies.auth import CurrentUser
 from app.dependencies.db import DbSession
-from app.dependencies.events import can_manage, ensure_can_manage, ensure_not_suspended, get_event_or_404
+from app.dependencies.events import can_manage, ensure_can_manage, ensure_not_suspended, get_event_or_404, is_visible
 from app.errors import api_error
 from app.models import CheckIn, Event, EventStatus, Ticket, TicketStatus, TicketType, User
 from app.models.order import Order
@@ -59,6 +59,8 @@ def own_order(db, order_id, user):
 @router.post("/events/{event_id}/orders", response_model=OrderRead, status_code=201)
 def create_order(event_id: int, payload: OrderCreate, response: Response, db: DbSession, user: CurrentUser):
     event = lock_event(db, event_id)
+    if event.visibility == "private" and not is_visible(db, event, user):
+        raise api_error(404, "EVENT_NOT_FOUND", "Event not found")
     expire_event_orders(db, event_id)
     existing = db.scalar(select(Order).where(Order.buyer_id == user.id, Order.request_id == str(payload.request_id)))
     if existing is not None:
@@ -162,6 +164,8 @@ def pay_order(order_id: int, payload: PaymentRequest, db: DbSession, user: Curre
         action = "order.failed"
     else:
         try:
+            if event.visibility == "private" and not is_visible(db, event, user):
+                raise api_error(404, "EVENT_NOT_FOUND", "Event not found")
             ensure_sale(db, event, user.id)
             reject_ticket(db, event.id, user.id)
         except HTTPException:

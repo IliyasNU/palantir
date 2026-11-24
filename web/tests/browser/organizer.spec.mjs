@@ -96,6 +96,8 @@ test('an organizer creates a draft, publishes it, edits it and cancels it at 375
   // Saving without changes sends nothing; an edit sends only the changed field.
   await page.getByRole('button', { name: 'Сохранить изменения' }).click();
   await expect(page.getByRole('status')).toHaveText('Изменений нет.');
+  await expect(page.getByLabel('Видимость')).toHaveValue('public');
+  await page.getByLabel('Видимость').selectOption('unlisted');
   await page.getByLabel('Вместимость', { exact: true }).fill('60');
   await page.getByRole('button', { name: 'Сохранить изменения' }).click();
   await expect(page.getByRole('status')).toHaveText('Изменения сохранены.');
@@ -109,7 +111,7 @@ test('an organizer creates a draft, publishes it, edits it and cancels it at 375
   await expect(page).toHaveURL('/organizer/events/9/history');
   await expect(page.getByRole('region', { name: 'Сведения о событии' })).toContainText('Отменено');
   await expect(page.getByRole('button', { name: 'Опубликовать' })).toHaveCount(0);
-  expect(calls.slice(1)).toEqual([['POST /events/9/publish', null], ['PATCH /events/9', { capacity: 60 }], ['POST /events/9/cancel', null]]);
+  expect(calls.slice(1)).toEqual([['POST /events/9/publish', null], ['PATCH /events/9', { capacity: 60, visibility: 'unlisted' }], ['POST /events/9/cancel', null]]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
